@@ -224,6 +224,68 @@ export interface I18nInterpolateOutput {
 }
 
 // ---------------------------------------------------------------------------
+// i18n/lookup
+// ---------------------------------------------------------------------------
+
+/**
+ * Parameters for `i18n/lookup`.
+ *
+ * Emitted **synchronously** by `LocalizationManager` during `i18n/interpolate`
+ * for every `{key}` or `{key:value}` token found in the input string.
+ * Other components register handlers for this event to resolve tokens that
+ * belong to their own domain without having to parse the full string themselves.
+ *
+ * Token formats and the corresponding parameter values:
+ * - `{key}`        → `params.key = key`,  `params.value = null`
+ * - `{key:value}`  → `params.key = key`,  `params.value = value`
+ *
+ * `LocalizationManager` registers its own `before`-phase handler (priority
+ * 1000) that resolves `{i18n:translationKey}` tokens using the active locale.
+ *
+ * @example
+ * ```ts
+ * // Resolve "{player:name}" and "{player:level}" tokens
+ * core.events.on('playerPlugin', 'i18n/lookup', (params, output) => {
+ *   if (params.key !== 'player') return;
+ *   if (params.value === 'name')  { output.result = player.name;          return; }
+ *   if (params.value === 'level') { output.result = String(player.level); return; }
+ * });
+ *
+ * // Resolve bare "{score}" token (no colon — value is null)
+ * core.events.on('hudPlugin', 'i18n/lookup', (params, output) => {
+ *   if (params.key === 'score' && params.value === null) {
+ *     output.result = String(hud.score);
+ *   }
+ * });
+ *
+ * // Use in an interpolated string
+ * const { output } = core.events.emitSync('i18n/interpolate', {
+ *   text: 'Player: {player:name} (Lv.{player:level}) — Score: {score}',
+ * });
+ * console.log(output.result); // "Player: Alice (Lv.5) — Score: 1200"
+ * ```
+ */
+export interface I18nLookupParams {
+  /** The token key (the part before `:`, or the full token if there is no `:`). */
+  key: string;
+  /**
+   * The token value (the part after `:`), or `null` when the token has no
+   * colon (i.e. the `{key}` format).
+   */
+  value: string | null;
+}
+
+/** Output for `i18n/lookup`. */
+export interface I18nLookupOutput {
+  /**
+   * The resolved replacement string.
+   * Set this to a non-null value to replace the token in the interpolated result.
+   * Leave as `null` (the default) to keep the original token unchanged.
+   */
+  result: string | null;
+}
+
+// ---------------------------------------------------------------------------
 // i18n/get-locales
 // ---------------------------------------------------------------------------
 
