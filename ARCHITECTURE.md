@@ -365,7 +365,97 @@ core.events.on('ui', 'i18n/changed', ({ locale }) => {
 
 ---
 
-## 7. File & Module Conventions
+## 7. Audio System (AudioManager)
+
+The `AudioManager` is a built-in `EnginePlugin` (namespace `audio`) that provides
+audio playback using the browser-native **Web Audio API** — no external
+audio library is needed.
+
+### 7.1 Architecture
+
+Each `audio/play` call creates one **playback instance** with:
+
+- An `AudioBufferSourceNode` (the audio data).
+- A per-instance `GainNode` for volume control.
+- The chain: `source → instanceGain → masterGain → destination`.
+
+The master `GainNode` is shared across all instances, so a single
+`audio/volume` call (without `instanceId`) affects everything at once.
+
+The `AudioContext` is **lazy-initialised** on the first `audio/load` or
+`audio/play` call.  This defers creation until after a user gesture, which
+satisfies browser autoplay policies.
+
+### 7.2 Pause / Resume
+
+`AudioBufferSourceNode` cannot be paused natively.  Pausing is simulated by:
+
+1. Recording `offset = context.currentTime − startedAt`.
+2. Calling `source.stop()`.
+3. On resume, creating a new source node and calling `source.start(0, offset)`.
+
+### 7.3 Event Contract
+
+| Event           | Async? | Description |
+|-----------------|--------|-------------|
+| `audio/load`    | ✓      | Fetch, decode, and cache an audio clip by alias key |
+| `audio/play`    | ✗ sync | Start playback; returns `{ instanceId }` |
+| `audio/stop`    | ✗ sync | Stop a specific instance or all instances of a key |
+| `audio/pause`   | ✗ sync | Pause a playing instance, preserving position |
+| `audio/resume`  | ✗ sync | Resume a paused instance from the saved position |
+| `audio/volume`  | ✗ sync | Set master volume (no `instanceId`) or per-instance volume |
+| `audio/unload`  | ✗ sync | Remove a buffer from cache to free memory |
+| `audio/state`   | ✗ `emitSync` | Pull: query `state` and `currentTime` for an instance |
+
+### 7.4 Basic Usage
+
+```ts
+import { createEngine, AudioManager } from 'inkshot-engine';
+
+const { core } = await createEngine({
+  dataRoot: '/assets/',
+  plugins: [
+    new AudioManager(),
+    {
+      namespace: 'myGame',
+      async init(c) {
+        await c.events.emit('audio/load', { key: 'bgm:town', url: 'audio/town.ogg' });
+        await c.events.emit('audio/load', { key: 'sfx:hit',  url: 'audio/hit.wav'  });
+      },
+    },
+  ],
+});
+
+// ① Play looping background music with a stable ID
+core.events.emitSync('audio/play', {
+  key: 'bgm:town',
+  loop: true,
+  volume: 0.6,
+  instanceId: 'bgm',
+});
+
+// ② Play a one-shot SFX (auto-generated ID)
+core.events.emitSync('audio/play', { key: 'sfx:hit', volume: 1.0 });
+
+// ③ Pause the music during a menu
+core.events.emitSync('audio/pause',  { instanceId: 'bgm' });
+core.events.emitSync('audio/resume', { instanceId: 'bgm' });
+
+// ④ Lower music volume without affecting SFX
+core.events.emitSync('audio/volume', { instanceId: 'bgm', volume: 0.2 });
+
+// ⑤ Query state
+const { output: s } = core.events.emitSync('audio/state', { instanceId: 'bgm' });
+console.log(s.state, s.currentTime); // "playing", 4.23
+
+// ⑥ Stop and release
+core.events.emitSync('audio/stop',   { instanceId: 'bgm' });
+core.events.emitSync('audio/unload', { key: 'bgm:town' });
+```
+
+---
+
+## 8. File & Module Conventions
 
 | Path | Purpose |
 |---|---|
@@ -380,6 +470,7 @@ Built-in plugins in `src/plugins/`:
 
 | File | Namespace | Description |
 |---|---|---|
+| `AudioManager.ts` | `audio` | Web Audio API playback with pause/resume and per-instance volume |
 | `SaveManager.ts` | `save` | In-memory save slots and global save data |
 | `GameStateManager.ts` | `game` | High-level game phase state machine |
 | `InputManager.ts` | `input` | Keyboard and pointer input |
@@ -394,7 +485,7 @@ Rules:
 
 ---
 
-## 8. TypeScript Style
+## 9. TypeScript Style
 
 - **Strict mode** is enabled.  All code must pass `tsc --strict` without error.
 - Prefer `interface` over `type` for object shapes; use `type` for unions, aliases, and mapped types.
@@ -405,7 +496,7 @@ Rules:
 
 ---
 
-## 9. Coding Style
+## 10. Coding Style
 
 - 2-space indentation, single quotes, trailing commas (enforced by the project's formatter).
 - Prefer `async/await` over raw Promises.
@@ -420,7 +511,7 @@ Rules:
 
 ---
 
-## 10. Lifecycle Summary
+## 11. Lifecycle Summary
 
 ```
 createEngine(options)
