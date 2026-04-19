@@ -17,6 +17,12 @@ export interface CoreOptions {
   antialias?: boolean;
   /** Target frames per second for the game loop. */
   targetFps?: number;
+  /**
+   * Root URL / path prefix for all game data assets (images, audio, data files, etc.).
+   * Systems that load assets should resolve paths relative to this base.
+   * Defaults to `'/'`.
+   */
+  dataRoot?: string;
 }
 
 const DEFAULT_OPTIONS: Required<CoreOptions> = {
@@ -26,6 +32,7 @@ const DEFAULT_OPTIONS: Required<CoreOptions> = {
   background: 0x1a1a2e,
   antialias: true,
   targetFps: 60,
+  dataRoot: '/',
 };
 
 /**
@@ -46,6 +53,12 @@ const DEFAULT_OPTIONS: Required<CoreOptions> = {
 export class Core {
   /** The shared event bus. All engine systems communicate through this. */
   readonly events: EventBus;
+
+  /**
+   * Root URL / path prefix for game data assets.
+   * Set during `init()` via `CoreOptions.dataRoot` (defaults to `'/'`).
+   */
+  dataRoot: string = '/';
 
   private _app: Application | null = null;
   private _initialized = false;
@@ -70,6 +83,8 @@ export class Core {
     }
 
     const opts = { ...DEFAULT_OPTIONS, ...options };
+
+    this.dataRoot = opts.dataRoot;
 
     this._app = new Application();
 
