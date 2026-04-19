@@ -1,6 +1,39 @@
+// Asset system
+export { ResourceManager } from './core/ResourceManager.js';
+export type {
+  AssetRecord,
+  AssetBundleDefinition,
+  AssetsPreloadParams,
+  AssetsPreloadOutput,
+  AssetsLoadParams,
+  AssetsLoadOutput,
+  AssetsPrefetchParams,
+  AssetsGetParams,
+  AssetsGetOutput,
+  AssetsUnloadParams,
+  AssetsUnloadOutput,
+  AssetsProgressParams,
+  AssetsErrorParams,
+} from './types/assets.js';
+
 // Core
 export { Core } from './core/Core.js';
 export type { CoreOptions } from './core/Core.js';
+
+// Input system
+export { InputManager } from './core/InputManager.js';
+export type {
+  InputKeyDownParams,
+  InputKeyUpParams,
+  InputPointerDownParams,
+  InputPointerUpParams,
+  InputPointerMoveParams,
+  InputKeyPressedParams,
+  InputKeyPressedOutput,
+  InputPointerStateOutput,
+  InputActionBindParams,
+  InputActionTriggeredParams,
+} from './types/input.js';
 
 // Game state system
 export { GameStateManager } from './core/GameStateManager.js';

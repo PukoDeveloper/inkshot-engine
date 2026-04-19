@@ -196,15 +196,90 @@ Plugins should always prefer the EventBus approach to remain decoupled from the 
 
 ---
 
-## 5. File & Module Conventions
+## 5. Asset System (ResourceManager)
+
+The `ResourceManager` is a built-in `EnginePlugin` that wraps Pixi.js `Assets` and exposes all asset-loading modes through the event bus.
+
+### 5.1 Cache-First Guarantee
+
+Every loading path is cache-first.  A resource already in the Pixi `Assets` cache is **never fetched twice** — the call returns instantly regardless of which loading mode is used.
+
+| Mode | How cache is consulted |
+|---|---|
+| Preload / Load | `Assets.loadBundle()` / `Assets.load()` resolve from cache internally |
+| Prefetch | Explicitly skips `Assets.backgroundLoad()` when `Assets.cache.has()` returns `true` |
+| Get (sync) | Pure cache lookup via `Assets.cache.has()` + `Assets.get()` |
+
+### 5.2 Loading Modes
+
+| Event | Async? | Description |
+|---|---|---|
+| `assets/preload` | ✓ | Register & fully load bundles before `core.start()`.  Call from another plugin's `init()`. |
+| `assets/load` | ✓ | Cache-first load of a single URL, a named bundle, or an inline definition. |
+| `assets/prefetch` | ✗ | Fire-and-forget background download; game loop never pauses. |
+| `assets/get` | ✗ `emitSync` | Synchronous cache retrieval; never triggers a fetch. |
+| `assets/unload` | ✓ | Release a bundle or single URL from Pixi cache and GPU memory. |
+| `assets/progress` | — emitted | Progress `0→1` during `assets/preload` / `assets/load`; subscribe for loading screens. |
+| `assets/error` | — emitted | Fired on any load failure; subscribe to implement retry or fallback logic. |
+
+### 5.3 Bundle Lifecycle Pattern
+
+Bundle-scoped management pairs neatly with scene transitions:
+
+```ts
+// ① Preload essentials at startup (inside another plugin's init)
+await core.events.emit('assets/preload', {
+  bundles: [{ name: 'ui', assets: { font: 'fonts/main.woff2' } }],
+});
+
+// ② Prefetch next scene in the background while player is on main menu
+core.events.emitSync('assets/prefetch', { bundle: 'scene:town' });
+
+// ③ Lazy/eager load — cache-first; instant if prefetch finished
+await core.events.emit('assets/load', { bundle: 'scene:town' });
+
+// ④ Retrieve a single asset by alias (synchronous)
+const { output } = core.events.emitSync('assets/get', { key: 'tileset' });
+worldLayer.addChild(new Sprite(output.asset as Texture));
+
+// ⑤ Release previous scene's assets on exit
+await core.events.emit('assets/unload', { bundle: 'scene:intro' });
+```
+
+### 5.4 Inline Definition
+
+A bundle can be declared and loaded in a single `assets/load` call using `definition`.  This is convenient for on-demand scene loading where bundles are not known at startup:
+
+```ts
+await core.events.emit('assets/load', {
+  definition: { name: 'scene:dungeon', assets: { boss: 'boss.png' } },
+});
+```
+
+### 5.5 `dataRoot` Integration
+
+All relative paths are automatically resolved against `core.dataRoot` (set via `createEngine({ dataRoot })`) before being passed to Pixi.  Absolute URLs (`https://…`) and root-anchored paths (`/assets/…`) are forwarded unchanged.
+
+---
+
+## 6. File & Module Conventions
 
 | Path | Purpose |
 |---|---|
-| `src/core/` | Engine core (`Core`, `EventBus`) |
+| `src/core/` | Engine core (`Core`, `EventBus`, built-in plugins) |
 | `src/rendering/` | Renderer wrapper and layer definitions |
 | `src/types/` | Shared TypeScript interfaces and type aliases |
 | `src/createEngine.ts` | Public factory function |
 | `src/index.ts` | Public package entry point — only re-exports |
+
+Notable built-in plugins in `src/core/`:
+
+| File | Namespace | Description |
+|---|---|---|
+| `SaveManager.ts` | `save` | In-memory save slots and global save data |
+| `GameStateManager.ts` | `game` | High-level game phase state machine |
+| `InputManager.ts` | `input` | Keyboard and pointer input |
+| `ResourceManager.ts` | `assets` | Multi-mode asset loading with cache-first guarantee |
 
 Rules:
 
@@ -214,7 +289,7 @@ Rules:
 
 ---
 
-## 5. TypeScript Style
+## 7. TypeScript Style
 
 - **Strict mode** is enabled.  All code must pass `tsc --strict` without error.
 - Prefer `interface` over `type` for object shapes; use `type` for unions, aliases, and mapped types.
@@ -225,7 +300,7 @@ Rules:
 
 ---
 
-## 6. Coding Style
+## 8. Coding Style
 
 - 2-space indentation, single quotes, trailing commas (enforced by the project's formatter).
 - Prefer `async/await` over raw Promises.
@@ -240,7 +315,7 @@ Rules:
 
 ---
 
-## 7. Lifecycle Summary
+## 9. Lifecycle Summary
 
 ```
 createEngine(options)
