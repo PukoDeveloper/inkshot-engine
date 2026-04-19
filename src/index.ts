@@ -2,8 +2,38 @@
 export { Core } from './core/Core.js';
 export type { CoreOptions } from './core/Core.js';
 
+// Game state system
+export { GameStateManager } from './core/GameStateManager.js';
+export type {
+  GamePhase,
+  GameStateSetParams,
+  GameStateGetOutput,
+} from './types/game.js';
+
 // Event Bus
 export { EventBus } from './core/EventBus.js';
+
+// Save system
+export { SaveManager } from './core/SaveManager.js';
+export type {
+  SlotMeta,
+  SlotData,
+  GlobalSaveData,
+  SaveSlotSetParams,
+  SaveSlotGetParams,
+  SaveSlotGetOutput,
+  SaveSlotListOutput,
+  SaveSlotSaveParams,
+  SaveSlotSaveOutput,
+  SaveSlotLoadParams,
+  SaveSlotLoadOutput,
+  SaveSlotDeleteParams,
+  SaveSlotDeleteOutput,
+  SaveGlobalSetParams,
+  SaveGlobalGetOutput,
+  SaveGlobalSaveOutput,
+  SaveGlobalLoadOutput,
+} from './types/save.js';
 
 // Engine factory (primary public entry point)
 export { createEngine } from './createEngine.js';
