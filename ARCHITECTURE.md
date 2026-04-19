@@ -262,7 +262,110 @@ All relative paths are automatically resolved against `core.dataRoot` (set via `
 
 ---
 
-## 6. File & Module Conventions
+## 6. Localisation System (LocalizationManager)
+
+The `LocalizationManager` is a built-in `EnginePlugin` (namespace `i18n`) that loads JSON translation files, manages the active locale, and exposes translation and string-interpolation through the event bus.
+
+### 6.1 Translation File Format
+
+Locale files are plain JSON objects.  Both flat and nested structures are accepted; nested keys are accessed with **dot-notation** in all events:
+
+```json
+{
+  "menu": {
+    "start": "Start Game",
+    "quit":  "Quit"
+  },
+  "hud.gold": "Gold: {{amount}}"
+}
+```
+
+`"menu.start"` → `"Start Game"`, `"hud.gold"` (with `vars: { amount: '250' }`) → `"Gold: 250"`.
+
+### 6.2 Event Contract
+
+| Event              | Async? | Description |
+|--------------------|--------|-------------|
+| `i18n/load`        | ✓      | Load / merge a locale from a URL or inline data object |
+| `i18n/set-locale`  | ✓      | Switch the active locale; emits `i18n/changed` afterwards |
+| `i18n/changed`     | — emitted | Fired after a locale switch; subscribe to refresh UI text |
+| `i18n/t`           | ✗ `emitSync` | Translate a key with optional `{{var}}` substitution |
+| `i18n/interpolate` | ✗ `emitSync` | Replace `{namespace:key}` tokens in a free-form string |
+| `i18n/get-locales` | ✗ `emitSync` | List all loaded locales and the currently active one |
+
+### 6.3 Basic Usage
+
+```ts
+import { createEngine, LocalizationManager } from 'inkshot-engine';
+
+const { core } = await createEngine({
+  dataRoot: '/assets/',
+  plugins: [
+    new LocalizationManager(),
+    {
+      namespace: 'myGame',
+      async init(c) {
+        // Load from file (resolved against dataRoot)
+        await c.events.emit('i18n/load', { locale: 'en', url: 'i18n/en.json' });
+        await c.events.emit('i18n/set-locale', { locale: 'en' });
+      },
+    },
+  ],
+});
+
+// Synchronous translation lookup
+const { output } = core.events.emitSync('i18n/t', { key: 'menu.start' });
+label.text = output.value; // "Start Game"
+
+// With variable substitution
+const { output: o } = core.events.emitSync('i18n/t', {
+  key: 'hud.gold',
+  vars: { amount: String(player.gold) },
+});
+hud.text = o.value; // "Gold: 250"
+```
+
+### 6.4 Token Interpolation
+
+`i18n/interpolate` processes strings containing `{namespace:key}` tokens.  `LocalizationManager` resolves `{i18n:key}` tokens in the **`before`** phase (priority `1000`) and exposes a `replace` helper on `output` for other plugins to use:
+
+```ts
+// Another plugin adding its own token namespace
+core.events.on('settings', 'i18n/interpolate', (_params, output) => {
+  output.replace('{setting:current-language}', settings.language);
+  output.replace('{setting:volume}', String(settings.volume));
+});
+
+// Caller
+const { output } = core.events.emitSync('i18n/interpolate', {
+  text: 'Language: {setting:current-language} — {i18n:menu.start}',
+});
+console.log(output.result); // "Language: English — Start Game"
+```
+
+The three-phase dispatch order for `i18n/interpolate`:
+
+```
+i18n/interpolate-before  →  i18n/interpolate  →  i18n/interpolate-after
+  └─ LocalizationManager       └─ other plugins'
+     initialises `result`          main-phase handlers
+     and resolves {i18n:*}
+```
+
+### 6.5 Reacting to Locale Changes
+
+Subscribe to `i18n/changed` to re-render any text that depends on the locale:
+
+```ts
+core.events.on('ui', 'i18n/changed', ({ locale }) => {
+  console.log(`Locale switched to: ${locale}`);
+  // Re-query all translatable labels…
+});
+```
+
+---
+
+## 7. File & Module Conventions
 
 | Path | Purpose |
 |---|---|
@@ -280,6 +383,7 @@ Notable built-in plugins in `src/core/`:
 | `GameStateManager.ts` | `game` | High-level game phase state machine |
 | `InputManager.ts` | `input` | Keyboard and pointer input |
 | `ResourceManager.ts` | `assets` | Multi-mode asset loading with cache-first guarantee |
+| `LocalizationManager.ts` | `i18n` | JSON locale loading, key lookup, variable substitution, and token interpolation |
 
 Rules:
 
@@ -289,7 +393,7 @@ Rules:
 
 ---
 
-## 7. TypeScript Style
+## 8. TypeScript Style
 
 - **Strict mode** is enabled.  All code must pass `tsc --strict` without error.
 - Prefer `interface` over `type` for object shapes; use `type` for unions, aliases, and mapped types.
@@ -300,7 +404,7 @@ Rules:
 
 ---
 
-## 8. Coding Style
+## 9. Coding Style
 
 - 2-space indentation, single quotes, trailing commas (enforced by the project's formatter).
 - Prefer `async/await` over raw Promises.
@@ -315,7 +419,7 @@ Rules:
 
 ---
 
-## 9. Lifecycle Summary
+## 10. Lifecycle Summary
 
 ```
 createEngine(options)
