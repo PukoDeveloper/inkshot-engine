@@ -25,3 +25,5 @@ export type { EnginePlugin, PluginSource } from './types/plugin.js';
 
 // Rendering
 export { Renderer } from './rendering/Renderer.js';
+export type { LayerName } from './rendering/layers.js';
+export { LAYER_Z_INDEX } from './rendering/layers.js';

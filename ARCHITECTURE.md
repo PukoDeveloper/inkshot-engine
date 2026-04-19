@@ -138,12 +138,43 @@ Plugins may be supplied as:
 
 ---
 
-## 4. File & Module Conventions
+## 4. Render Layer System
+
+The `Renderer` pre-creates four named `Container` layers on the Pixi stage.  All display objects (world, effects, UI, overlays) should be placed inside the appropriate layer rather than added directly to the root stage.
+
+### 4.1 Layer Order
+
+| Layer name | Z-Index | Intended use                                        |
+|------------|---------|-----------------------------------------------------|
+| `world`    |       0 | Map tiles, entities, characters, background         |
+| `fx`       |     100 | Particle effects, screen-space VFX                  |
+| `ui`       |     200 | HUD, menus, and all plugin-provided UI              |
+| `system`   |     300 | Full-screen overlays, loading screens, transitions  |
+
+### 4.2 Accessing Layers
+
+**Direct access** (when you have a `Renderer` reference):
+```ts
+const uiLayer = renderer.getLayer('ui');
+uiLayer.addChild(myPanel);
+```
+
+**Via EventBus** (recommended for plugins, avoids needing a `Renderer` reference):
+```ts
+const { output } = core.events.emitSync('renderer/layer', { name: 'ui' });
+output.layer.addChild(myPanel);
+```
+
+Plugins should always prefer the EventBus approach to remain decoupled from the `Renderer` instance.
+
+---
+
+## 5. File & Module Conventions
 
 | Path | Purpose |
 |---|---|
 | `src/core/` | Engine core (`Core`, `EventBus`) |
-| `src/rendering/` | Renderer wrapper |
+| `src/rendering/` | Renderer wrapper and layer definitions |
 | `src/types/` | Shared TypeScript interfaces and type aliases |
 | `src/createEngine.ts` | Public factory function |
 | `src/index.ts` | Public package entry point — only re-exports |
