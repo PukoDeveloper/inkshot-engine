@@ -140,9 +140,11 @@ Plugins may be supplied as:
 
 ## 4. Render Layer System
 
-The `Renderer` pre-creates four named `Container` layers on the Pixi stage.  All display objects (world, effects, UI, overlays) should be placed inside the appropriate layer rather than added directly to the root stage.
+The `Renderer` manages named render layers on the Pixi stage.  All display objects (world, effects, UI, overlays) should be placed inside a layer rather than added directly to the root stage.  Layers are sorted by their `zIndex`; higher values are drawn on top.
 
-### 4.1 Layer Order
+### 4.1 Built-in Layers
+
+Four layers are created automatically at startup:
 
 | Layer name | Z-Index | Intended use                                        |
 |------------|---------|-----------------------------------------------------|
@@ -151,7 +153,27 @@ The `Renderer` pre-creates four named `Container` layers on the Pixi stage.  All
 | `ui`       |     200 | HUD, menus, and all plugin-provided UI              |
 | `system`   |     300 | Full-screen overlays, loading screens, transitions  |
 
-### 4.2 Accessing Layers
+### 4.2 Custom Layers
+
+New layers can be created at any z-index:
+
+```ts
+// Direct API
+renderer.createLayer('minimap', 250);   // between ui (200) and system (300)
+renderer.getLayer('minimap').addChild(minimapSprite);
+
+// Check before creating
+if (!renderer.hasLayer('minimap')) {
+  renderer.createLayer('minimap', 250);
+}
+
+// Remove a layer (destroys all children)
+renderer.removeLayer('minimap');
+```
+
+Layers with the same z-index are drawn in creation order.
+
+### 4.3 Accessing Layers
 
 **Direct access** (when you have a `Renderer` reference):
 ```ts
@@ -161,8 +183,13 @@ uiLayer.addChild(myPanel);
 
 **Via EventBus** (recommended for plugins, avoids needing a `Renderer` reference):
 ```ts
+// Get an existing layer
 const { output } = core.events.emitSync('renderer/layer', { name: 'ui' });
 output.layer.addChild(myPanel);
+
+// Create and immediately get a new layer
+const { output: out } = core.events.emitSync('renderer/layer:create', { name: 'minimap', zIndex: 250 });
+out.layer.addChild(minimapSprite);
 ```
 
 Plugins should always prefer the EventBus approach to remain decoupled from the `Renderer` instance.
