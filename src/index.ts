@@ -1,5 +1,22 @@
 // Asset system
 export { ResourceManager } from './core/ResourceManager.js';
+
+// Localisation system
+export { LocalizationManager } from './core/LocalizationManager.js';
+export type {
+  LocaleData,
+  I18nLoadParams,
+  I18nLoadOutput,
+  I18nSetLocaleParams,
+  I18nSetLocaleOutput,
+  I18nChangedParams,
+  I18nTParams,
+  I18nTOutput,
+  I18nInterpolateParams,
+  I18nInterpolateOutput,
+  I18nGetLocalesParams,
+  I18nGetLocalesOutput,
+} from './types/i18n.js';
 export type {
   AssetRecord,
   AssetBundleDefinition,
