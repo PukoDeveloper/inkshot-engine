@@ -5,6 +5,10 @@ export type { CoreOptions } from './core/Core.js';
 // Event Bus
 export { EventBus } from './core/EventBus.js';
 
+// Engine factory (primary public entry point)
+export { createEngine } from './createEngine.js';
+export type { EngineOptions, EngineInstance } from './createEngine.js';
+
 // Types
 export type {
   EventPhase,
@@ -16,6 +20,8 @@ export type {
   ListenerEntry,
   DispatchResult,
 } from './types/events.js';
+
+export type { EnginePlugin, PluginSource } from './types/plugin.js';
 
 // Rendering
 export { Renderer } from './rendering/Renderer.js';
