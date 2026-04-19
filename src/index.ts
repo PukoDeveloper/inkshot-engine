@@ -1,3 +1,24 @@
+// Audio system
+export { AudioManager } from './plugins/AudioManager.js';
+export type {
+  AudioCategory,
+  AudioLoadParams,
+  AudioLoadOutput,
+  AudioPlayParams,
+  AudioPlayOutput,
+  AudioStopParams,
+  AudioPauseParams,
+  AudioResumeParams,
+  AudioVolumeParams,
+  AudioFadeStopParams,
+  AudioUnloadParams,
+  AudioUnloadOutput,
+  AudioStateParams,
+  AudioStateOutput,
+  AudioInstanceInfo,
+  AudioListOutput,
+} from './types/audio.js';
+
 // Asset system
 export { ResourceManager } from './plugins/ResourceManager.js';
 
