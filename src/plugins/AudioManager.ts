@@ -1,6 +1,7 @@
 import type { Core } from '../core/Core.js';
 import type { EnginePlugin } from '../types/plugin.js';
 import type {
+  AudioCategory,
   AudioLoadParams,
   AudioLoadOutput,
   AudioPlayParams,
@@ -14,6 +15,8 @@ import type {
   AudioUnloadOutput,
   AudioStateParams,
   AudioStateOutput,
+  AudioListOutput,
+  AudioInstanceInfo,
 } from '../types/audio.js';
 
 // ---------------------------------------------------------------------------
@@ -40,6 +43,11 @@ interface AudioInstance {
   loop: boolean;
   /** Current lifecycle state of this instance. */
   state: 'playing' | 'paused' | 'stopped';
+  /**
+   * Audio category this instance belongs to (e.g. `'bgm'`, `'sfx'`).
+   * `undefined` for uncategorised instances.
+   */
+  readonly category?: AudioCategory;
 }
 
 // ---------------------------------------------------------------------------
@@ -71,13 +79,14 @@ interface AudioInstance {
  * |-----------------|--------|-------------|
  * | `audio/load`    | ✓      | Fetch, decode, and cache an audio clip |
  * | `audio/play`    | ✗ sync | Start a cached clip; returns `instanceId` |
- * | `audio/stop`    | ✗ sync | Stop an instance or all instances of a key |
+ * | `audio/stop`    | ✗ sync | Stop an instance, all by key/category, or all active |
  * | `audio/pause`   | ✗ sync | Pause a playing instance |
  * | `audio/resume`  | ✗ sync | Resume a paused instance |
- * | `audio/volume`  | ✗ sync | Set master volume or per-instance volume (with optional fade) |
+ * | `audio/volume`  | ✗ sync | Set master / category / per-instance volume (with optional fade) |
  * | `audio/fade-stop` | ✗ sync | Fade out and stop a specific instance |
  * | `audio/unload`  | ✗ sync | Remove a buffer from cache |
  * | `audio/state`   | ✗ sync | Query the state of a playback instance (pull) |
+ * | `audio/list`    | ✗ sync | List all active (playing / paused) instances (pull) |
  *
  * ---
  *
@@ -138,6 +147,13 @@ export class AudioManager implements EnginePlugin {
    */
   private readonly _instances = new Map<string, AudioInstance>();
 
+  /**
+   * Per-category gain nodes, created lazily the first time a category is used.
+   * Each category gain connects to the master gain so that both category-level
+   * and master-level volume adjustments take effect simultaneously.
+   */
+  private readonly _categoryGains = new Map<string, GainNode>();
+
   /** Monotonically increasing counter for auto-generated instance IDs. */
   private _instanceCounter = 0;
 
@@ -188,7 +204,7 @@ export class AudioManager implements EnginePlugin {
 
         const instanceId = params.instanceId ?? `audio_${++this._instanceCounter}`;
 
-        // Per-instance gain → master gain → destination
+        // Per-instance gain → (optional category gain) → master gain → destination
         const gainNode = ctx.createGain();
         const targetVolume = params.volume ?? 1;
 
@@ -200,11 +216,23 @@ export class AudioManager implements EnginePlugin {
           gainNode.gain.value = targetVolume;
         }
 
-        gainNode.connect(this._masterGain!);
+        const upstreamGain = params.category
+          ? this._getCategoryGain(params.category)
+          : this._masterGain!;
+        gainNode.connect(upstreamGain);
 
         const source = ctx.createBufferSource();
         source.buffer = buffer;
         source.loop = params.loop ?? false;
+        if (params.playbackRate !== undefined) {
+          source.playbackRate.value = params.playbackRate;
+        }
+        if (params.loopStart !== undefined) {
+          source.loopStart = params.loopStart;
+        }
+        if (params.loopEnd !== undefined) {
+          source.loopEnd = params.loopEnd;
+        }
         source.connect(gainNode);
 
         const instance: AudioInstance = {
@@ -215,6 +243,7 @@ export class AudioManager implements EnginePlugin {
           offset: 0,
           loop: params.loop ?? false,
           state: 'playing',
+          category: params.category,
         };
 
         source.onended = () => {
@@ -247,6 +276,16 @@ export class AudioManager implements EnginePlugin {
           for (const [id, inst] of this._instances) {
             if (inst.key === params.key) toStop.push(id);
           }
+          for (const id of toStop) this._stopInstance(id);
+        } else if (params.category !== undefined) {
+          const toStop: string[] = [];
+          for (const [id, inst] of this._instances) {
+            if (inst.category === params.category) toStop.push(id);
+          }
+          for (const id of toStop) this._stopInstance(id);
+        } else {
+          // Stop-all: no filter provided.
+          const toStop = [...this._instances.keys()];
           for (const id of toStop) this._stopInstance(id);
         }
       },
@@ -314,10 +353,14 @@ export class AudioManager implements EnginePlugin {
       'audio/volume',
       (params) => {
         const ctx = this._ctx;
+        // Resolve the target gain in priority order:
+        //   instanceId > category > master
         const gain =
           params.instanceId !== undefined
             ? this._instances.get(params.instanceId)?.gainNode.gain
-            : this._masterGain?.gain;
+            : params.category !== undefined
+              ? this._categoryGains.get(params.category)?.gain
+              : this._masterGain?.gain;
 
         if (!gain) return;
 
@@ -381,6 +424,31 @@ export class AudioManager implements EnginePlugin {
         }
       },
     );
+
+    // ── audio/list (pull) ─────────────────────────────────────────────────────
+
+    events.on<Record<string, never>, AudioListOutput>(
+      this.namespace,
+      'audio/list',
+      (_params, output) => {
+        const instances: AudioInstanceInfo[] = [];
+        for (const [instanceId, inst] of this._instances) {
+          if (inst.state === 'stopped') continue;
+          const currentTime =
+            inst.state === 'playing' && this._ctx
+              ? this._ctx.currentTime - inst.startedAt + inst.offset
+              : inst.offset;
+          instances.push({
+            instanceId,
+            key: inst.key,
+            state: inst.state,
+            currentTime,
+            ...(inst.category !== undefined ? { category: inst.category } : {}),
+          });
+        }
+        output.instances = instances;
+      },
+    );
   }
 
   destroy(core: Core): void {
@@ -391,6 +459,7 @@ export class AudioManager implements EnginePlugin {
     }
     this._instances.clear();
     this._buffers.clear();
+    this._categoryGains.clear();
 
     if (this._ctx) {
       void this._ctx.close();
@@ -421,6 +490,15 @@ export class AudioManager implements EnginePlugin {
     return this._masterGain?.gain.value ?? 1;
   }
 
+  /**
+   * Returns the current gain value for the given category (0..1).
+   * Returns `1` if the category gain node has not yet been created (i.e. no
+   * instance in that category has been played yet).
+   */
+  getCategoryVolume(category: AudioCategory): number {
+    return this._categoryGains.get(category)?.gain.value ?? 1;
+  }
+
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
@@ -438,6 +516,21 @@ export class AudioManager implements EnginePlugin {
       this._masterGain.connect(this._ctx.destination);
     }
     return this._ctx;
+  }
+
+  /**
+   * Returns the `GainNode` for the given category, creating it lazily if it
+   * does not exist yet.  The node is always wired to the master gain so that
+   * both levels of volume control take effect simultaneously.
+   */
+  private _getCategoryGain(category: AudioCategory): GainNode {
+    const existing = this._categoryGains.get(category);
+    if (existing) return existing;
+    const ctx = this._ensureContext();
+    const gainNode = ctx.createGain();
+    gainNode.connect(this._masterGain!);
+    this._categoryGains.set(category, gainNode);
+    return gainNode;
   }
 
   /**

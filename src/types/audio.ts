@@ -1,4 +1,22 @@
 // ---------------------------------------------------------------------------
+// Shared types
+// ---------------------------------------------------------------------------
+
+/**
+ * Standard audio category names used to group instances under a shared
+ * `GainNode`.  Any string is accepted as a category; the values below are
+ * the conventional names recognised by `AudioManager`.
+ *
+ * | Category   | Typical use                          |
+ * |------------|--------------------------------------|
+ * | `'bgm'`    | Background music                     |
+ * | `'sfx'`    | Sound effects                        |
+ * | `'vo'`     | Voice-over / dialogue                |
+ * | `'ambient'`| Environmental / atmospheric sounds  |
+ */
+export type AudioCategory = 'bgm' | 'sfx' | 'vo' | 'ambient' | (string & {});
+
+// ---------------------------------------------------------------------------
 // audio/load
 // ---------------------------------------------------------------------------
 
@@ -77,6 +95,35 @@ export interface AudioPlayParams {
    * Omit or set to `0` for an instant start.
    */
   readonly fadeIn?: number;
+  /**
+   * Audio category (e.g. `'bgm'`, `'sfx'`, `'vo'`, `'ambient'`).
+   *
+   * When provided, the instance is routed through a shared per-category
+   * `GainNode` (inserted between the per-instance gain and the master gain)
+   * so the category volume can be adjusted independently via `audio/volume`
+   * with `{ category }`.  All instances without a category route directly to
+   * the master gain.
+   */
+  readonly category?: AudioCategory;
+  /**
+   * Playback speed multiplier.
+   * - `1.0` (default) — normal speed.
+   * - `0.5` — half speed (one octave lower in pitch).
+   * - `2.0` — double speed (one octave higher in pitch).
+   *
+   * Maps directly to `AudioBufferSourceNode.playbackRate`.
+   */
+  readonly playbackRate?: number;
+  /**
+   * Start of the loop region in seconds (requires `loop: true`).
+   * Defaults to `0`.  Maps to `AudioBufferSourceNode.loopStart`.
+   */
+  readonly loopStart?: number;
+  /**
+   * End of the loop region in seconds (requires `loop: true`).
+   * Defaults to the end of the buffer.  Maps to `AudioBufferSourceNode.loopEnd`.
+   */
+  readonly loopEnd?: number;
 }
 
 /** Output for `audio/play`. */
@@ -100,7 +147,8 @@ export interface AudioPlayOutput {
  *
  * - Provide `instanceId` to stop a single instance.
  * - Provide `key` to stop **all** currently-playing instances of that clip.
- * - At least one of `instanceId` or `key` must be provided.
+ * - Provide `category` to stop **all** instances in that category.
+ * - Omit all fields to stop **every** active instance (stop-all).
  *
  * @example
  * ```ts
@@ -109,6 +157,12 @@ export interface AudioPlayOutput {
  *
  * // Stop all instances of a clip (e.g. all SFX hits)
  * core.events.emitSync('audio/stop', { key: 'sfx:hit' });
+ *
+ * // Stop all voice-over lines
+ * core.events.emitSync('audio/stop', { category: 'vo' });
+ *
+ * // Stop everything (e.g. before a scene transition)
+ * core.events.emitSync('audio/stop', {});
  * ```
  */
 export interface AudioStopParams {
@@ -116,6 +170,8 @@ export interface AudioStopParams {
   readonly instanceId?: string;
   /** Stop every playing instance that uses this clip key. */
   readonly key?: string;
+  /** Stop every playing instance in this category. */
+  readonly category?: AudioCategory;
 }
 
 // ---------------------------------------------------------------------------
@@ -166,16 +222,22 @@ export interface AudioResumeParams {
 /**
  * Parameters for `audio/volume`.
  *
- * Adjusts gain for a specific instance or, when `instanceId` is omitted,
- * for the master output (affects all currently-playing sounds and all future
- * playbacks).
+ * Adjusts gain at one of three levels (highest to lowest priority):
+ * 1. **Instance** — `instanceId` provided: only this instance is affected.
+ * 2. **Category** — `category` provided (no `instanceId`): the shared
+ *    category gain node is adjusted, affecting all instances in that group.
+ * 3. **Master** — neither provided: adjusts the master output, which affects
+ *    every currently-playing sound and all future playbacks.
  *
  * @example
  * ```ts
  * // Set master volume to 50 %
  * core.events.emitSync('audio/volume', { volume: 0.5 });
  *
- * // Fade a specific music track without affecting SFX
+ * // Duck BGM category to 20 % (e.g. during dialogue)
+ * core.events.emitSync('audio/volume', { category: 'bgm', volume: 0.2, duration: 0.5 });
+ *
+ * // Fade a specific music instance without affecting others
  * core.events.emitSync('audio/volume', { instanceId: 'bgm', volume: 0.2 });
  * ```
  */
@@ -187,9 +249,14 @@ export interface AudioVolumeParams {
   readonly volume: number;
   /**
    * When provided, only this instance is affected.
-   * When omitted, the master gain is updated.
+   * Takes priority over `category`.
    */
   readonly instanceId?: string;
+  /**
+   * When provided (and `instanceId` is omitted), the category gain node is
+   * adjusted, affecting all instances in that group.
+   */
+  readonly category?: AudioCategory;
   /**
    * Fade duration in seconds.  When provided and greater than `0`, the gain
    * ramps linearly from its current value to `volume` over this many seconds.
@@ -290,4 +357,38 @@ export interface AudioStateOutput {
    * `0` for `'not-found'` instances.
    */
   currentTime: number;
+}
+
+// ---------------------------------------------------------------------------
+// audio/list  (Pull query)
+// ---------------------------------------------------------------------------
+
+/**
+ * A snapshot of a single active playback instance, returned by `audio/list`.
+ */
+export interface AudioInstanceInfo {
+  /** Unique identifier for this playback instance. */
+  readonly instanceId: string;
+  /** The clip key used to start this instance. */
+  readonly key: string;
+  /** Current lifecycle state (`'playing'` or `'paused'`). */
+  readonly state: 'playing' | 'paused';
+  /**
+   * Category this instance belongs to, if one was supplied at play time.
+   * `undefined` for uncategorised instances.
+   */
+  readonly category?: AudioCategory;
+  /** Current playback position in seconds. */
+  readonly currentTime: number;
+}
+
+/**
+ * Output for `audio/list`.
+ *
+ * Contains a snapshot of every currently active (playing or paused) instance.
+ * Stopped instances are not included.
+ */
+export interface AudioListOutput {
+  /** Snapshot of every active instance at the moment of the query. */
+  instances: AudioInstanceInfo[];
 }

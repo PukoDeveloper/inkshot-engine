@@ -1,6 +1,7 @@
 // Audio system
 export { AudioManager } from './plugins/AudioManager.js';
 export type {
+  AudioCategory,
   AudioLoadParams,
   AudioLoadOutput,
   AudioPlayParams,
@@ -14,6 +15,8 @@ export type {
   AudioUnloadOutput,
   AudioStateParams,
   AudioStateOutput,
+  AudioInstanceInfo,
+  AudioListOutput,
 } from './types/audio.js';
 
 // Asset system

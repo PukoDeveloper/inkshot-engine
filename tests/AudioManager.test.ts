@@ -9,6 +9,7 @@ import type {
   AudioPlayOutput,
   AudioStateOutput,
   AudioUnloadOutput,
+  AudioListOutput,
 } from '../src/types/audio.js';
 
 // ---------------------------------------------------------------------------
@@ -24,6 +25,9 @@ function createMockSource() {
   const src = {
     buffer: null as AudioBuffer | null,
     loop: false,
+    loopStart: 0,
+    loopEnd: 0,
+    playbackRate: { value: 1 },
     onended: null as (() => void) | null,
     connect: vi.fn(),
     start: vi.fn(),
@@ -671,7 +675,7 @@ describe('AudioManager', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Direct accessors
+  // direct accessors
   // -------------------------------------------------------------------------
 
   describe('direct accessors', () => {
@@ -681,6 +685,263 @@ describe('AudioManager', () => {
 
     it('isLoaded() returns false for an unloaded key', () => {
       expect(audio.isLoaded('nope')).toBe(false);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // audio/play — category, playbackRate, loopStart/loopEnd
+  // -------------------------------------------------------------------------
+
+  describe('audio/play — extended params', () => {
+    beforeEach(async () => {
+      await core.events.emit('audio/load', { key: 'bgm', url: 'bgm.ogg' });
+    });
+
+    it('sets playbackRate on the source node', () => {
+      core.events.emitSync('audio/play', { key: 'bgm', playbackRate: 1.5 });
+
+      expect(lastSource.playbackRate.value).toBe(1.5);
+    });
+
+    it('leaves playbackRate at default 1 when omitted', () => {
+      core.events.emitSync('audio/play', { key: 'bgm' });
+
+      expect(lastSource.playbackRate.value).toBe(1);
+    });
+
+    it('sets loopStart and loopEnd on the source node', () => {
+      core.events.emitSync('audio/play', { key: 'bgm', loop: true, loopStart: 0.5, loopEnd: 2.5 });
+
+      expect(lastSource.loopStart).toBe(0.5);
+      expect(lastSource.loopEnd).toBe(2.5);
+    });
+
+    it('leaves loopStart/loopEnd at 0 when omitted', () => {
+      core.events.emitSync('audio/play', { key: 'bgm', loop: true });
+
+      expect(lastSource.loopStart).toBe(0);
+      expect(lastSource.loopEnd).toBe(0);
+    });
+
+    it('creates a category gain node when category is provided', () => {
+      const createGainSpy = vi.spyOn(
+        (audio as unknown as { _ctx: MockAudioContext })._ctx ?? new MockAudioContext(),
+        'createGain',
+      );
+      core.events.emitSync('audio/load', { key: 'bgm2', url: 'bgm2.ogg' });
+      core.events.emitSync('audio/play', { key: 'bgm', instanceId: 'bgm-inst', category: 'bgm' });
+
+      // The category gain should be wired up — getCategoryVolume returns 1 (default).
+      expect(audio.getCategoryVolume('bgm')).toBe(1);
+    });
+
+    it('routes uncategorised instances directly to master gain', async () => {
+      core.events.emitSync('audio/play', { key: 'bgm', instanceId: 'no-cat' });
+
+      // No category gain should exist for uncategorised play.
+      expect(audio.getCategoryVolume('bgm')).toBe(1); // returns default 1 — no node created
+    });
+
+    it('getCategoryVolume() returns 1 for an unknown category', () => {
+      expect(audio.getCategoryVolume('ambient')).toBe(1);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // audio/volume — category
+  // -------------------------------------------------------------------------
+
+  describe('audio/volume — category', () => {
+    beforeEach(async () => {
+      await core.events.emit('audio/load', { key: 'sfx', url: 'sfx.wav' });
+    });
+
+    it('adjusts category gain instantly when duration is omitted', () => {
+      core.events.emitSync('audio/play', { key: 'sfx', category: 'sfx', instanceId: 'sfx1' });
+
+      core.events.emitSync('audio/volume', { category: 'sfx', volume: 0.3 });
+
+      expect(audio.getCategoryVolume('sfx')).toBeCloseTo(0.3);
+    });
+
+    it('schedules a linear ramp on category gain when duration > 0', () => {
+      core.events.emitSync('audio/play', { key: 'sfx', category: 'sfx', instanceId: 'sfx2' });
+      const sfxCatGain = (audio as unknown as { _categoryGains: Map<string, MockGain> })
+        ._categoryGains.get('sfx')!;
+      mockCurrentTime = 1.0;
+
+      core.events.emitSync('audio/volume', { category: 'sfx', volume: 0.1, duration: 2 });
+
+      expect(sfxCatGain.gain.setValueAtTime).toHaveBeenCalledWith(sfxCatGain.gain.value, 1.0);
+      expect(sfxCatGain.gain.linearRampToValueAtTime).toHaveBeenCalledWith(0.1, 3.0);
+    });
+
+    it('is a no-op for an unknown category (no node created yet)', () => {
+      expect(() => {
+        core.events.emitSync('audio/volume', { category: 'vo', volume: 0.5 });
+      }).not.toThrow();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // audio/stop — stop-all and category
+  // -------------------------------------------------------------------------
+
+  describe('audio/stop — stop-all and category', () => {
+    let sfxSrc1: MockSource;
+    let bgmSrc: MockSource;
+    let sfxSrc2: MockSource;
+
+    beforeEach(async () => {
+      await core.events.emit('audio/load', { key: 'sfx', url: 'sfx.wav' });
+      await core.events.emit('audio/load', { key: 'bgm', url: 'bgm.ogg' });
+
+      core.events.emitSync('audio/play', { key: 'sfx', instanceId: 'sfx1', category: 'sfx' });
+      sfxSrc1 = lastSource;
+      core.events.emitSync('audio/play', { key: 'bgm', instanceId: 'bgm1', category: 'bgm' });
+      bgmSrc = lastSource;
+      core.events.emitSync('audio/play', { key: 'sfx', instanceId: 'sfx2', category: 'sfx' });
+      sfxSrc2 = lastSource;
+    });
+
+    it('stops all active instances when no filter is provided', () => {
+      core.events.emitSync('audio/stop', {});
+
+      expect(sfxSrc1.stop).toHaveBeenCalled();
+      expect(bgmSrc.stop).toHaveBeenCalled();
+      expect(sfxSrc2.stop).toHaveBeenCalled();
+    });
+
+    it('stops only instances in the given category', () => {
+      core.events.emitSync('audio/stop', { category: 'sfx' });
+
+      expect(sfxSrc1.stop).toHaveBeenCalled();
+      expect(sfxSrc2.stop).toHaveBeenCalled();
+      expect(bgmSrc.stop).not.toHaveBeenCalled();
+    });
+
+    it('all instances are "not-found" after stop-all', () => {
+      core.events.emitSync('audio/stop', {});
+
+      for (const id of ['sfx1', 'bgm1', 'sfx2']) {
+        const { output } = core.events.emitSync<{ instanceId: string }, AudioStateOutput>(
+          'audio/state',
+          { instanceId: id },
+        );
+        expect(output.state).toBe('not-found');
+      }
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // audio/list
+  // -------------------------------------------------------------------------
+
+  describe('audio/list', () => {
+    beforeEach(async () => {
+      await core.events.emit('audio/load', { key: 'bgm', url: 'bgm.ogg' });
+      await core.events.emit('audio/load', { key: 'sfx', url: 'sfx.wav' });
+    });
+
+    it('returns an empty array when no instances are active', () => {
+      const { output } = core.events.emitSync<Record<string, never>, AudioListOutput>(
+        'audio/list',
+        {},
+      );
+
+      expect(output.instances).toEqual([]);
+    });
+
+    it('lists all playing instances', () => {
+      core.events.emitSync('audio/play', { key: 'bgm', instanceId: 'bgm1' });
+      core.events.emitSync('audio/play', { key: 'sfx', instanceId: 'sfx1' });
+
+      const { output } = core.events.emitSync<Record<string, never>, AudioListOutput>(
+        'audio/list',
+        {},
+      );
+
+      expect(output.instances).toHaveLength(2);
+      const ids = output.instances.map((i) => i.instanceId);
+      expect(ids).toContain('bgm1');
+      expect(ids).toContain('sfx1');
+    });
+
+    it('includes category when one was provided at play time', () => {
+      core.events.emitSync('audio/play', { key: 'bgm', instanceId: 'bgm-cat', category: 'bgm' });
+
+      const { output } = core.events.emitSync<Record<string, never>, AudioListOutput>(
+        'audio/list',
+        {},
+      );
+
+      const entry = output.instances.find((i) => i.instanceId === 'bgm-cat');
+      expect(entry?.category).toBe('bgm');
+    });
+
+    it('omits category when none was provided', () => {
+      core.events.emitSync('audio/play', { key: 'sfx', instanceId: 'sfx-nocat' });
+
+      const { output } = core.events.emitSync<Record<string, never>, AudioListOutput>(
+        'audio/list',
+        {},
+      );
+
+      const entry = output.instances.find((i) => i.instanceId === 'sfx-nocat');
+      expect(entry?.category).toBeUndefined();
+    });
+
+    it('includes paused instances', () => {
+      core.events.emitSync('audio/play', { key: 'bgm', instanceId: 'bgm2' });
+      core.events.emitSync('audio/pause', { instanceId: 'bgm2' });
+
+      const { output } = core.events.emitSync<Record<string, never>, AudioListOutput>(
+        'audio/list',
+        {},
+      );
+
+      const entry = output.instances.find((i) => i.instanceId === 'bgm2');
+      expect(entry?.state).toBe('paused');
+    });
+
+    it('excludes stopped instances', () => {
+      core.events.emitSync('audio/play', { key: 'sfx', instanceId: 'sfx-stop' });
+      core.events.emitSync('audio/stop', { instanceId: 'sfx-stop' });
+
+      const { output } = core.events.emitSync<Record<string, never>, AudioListOutput>(
+        'audio/list',
+        {},
+      );
+
+      const entry = output.instances.find((i) => i.instanceId === 'sfx-stop');
+      expect(entry).toBeUndefined();
+    });
+
+    it('returns correct currentTime for a playing instance', () => {
+      core.events.emitSync('audio/play', { key: 'bgm', instanceId: 'bgm3' });
+      mockCurrentTime = 2.0;
+
+      const { output } = core.events.emitSync<Record<string, never>, AudioListOutput>(
+        'audio/list',
+        {},
+      );
+
+      const entry = output.instances.find((i) => i.instanceId === 'bgm3');
+      expect(entry?.currentTime).toBeCloseTo(2.0);
+    });
+
+    it('returns correct currentTime for a paused instance', () => {
+      core.events.emitSync('audio/play', { key: 'bgm', instanceId: 'bgm4' });
+      mockCurrentTime = 1.5;
+      core.events.emitSync('audio/pause', { instanceId: 'bgm4' });
+
+      const { output } = core.events.emitSync<Record<string, never>, AudioListOutput>(
+        'audio/list',
+        {},
+      );
+
+      const entry = output.instances.find((i) => i.instanceId === 'bgm4');
+      expect(entry?.currentTime).toBeCloseTo(1.5);
     });
   });
 });
