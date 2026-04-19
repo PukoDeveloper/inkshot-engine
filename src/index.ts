@@ -2,6 +2,14 @@
 export { Core } from './core/Core.js';
 export type { CoreOptions } from './core/Core.js';
 
+// Game state system
+export { GameStateManager } from './core/GameStateManager.js';
+export type {
+  GamePhase,
+  GameStateSetParams,
+  GameStateGetOutput,
+} from './types/game.js';
+
 // Event Bus
 export { EventBus } from './core/EventBus.js';
 
