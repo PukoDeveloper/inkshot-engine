@@ -2,6 +2,21 @@
 export { Core } from './core/Core.js';
 export type { CoreOptions } from './core/Core.js';
 
+// Input system
+export { InputManager } from './core/InputManager.js';
+export type {
+  InputKeyDownParams,
+  InputKeyUpParams,
+  InputPointerDownParams,
+  InputPointerUpParams,
+  InputPointerMoveParams,
+  InputKeyPressedParams,
+  InputKeyPressedOutput,
+  InputPointerStateOutput,
+  InputActionBindParams,
+  InputActionTriggeredParams,
+} from './types/input.js';
+
 // Game state system
 export { GameStateManager } from './core/GameStateManager.js';
 export type {
