@@ -14,6 +14,8 @@ export type {
   I18nTOutput,
   I18nInterpolateParams,
   I18nInterpolateOutput,
+  I18nLookupParams,
+  I18nLookupOutput,
   I18nGetLocalesParams,
   I18nGetLocalesOutput,
 } from './types/i18n.js';

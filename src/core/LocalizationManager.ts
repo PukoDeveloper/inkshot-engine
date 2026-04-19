@@ -11,6 +11,8 @@ import type {
   I18nTOutput,
   I18nInterpolateParams,
   I18nInterpolateOutput,
+  I18nLookupParams,
+  I18nLookupOutput,
   I18nGetLocalesParams,
   I18nGetLocalesOutput,
 } from '../types/i18n.js';
@@ -74,6 +76,7 @@ import type {
  * | `i18n/changed`      | —      | Emitted after locale switches; subscribe to refresh UI |
  * | `i18n/t`            | ✗      | Synchronous translation key lookup with variable substitution |
  * | `i18n/interpolate`  | ✗      | Replace `{namespace:key}` tokens in a free-form string |
+ * | `i18n/lookup`       | ✗      | Per-token lookup; register a handler to resolve your own `{key:value}` tokens |
  * | `i18n/get-locales`  | ✗      | Query all loaded locales and the currently active one |
  *
  * ### Usage
@@ -220,12 +223,33 @@ export class LocalizationManager implements EnginePlugin {
       },
     );
 
+    // ── i18n/lookup (before phase) ─────────────────────────────────────────
+    // Handles {i18n:translationKey} tokens — resolves the value part as a
+    // translation key against the active locale catalogue.
+
+    events.on<I18nLookupParams, I18nLookupOutput>(
+      this.namespace,
+      'i18n/lookup',
+      (params, output) => {
+        if (params.key !== 'i18n' || params.value === null) return;
+        const catalogue = this._currentLocale !== null
+          ? (this._catalogues.get(this._currentLocale) ?? null)
+          : null;
+        const found = catalogue?.get(params.value) ?? null;
+        if (found !== null) {
+          output.result = found;
+        }
+      },
+      { phase: 'before', priority: 1000 },
+    );
+
     // ── i18n/interpolate (before phase) ────────────────────────────────────
     // Register in the *before* phase with high priority so that:
     //   1. `output.result` and `output.replace` are available to any
     //      other before-phase handlers (at lower priority) and all
     //      main-phase handlers.
-    //   2. {i18n:key} tokens are resolved before any downstream handler runs.
+    //   2. All {key} / {key:value} tokens are resolved (via i18n/lookup)
+    //      before any downstream handler runs.
 
     events.on<I18nInterpolateParams, I18nInterpolateOutput>(
       this.namespace,
@@ -237,14 +261,17 @@ export class LocalizationManager implements EnginePlugin {
           output.result = output.result.split(token).join(value);
         };
 
-        // Resolve all {i18n:key} tokens using the active locale.
+        // Resolve all {key} and {key:value} tokens by dispatching a
+        // synchronous i18n/lookup event for each one.
         output.result = output.result.replace(
-          /\{i18n:([^}]+)\}/g,
-          (_match, key: string) => {
-            const catalogue = this._currentLocale !== null
-              ? (this._catalogues.get(this._currentLocale) ?? null)
-              : null;
-            return catalogue?.get(key) ?? _match;
+          /\{([^{}:]+)(?::([^{}]*))?\}/g,
+          (match, key: string, value: string | undefined) => {
+            const { output: lookupOutput } = events.emitSync<I18nLookupParams, I18nLookupOutput>(
+              'i18n/lookup',
+              { key, value: value ?? null },
+              { result: null },
+            );
+            return lookupOutput.result ?? match;
           },
         );
       },
