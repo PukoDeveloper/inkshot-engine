@@ -9,6 +9,7 @@ import type {
   AudioPauseParams,
   AudioResumeParams,
   AudioVolumeParams,
+  AudioFadeStopParams,
   AudioUnloadParams,
   AudioUnloadOutput,
   AudioStateParams,
@@ -73,7 +74,8 @@ interface AudioInstance {
  * | `audio/stop`    | ✗ sync | Stop an instance or all instances of a key |
  * | `audio/pause`   | ✗ sync | Pause a playing instance |
  * | `audio/resume`  | ✗ sync | Resume a paused instance |
- * | `audio/volume`  | ✗ sync | Set master volume or per-instance volume |
+ * | `audio/volume`  | ✗ sync | Set master volume or per-instance volume (with optional fade) |
+ * | `audio/fade-stop` | ✗ sync | Fade out and stop a specific instance |
  * | `audio/unload`  | ✗ sync | Remove a buffer from cache |
  * | `audio/state`   | ✗ sync | Query the state of a playback instance (pull) |
  *
@@ -188,7 +190,16 @@ export class AudioManager implements EnginePlugin {
 
         // Per-instance gain → master gain → destination
         const gainNode = ctx.createGain();
-        gainNode.gain.value = params.volume ?? 1;
+        const targetVolume = params.volume ?? 1;
+
+        if (params.fadeIn && params.fadeIn > 0) {
+          gainNode.gain.value = 0;
+          gainNode.gain.setValueAtTime(0, ctx.currentTime);
+          gainNode.gain.linearRampToValueAtTime(targetVolume, ctx.currentTime + params.fadeIn);
+        } else {
+          gainNode.gain.value = targetVolume;
+        }
+
         gainNode.connect(this._masterGain!);
 
         const source = ctx.createBufferSource();
@@ -302,13 +313,39 @@ export class AudioManager implements EnginePlugin {
       this.namespace,
       'audio/volume',
       (params) => {
-        if (params.instanceId !== undefined) {
-          const inst = this._instances.get(params.instanceId);
-          if (inst) inst.gainNode.gain.value = params.volume;
+        const ctx = this._ctx;
+        const gain =
+          params.instanceId !== undefined
+            ? this._instances.get(params.instanceId)?.gainNode.gain
+            : this._masterGain?.gain;
+
+        if (!gain) return;
+
+        if (params.duration && params.duration > 0 && ctx) {
+          gain.setValueAtTime(gain.value, ctx.currentTime);
+          gain.linearRampToValueAtTime(params.volume, ctx.currentTime + params.duration);
         } else {
-          // Master volume — affects all current and future playbacks.
-          if (this._masterGain) this._masterGain.gain.value = params.volume;
+          gain.value = params.volume;
         }
+      },
+    );
+
+    // ── audio/fade-stop ───────────────────────────────────────────────────────
+
+    events.on<AudioFadeStopParams>(
+      this.namespace,
+      'audio/fade-stop',
+      (params) => {
+        const inst = this._instances.get(params.instanceId);
+        if (!inst || inst.state !== 'playing') return;
+
+        const ctx = this._ctx!;
+        const { gainNode, source } = inst;
+
+        gainNode.gain.setValueAtTime(gainNode.gain.value, ctx.currentTime);
+        gainNode.gain.linearRampToValueAtTime(0, ctx.currentTime + params.duration);
+        source.stop(ctx.currentTime + params.duration);
+        // onended will fire after the scheduled stop and clean up the instance.
       },
     );
 

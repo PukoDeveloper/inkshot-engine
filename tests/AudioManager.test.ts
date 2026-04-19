@@ -37,7 +37,11 @@ function createMockSource() {
 
 function createMockGain() {
   return {
-    gain: { value: 1 },
+    gain: {
+      value: 1,
+      setValueAtTime: vi.fn(),
+      linearRampToValueAtTime: vi.fn(),
+    },
     connect: vi.fn(),
   };
 }
@@ -191,6 +195,29 @@ describe('AudioManager', () => {
 
       // lastGain is the per-instance gain (not master, which was created first)
       expect(lastGain.gain.value).toBe(0.4);
+    });
+
+    it('fades in from 0 to volume when fadeIn > 0', () => {
+      mockCurrentTime = 1.0;
+      core.events.emitSync('audio/play', { key: 'sfx', volume: 0.8, fadeIn: 2 });
+
+      expect(lastGain.gain.value).toBe(0);
+      expect(lastGain.gain.setValueAtTime).toHaveBeenCalledWith(0, 1.0);
+      expect(lastGain.gain.linearRampToValueAtTime).toHaveBeenCalledWith(0.8, 3.0);
+    });
+
+    it('fades in to default volume (1) when volume is omitted', () => {
+      mockCurrentTime = 0;
+      core.events.emitSync('audio/play', { key: 'sfx', fadeIn: 1.5 });
+
+      expect(lastGain.gain.linearRampToValueAtTime).toHaveBeenCalledWith(1, 1.5);
+    });
+
+    it('does not schedule a ramp when fadeIn is 0', () => {
+      core.events.emitSync('audio/play', { key: 'sfx', volume: 0.5, fadeIn: 0 });
+
+      expect(lastGain.gain.linearRampToValueAtTime).not.toHaveBeenCalled();
+      expect(lastGain.gain.value).toBe(0.5);
     });
 
     it('throws when the key has not been loaded', () => {
@@ -391,6 +418,110 @@ describe('AudioManager', () => {
       expect(() => {
         core.events.emitSync('audio/volume', { instanceId: 'ghost', volume: 0.5 });
       }).not.toThrow();
+    });
+
+    it('schedules a linear ramp when duration > 0 for an instance', async () => {
+      await core.events.emit('audio/load', { key: 'sfx', url: 'sfx.wav' });
+      core.events.emitSync<AudioPlayParams, AudioPlayOutput>('audio/play', {
+        key: 'sfx',
+        instanceId: 'inst',
+        volume: 1,
+      });
+      const instanceGain = lastGain;
+      mockCurrentTime = 2.0;
+
+      core.events.emitSync('audio/volume', { instanceId: 'inst', volume: 0.2, duration: 3 });
+
+      expect(instanceGain.gain.setValueAtTime).toHaveBeenCalledWith(
+        instanceGain.gain.value,
+        2.0,
+      );
+      expect(instanceGain.gain.linearRampToValueAtTime).toHaveBeenCalledWith(0.2, 5.0);
+    });
+
+    it('schedules a linear ramp on master gain when duration > 0 and no instanceId', async () => {
+      await core.events.emit('audio/load', { key: 'sfx', url: 'sfx.wav' });
+      core.events.emitSync('audio/play', { key: 'sfx' }); // initialises context & master gain
+      const masterGain = (audio as unknown as { _masterGain: MockGain })._masterGain!;
+      mockCurrentTime = 1.0;
+
+      core.events.emitSync('audio/volume', { volume: 0.4, duration: 2 });
+
+      expect(masterGain.gain.setValueAtTime).toHaveBeenCalledWith(
+        masterGain.gain.value,
+        1.0,
+      );
+      expect(masterGain.gain.linearRampToValueAtTime).toHaveBeenCalledWith(0.4, 3.0);
+    });
+
+    it('sets gain instantly when duration is 0', async () => {
+      await core.events.emit('audio/load', { key: 'sfx', url: 'sfx.wav' });
+      core.events.emitSync<AudioPlayParams, AudioPlayOutput>('audio/play', {
+        key: 'sfx',
+        instanceId: 'inst2',
+      });
+      const instanceGain = lastGain;
+
+      core.events.emitSync('audio/volume', { instanceId: 'inst2', volume: 0.6, duration: 0 });
+
+      expect(instanceGain.gain.linearRampToValueAtTime).not.toHaveBeenCalled();
+      expect(instanceGain.gain.value).toBeCloseTo(0.6);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // audio/fade-stop
+  // -------------------------------------------------------------------------
+
+  describe('audio/fade-stop', () => {
+    let instanceId: string;
+    let capturedGain: MockGain;
+    let capturedSource: MockSource;
+
+    beforeEach(async () => {
+      await core.events.emit('audio/load', { key: 'bgm', url: 'bgm.ogg' });
+      const { output } = core.events.emitSync<AudioPlayParams, AudioPlayOutput>(
+        'audio/play',
+        { key: 'bgm', instanceId: 'bgm', volume: 0.8 },
+      );
+      instanceId = output.instanceId;
+      capturedGain = lastGain;
+      capturedSource = lastSource;
+    });
+
+    it('schedules a gain ramp to 0 over the given duration', () => {
+      mockCurrentTime = 1.0;
+      core.events.emitSync('audio/fade-stop', { instanceId, duration: 2 });
+
+      expect(capturedGain.gain.setValueAtTime).toHaveBeenCalledWith(
+        capturedGain.gain.value,
+        1.0,
+      );
+      expect(capturedGain.gain.linearRampToValueAtTime).toHaveBeenCalledWith(0, 3.0);
+    });
+
+    it('schedules source.stop() at currentTime + duration', () => {
+      mockCurrentTime = 2.0;
+      // Override stop to NOT fire onended immediately so we can inspect the arg.
+      capturedSource.stop = vi.fn();
+      core.events.emitSync('audio/fade-stop', { instanceId, duration: 1.5 });
+
+      expect(capturedSource.stop).toHaveBeenCalledWith(3.5);
+    });
+
+    it('is a no-op for an unknown instanceId', () => {
+      expect(() => {
+        core.events.emitSync('audio/fade-stop', { instanceId: 'ghost', duration: 1 });
+      }).not.toThrow();
+    });
+
+    it('is a no-op for a paused instance', () => {
+      core.events.emitSync('audio/pause', { instanceId });
+      capturedSource.stop = vi.fn();
+      core.events.emitSync('audio/fade-stop', { instanceId, duration: 1 });
+
+      // stop should not have been called again after the initial pause stop
+      expect(capturedSource.stop).not.toHaveBeenCalled();
     });
   });
 

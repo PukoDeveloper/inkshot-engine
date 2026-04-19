@@ -71,6 +71,12 @@ export interface AudioPlayParams {
    * a specific stream later without tracking the generated ID.
    */
   readonly instanceId?: string;
+  /**
+   * Fade-in duration in seconds.  When provided, playback begins at gain `0`
+   * and ramps linearly to `volume` (or `1`) over this many seconds.
+   * Omit or set to `0` for an instant start.
+   */
+  readonly fadeIn?: number;
 }
 
 /** Output for `audio/play`. */
@@ -184,6 +190,38 @@ export interface AudioVolumeParams {
    * When omitted, the master gain is updated.
    */
   readonly instanceId?: string;
+  /**
+   * Fade duration in seconds.  When provided and greater than `0`, the gain
+   * ramps linearly from its current value to `volume` over this many seconds.
+   * Omit or set to `0` for an instant change (default behaviour).
+   */
+  readonly duration?: number;
+}
+
+// ---------------------------------------------------------------------------
+// audio/fade-stop
+// ---------------------------------------------------------------------------
+
+/**
+ * Parameters for `audio/fade-stop`.
+ *
+ * Fades the gain of a specific playback instance to `0` over `duration`
+ * seconds, then stops and removes the instance automatically.
+ *
+ * This is the idiomatic way to fade out a BGM track before a scene
+ * transition — no manual polling or timers required.
+ *
+ * @example
+ * ```ts
+ * // Fade the music out over 2 seconds, then release it.
+ * core.events.emitSync('audio/fade-stop', { instanceId: 'bgm', duration: 2 });
+ * ```
+ */
+export interface AudioFadeStopParams {
+  /** Identifier of the playback instance to fade out and stop. */
+  readonly instanceId: string;
+  /** Duration of the fade-out in seconds. Must be greater than `0`. */
+  readonly duration: number;
 }
 
 // ---------------------------------------------------------------------------

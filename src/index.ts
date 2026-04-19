@@ -9,6 +9,7 @@ export type {
   AudioPauseParams,
   AudioResumeParams,
   AudioVolumeParams,
+  AudioFadeStopParams,
   AudioUnloadParams,
   AudioUnloadOutput,
   AudioStateParams,
