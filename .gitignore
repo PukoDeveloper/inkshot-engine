@@ -1,2 +1,4 @@
 dist/
 node_modules/
+publish.bat
+.npmignore

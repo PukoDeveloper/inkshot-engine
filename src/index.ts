@@ -1,8 +1,8 @@
 // Asset system
-export { ResourceManager } from './core/ResourceManager.js';
+export { ResourceManager } from './plugins/ResourceManager.js';
 
 // Localisation system
-export { LocalizationManager } from './core/LocalizationManager.js';
+export { LocalizationManager } from './plugins/LocalizationManager.js';
 export type {
   LocaleData,
   I18nLoadParams,
@@ -40,7 +40,7 @@ export { Core } from './core/Core.js';
 export type { CoreOptions } from './core/Core.js';
 
 // Input system
-export { InputManager } from './core/InputManager.js';
+export { InputManager } from './plugins/InputManager.js';
 export type {
   InputKeyDownParams,
   InputKeyUpParams,
@@ -55,7 +55,7 @@ export type {
 } from './types/input.js';
 
 // Game state system
-export { GameStateManager } from './core/GameStateManager.js';
+export { GameStateManager } from './plugins/GameStateManager.js';
 export type {
   GamePhase,
   GameStateSetParams,
@@ -66,7 +66,7 @@ export type {
 export { EventBus } from './core/EventBus.js';
 
 // Save system
-export { SaveManager } from './core/SaveManager.js';
+export { SaveManager } from './plugins/SaveManager.js';
 export type {
   SlotMeta,
   SlotData,
@@ -86,6 +86,24 @@ export type {
   SaveGlobalSaveOutput,
   SaveGlobalLoadOutput,
 } from './types/save.js';
+
+// Entity system
+export { EntityManager } from './plugins/EntityManager.js';
+export { SpriteAnimator } from './plugins/SpriteAnimator.js';
+export type {
+  Entity,
+  EntityDescriptor,
+  EntityCreatedParams,
+  EntityDestroyedParams,
+  EntityCreateParams,
+  EntityCreateOutput,
+  EntityDestroyParams,
+  EntityQueryParams,
+  EntityQueryOutput,
+  AnimatorDefineParams,
+  AnimatorPlayParams,
+  AnimatorStopParams,
+} from './types/entity.js';
 
 // Engine factory (primary public entry point)
 export { createEngine } from './createEngine.js';
@@ -107,5 +125,38 @@ export type { EnginePlugin, PluginSource } from './types/plugin.js';
 
 // Rendering
 export { Renderer } from './rendering/Renderer.js';
+export { RenderPipeline } from './rendering/RenderPipeline.js';
+export { PostFxPipeline } from './rendering/PostFxPipeline.js';
+export { ShaderPass } from './rendering/ShaderPass.js';
+export { AnimationSystem } from './rendering/AnimationSystem.js';
+export type { InterpolationState } from './rendering/AnimationSystem.js';
+export { Camera } from './rendering/Camera.js';
+export { ObjectPool } from './rendering/ObjectPool.js';
 export type { LayerName } from './rendering/layers.js';
 export { LAYER_Z_INDEX } from './rendering/layers.js';
+export type {
+  CoreUpdateParams,
+  CoreRenderParams,
+  RendererPreRenderParams,
+  RendererAnimateParams,
+  RendererPostProcessParams,
+  ShaderPassOptions,
+  ShaderAddParams,
+  ShaderRemoveParams,
+  ShaderToggleParams,
+  RendererLayerParams,
+  RendererLayerOutput,
+  RendererLayerCreateParams,
+  SpriteAnimationDef,
+  AnimationPlayParams,
+  AnimationStopParams,
+  CameraRect,
+  CameraTarget,
+  CameraFollowOptions,
+  CameraShakeOptions,
+  CameraFollowParams,
+  CameraShakeParams,
+  CameraMoveParams,
+  CameraZoomParams,
+  CameraStateOutput,
+} from './types/rendering.js';

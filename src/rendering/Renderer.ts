@@ -2,6 +2,9 @@ import { Container } from 'pixi.js';
 import type { Application } from 'pixi.js';
 import type { Core } from '../core/Core.js';
 import { type LayerName, LAYER_Z_INDEX } from './layers.js';
+import { RenderPipeline } from './RenderPipeline.js';
+import { PostFxPipeline } from './PostFxPipeline.js';
+import { Camera } from './Camera.js';
 
 /**
  * Thin wrapper around the Pixi.js stage, providing named render layers and
@@ -55,6 +58,12 @@ export class Renderer {
   private readonly _core: Core;
   /** All layers keyed by name (built-in and custom). */
   private readonly _layers: Map<string, Container>;
+  /** Event-driven render sub-phase dispatcher. */
+  private readonly _pipeline: RenderPipeline;
+  /** Post-processing shader manager. */
+  private readonly _postFx: PostFxPipeline;
+  /** 2D camera bound to the world layer. */
+  private readonly _camera: Camera;
 
   constructor(core: Core) {
     this._core = core;
@@ -72,8 +81,16 @@ export class Renderer {
       this._layers.set(name, layer);
     }
 
-    // Listen for the engine tick to synchronize render if needed.
-    core.events.on('renderer', 'core/tick', this._onTick, { priority: -100 });
+    // Initialise the render pipeline and post-fx pipeline.
+    this._pipeline = new RenderPipeline(core);
+    this._postFx = new PostFxPipeline(core);
+
+    // Initialise the camera on the world layer.
+    const screen = this._core.app.screen;
+    this._camera = new Camera(core, this._layers.get('world')!, {
+      viewportWidth: screen.width,
+      viewportHeight: screen.height,
+    });
 
     // Expose layer lookup via the event bus so plugins never need a direct
     // reference to the Renderer instance.
@@ -107,6 +124,21 @@ export class Renderer {
   /** The Pixi.js Application. */
   get app(): Application {
     return this._core.app;
+  }
+
+  /** The render pipeline (pre-render → animate → post-process). */
+  get pipeline(): RenderPipeline {
+    return this._pipeline;
+  }
+
+  /** The post-processing shader pipeline. */
+  get postFx(): PostFxPipeline {
+    return this._postFx;
+  }
+
+  /** The 2D camera (controls the world layer viewport). */
+  get camera(): Camera {
+    return this._camera;
   }
 
   // ---------------------------------------------------------------------------
@@ -233,15 +265,9 @@ export class Renderer {
 
   /** Unregister all renderer listeners from the event bus. */
   destroy(): void {
+    this._camera.destroy();
+    this._postFx.destroy();
+    this._pipeline.destroy();
     this._core.events.removeNamespace('renderer');
   }
-
-  // ---------------------------------------------------------------------------
-  // Private
-  // ---------------------------------------------------------------------------
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  private readonly _onTick = (_params: { delta: number; elapsed: number }): void => {
-    // Future: per-frame render hooks can be emitted here
-  };
 }

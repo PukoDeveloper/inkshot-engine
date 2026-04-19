@@ -1,4 +1,4 @@
-import type { Core } from './Core.js';
+import type { Core } from '../core/Core.js';
 import type { EnginePlugin } from '../types/plugin.js';
 import type {
   GamePhase,

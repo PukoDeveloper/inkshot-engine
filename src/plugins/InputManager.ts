@@ -1,5 +1,5 @@
-import type { Core } from './Core.js';
-import { EventBus } from './EventBus.js';
+import type { Core } from '../core/Core.js';
+import { EventBus } from '../core/EventBus.js';
 import type { EnginePlugin } from '../types/plugin.js';
 import type {
   InputKeyDownParams,

@@ -369,13 +369,14 @@ core.events.on('ui', 'i18n/changed', ({ locale }) => {
 
 | Path | Purpose |
 |---|---|
-| `src/core/` | Engine core (`Core`, `EventBus`, built-in plugins) |
+| `src/core/` | Engine core (`Core`, `EventBus`) |
+| `src/plugins/` | Built-in `EnginePlugin` implementations |
 | `src/rendering/` | Renderer wrapper and layer definitions |
 | `src/types/` | Shared TypeScript interfaces and type aliases |
 | `src/createEngine.ts` | Public factory function |
 | `src/index.ts` | Public package entry point — only re-exports |
 
-Notable built-in plugins in `src/core/`:
+Built-in plugins in `src/plugins/`:
 
 | File | Namespace | Description |
 |---|---|---|
@@ -389,7 +390,7 @@ Rules:
 
 - `src/index.ts` **only re-exports**.  It must not contain logic.
 - Internal modules import from relative paths with the `.js` extension (required for ESM).
-- **No circular imports.**  The dependency graph flows: `types` ← `core` ← `rendering` ← `createEngine` ← `index`.
+- **No circular imports.**  The dependency graph flows: `types` ← `core` ← `plugins` ← `rendering` ← `createEngine` ← `index`.
 
 ---
 

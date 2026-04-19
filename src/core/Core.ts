@@ -15,14 +15,21 @@ export interface CoreOptions {
   background?: number;
   /** Enable anti-aliasing. */
   antialias?: boolean;
-  /** Target frames per second for the game loop. */
+  /** Target frames per second for the fixed-step game loop. */
   targetFps?: number;
+  /**
+   * Maximum number of fixed-step updates allowed per frame.
+   * Prevents a "spiral of death" when the browser tab is backgrounded and
+   * `deltaTime` spikes.  Defaults to `5`.
+   */
+  maxUpdatesPerFrame?: number;
   /**
    * Root URL / path prefix for all game data assets (images, audio, data files, etc.).
    * Systems that load assets should resolve paths relative to this base.
    * Defaults to `'/'`.
    */
   dataRoot?: string;
+  resizeTo?: Window | HTMLElement | null;
 }
 
 const DEFAULT_OPTIONS: Required<CoreOptions> = {
@@ -32,7 +39,9 @@ const DEFAULT_OPTIONS: Required<CoreOptions> = {
   background: 0x1a1a2e,
   antialias: true,
   targetFps: 60,
+  maxUpdatesPerFrame: 5,
   dataRoot: '/',
+  resizeTo: null,
 };
 
 /**
@@ -64,6 +73,15 @@ export class Core {
   private _initialized = false;
   private _running = false;
 
+  /** Fixed time-step duration in milliseconds (`1000 / targetFps`). */
+  private _fixedStepMs = 1000 / 60;
+  /** Maximum allowed fixed updates per render frame. */
+  private _maxUpdatesPerFrame = 5;
+  /** Accumulated time not yet consumed by fixed updates (ms). */
+  private _accumulator = 0;
+  /** Monotonically increasing fixed-update tick counter. */
+  private _tick = 0;
+
   constructor() {
     this.events = new EventBus();
   }
@@ -85,6 +103,8 @@ export class Core {
     const opts = { ...DEFAULT_OPTIONS, ...options };
 
     this.dataRoot = opts.dataRoot;
+    this._fixedStepMs = 1000 / opts.targetFps;
+    this._maxUpdatesPerFrame = opts.maxUpdatesPerFrame;
 
     this._app = new Application();
 
@@ -93,6 +113,7 @@ export class Core {
       height: opts.height,
       background: opts.background,
       antialias: opts.antialias,
+      resizeTo: opts.resizeTo ?? undefined,
     });
 
     const container =
@@ -118,6 +139,7 @@ export class Core {
     if (this._running) return;
 
     this._running = true;
+    this._accumulator = 0;
     this._app!.ticker.add(this._onTick);
 
     this.events.emitSync('core/start', { core: this });
@@ -139,6 +161,7 @@ export class Core {
   resume(): void {
     if (this._running) return;
     this._running = true;
+    this._accumulator = 0;
     this._app!.ticker.add(this._onTick);
     this.events.emitSync('core/resume', { core: this });
   }
@@ -182,9 +205,38 @@ export class Core {
   // ---------------------------------------------------------------------------
 
   private readonly _onTick = (ticker: { deltaTime: number; elapsedMS: number }): void => {
+    const frameDeltaMs = ticker.elapsedMS;
+
+    // ── Legacy raw tick (prefer core/update for game logic) ───────────────
     this.events.emitSync('core/tick', {
       delta: ticker.deltaTime,
-      elapsed: ticker.elapsedMS,
+      elapsed: frameDeltaMs,
+    });
+
+    // ── Fixed-step update loop ───────────────────────────────────────────
+    this._accumulator += frameDeltaMs;
+
+    let updates = 0;
+    while (this._accumulator >= this._fixedStepMs && updates < this._maxUpdatesPerFrame) {
+      this.events.emitSync('core/update', {
+        dt: this._fixedStepMs,
+        tick: this._tick,
+      });
+      this._accumulator -= this._fixedStepMs;
+      this._tick += 1;
+      updates += 1;
+    }
+
+    // If we hit the cap, discard leftover time to avoid spiral of death.
+    if (updates >= this._maxUpdatesPerFrame) {
+      this._accumulator = 0;
+    }
+
+    // ── Render with interpolation alpha ──────────────────────────────────
+    const alpha = this._accumulator / this._fixedStepMs;
+    this.events.emitSync('core/render', {
+      alpha,
+      delta: frameDeltaMs,
     });
   };
 }
