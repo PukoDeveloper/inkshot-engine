@@ -1,3 +1,21 @@
+// Asset system
+export { ResourceManager } from './core/ResourceManager.js';
+export type {
+  AssetRecord,
+  AssetBundleDefinition,
+  AssetsPreloadParams,
+  AssetsPreloadOutput,
+  AssetsLoadParams,
+  AssetsLoadOutput,
+  AssetsPrefetchParams,
+  AssetsGetParams,
+  AssetsGetOutput,
+  AssetsUnloadParams,
+  AssetsUnloadOutput,
+  AssetsProgressParams,
+  AssetsErrorParams,
+} from './types/assets.js';
+
 // Core
 export { Core } from './core/Core.js';
 export type { CoreOptions } from './core/Core.js';
