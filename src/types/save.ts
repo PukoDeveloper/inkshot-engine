@@ -37,7 +37,18 @@ export interface GlobalSaveData {
 // save/slot:set
 // ---------------------------------------------------------------------------
 
-/** Parameters for `save/slot:set`. */
+/**
+ * Parameters for `save/slot:set`.
+ *
+ * This event performs a **create-or-update** (upsert) on the in-memory slot:
+ * - If a slot with the given `id` already exists, `patch` is shallow-merged
+ *   into its data bag and `meta.updatedAt` is refreshed.
+ * - If no slot with that `id` exists, a new slot is created with `patch` as
+ *   its initial data and `name` (or `id` if omitted) as its display name.
+ *
+ * The save slot is only modified in memory.  Call `save/slot:save` to persist
+ * the changes to storage.
+ */
 export interface SaveSlotSetParams {
   /** ID of the slot to update.  The slot will be created if it does not exist. */
   id: string;
