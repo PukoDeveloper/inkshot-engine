@@ -1,6 +1,6 @@
 {
-  "name": "inkshot-engine",
-  "version": "0.1.0",
+  "name": "@inkshot/engine",
+  "version": "0.1.2",
   "description": "Data-oriented RPG game engine built with TypeScript and Pixi.js",
   "type": "module",
   "main": "./dist/index.js",
@@ -12,7 +12,9 @@
       "types": "./dist/index.d.ts"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc --project tsconfig.json",
     "build:watch": "tsc --project tsconfig.json --watch",
@@ -23,7 +25,13 @@
     "type": "git",
     "url": "git+https://github.com/PukoDeveloper/inkshot-engine.git"
   },
-  "keywords": ["game-engine", "rpg", "pixi.js", "typescript", "ecs"],
+  "keywords": [
+    "game-engine",
+    "rpg",
+    "pixi.js",
+    "typescript",
+    "ecs"
+  ],
   "author": "",
   "license": "ISC",
   "bugs": {
