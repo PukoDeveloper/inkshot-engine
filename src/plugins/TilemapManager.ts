@@ -370,17 +370,19 @@ export class TilemapManager implements EnginePlugin {
     for (const [tileId, runtime] of this._animatedTiles) {
       runtime.elapsed += params.dt;
 
-      const frame = runtime.def.frames[runtime.currentFrame];
+      let frame = runtime.def.frames[runtime.currentFrame];
       if (!frame) continue;
 
       if (runtime.elapsed >= frame.duration) {
-        // Consume duration and advance frame (may skip multiple if dt is large)
-        runtime.elapsed -= frame.duration;
-        runtime.currentFrame = (runtime.currentFrame + 1) % runtime.def.frames.length;
+        // Advance through as many frames as the elapsed time covers.
+        while (runtime.elapsed >= frame.duration) {
+          runtime.elapsed -= frame.duration;
+          runtime.currentFrame = (runtime.currentFrame + 1) % runtime.def.frames.length;
+          frame = runtime.def.frames[runtime.currentFrame]!;
+        }
 
-        // Resolve new texture
-        const newFrame = runtime.def.frames[runtime.currentFrame];
-        const newTexture = this._getTileTexture(newFrame.tileId);
+        // Resolve texture for the new current frame.
+        const newTexture = this._getTileTexture(frame.tileId);
         if (!newTexture) continue;
 
         // Update only the sprites that show this tile — no chunk rebuild needed

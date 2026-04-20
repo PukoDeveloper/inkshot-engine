@@ -498,9 +498,11 @@ export class ScriptManager implements EnginePlugin {
           message,
         });
         state.stopped = true;
+        // Call stop resolvers to clean up any registered listeners / timeouts.
+        for (const fn of state.stopResolvers) fn();
       }
 
-      // Clear per-command stop resolvers after the handler completes normally.
+      // Clear per-command stop resolvers after the handler completes.
       state.stopResolvers.length = 0;
 
       // If _stopInstance() replaced or cleared this instance, abandon execution.
