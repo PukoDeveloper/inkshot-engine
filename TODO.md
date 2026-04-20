@@ -72,14 +72,22 @@
 - [x] 根據攝影機位置自動計算音量衰減與左右聲道平移
 - [x] 新增 `audio/listener:update` 事件，讓 Camera 驅動音訊聆聽者位置
 - [x] 支援最大聆聽距離與衰減曲線設定
+- [x] 修正：`audio/resume` 保留空間音效路徑（新建 source 透過 `pannerNode ?? gainNode` 重連）
+- [x] 修正：`audio/source:move` 在實例無 PannerNode 時發出 `console.warn` 開發警告
 
 ### 7. 尋路系統 (Pathfinding) ✅
 - [x] 新增 `PathfindingManager` plugin（namespace: `pathfinding`）
 - [x] 實作 A* 演算法，以 tilemap 為地圖來源
 - [x] 支援加權地形（不同 tile 移動代價）
-- [x] 支援動態障礙物（基於 `CollisionManager` 的 BODY 實體）
-- [x] 事件：`pathfinding/find`（params: `from`, `to` → output: `path[]`）
-- [x] 路徑快取機制，避免每幀重算
+- [x] 支援動態障礙物（`includeDynamicObstacles`，透過 `tagFilter` 精確限制對象）
+- [x] 修正：起始格不可通行檢查（實體在牆內時直接回傳 `found: false`）
+- [x] 監聽 `tilemap/set-tile`：單格 O(1) 更新，無需整體重建地圖
+- [x] 事件：`pathfinding/find`（params: `from`, `to`, `tagFilter`, `fallbackToNearest`, `smoothPath` → output: `path[]`, `cost`, `nearest`）
+- [x] 路徑快取機制（512 筆 LRU，避免無上限增長）
+- [x] `pathfinding/weight:set` 事件：覆蓋特定 tile 值的移動代價
+- [x] `pathfinding/cache:clear` 事件：手動清除快取
+- [x] `fallbackToNearest`：目標在牆內時 BFS 找最近可通行格，結果回傳於 `output.nearest`
+- [x] `smoothPath`：字串拉扯（Bresenham LoS）後處理，消除斜角路徑鋸齒
 
 ---
 

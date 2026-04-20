@@ -24,6 +24,8 @@ Everything communicates through a shared **EventBus** — no tight coupling, no 
    - [CollisionManager (`collision`)](#collisionmanager-collision)
    - [TweenManager (`tween`)](#tweenmanager-tween)
    - [ParticleManager (`particle`)](#particlemanager-particle)
+   - [AudioManager (`audio`)](#audiomanager-audio)
+   - [PathfindingManager (`pathfinding`)](#pathfindingmanager-pathfinding)
 5. [Renderer & Layers](#renderer--layers)
 6. [Writing Your Own Plugin](#writing-your-own-plugin)
 7. [Engine Lifecycle](#engine-lifecycle)
@@ -1069,6 +1071,205 @@ const pm = new ParticleManager({
 
 ---
 
+### AudioManager (`audio`)
+
+Provides audio playback via the browser-native **Web Audio API** — no external audio library required.  An `AudioContext` is created lazily on the first `audio/load` or `audio/play` call, satisfying browser autoplay policies.
+
+#### Pause / Resume
+
+`AudioBufferSourceNode` cannot be paused natively.  Pausing is simulated by recording the playback offset, stopping the source, and creating a fresh node on resume.  When a spatial instance is resumed, the new source node is rewired through the existing `PannerNode` so that all distance attenuation and stereo panning settings are fully preserved.
+
+#### Event Contract
+
+| Event                   | Async? | Description |
+|-------------------------|--------|-------------|
+| `audio/load`            | ✓      | Fetch, decode, and cache an audio clip by alias key |
+| `audio/play`            | ✗ sync | Start playback; returns `{ instanceId }`.  Pass `position` for spatial audio. |
+| `audio/stop`            | ✗ sync | Stop a specific instance, all instances of a key/category, or all sounds |
+| `audio/pause`           | ✗ sync | Pause a playing instance, recording the playback offset |
+| `audio/resume`          | ✗ sync | Resume a paused instance from the saved offset (spatial chain preserved) |
+| `audio/volume`          | ✗ sync | Set master / category / per-instance volume (with optional linear fade) |
+| `audio/fade-stop`       | ✗ sync | Fade a specific instance to silence over `duration` seconds, then stop it |
+| `audio/unload`          | ✗ sync | Remove a decoded buffer from cache |
+| `audio/state`           | ✗ `emitSync` | Pull: query `state` and `currentTime` for an instance |
+| `audio/list`            | ✗ `emitSync` | Pull: list all active (playing/paused) instances |
+| `audio/listener:update` | ✗ sync | Update the spatial listener position (typically driven by the camera) |
+| `audio/source:move`     | ✗ sync | Reposition a spatial audio source at runtime |
+
+#### Usage
+
+```ts
+import { createEngine, AudioManager } from 'inkshot-engine';
+
+const { core } = await createEngine({
+  dataRoot: '/assets/',
+  plugins: [
+    new AudioManager(),
+    {
+      namespace: 'myGame',
+      async init(c) {
+        await c.events.emit('audio/load', { key: 'bgm:town', url: 'audio/town.ogg' });
+        await c.events.emit('audio/load', { key: 'sfx:hit',  url: 'audio/hit.wav'  });
+      },
+    },
+  ],
+});
+
+// ① Play looping background music in the 'bgm' category
+core.events.emitSync('audio/play', {
+  key: 'bgm:town',
+  loop: true,
+  volume: 0.6,
+  instanceId: 'bgm',
+  category: 'bgm',
+});
+
+// ② Pause / resume (spatial chain is preserved on resume)
+core.events.emitSync('audio/pause',  { instanceId: 'bgm' });
+core.events.emitSync('audio/resume', { instanceId: 'bgm' });
+
+// ③ Fade out and stop over 2 seconds
+core.events.emitSync('audio/fade-stop', { instanceId: 'bgm', duration: 2 });
+
+// ④ Duck BGM category volume during dialogue
+core.events.emitSync('audio/volume', { category: 'bgm', volume: 0.2, duration: 0.5 });
+
+// ⑤ Play a one-shot SFX
+core.events.emitSync('audio/play', { key: 'sfx:hit', volume: 1.0 });
+
+// ⑥ Query state
+const { output: s } = core.events.emitSync('audio/state', { instanceId: 'bgm' });
+console.log(s.state, s.currentTime); // "playing", 4.23
+
+// ⑦ List all active instances
+const { output: list } = core.events.emitSync('audio/list', {});
+console.log(list.instances.map(i => i.instanceId));
+```
+
+#### Spatial Audio
+
+Pass a `position` to `audio/play` to create a positional sound source routed through a `PannerNode`.  Pair it with `audio/listener:update` (driven by the camera) for automatic distance attenuation and stereo panning:
+
+```ts
+// Play a looping ambient sound at a world-space position
+core.events.emitSync('audio/play', {
+  key: 'sfx:waterfall',
+  loop: true,
+  instanceId: 'waterfall',
+  position:     { x: 320, y: 240 },
+  maxDistance:  400,
+  rolloffFactor: 1,
+  distanceModel: 'linear',
+});
+
+// Drive the listener from the camera every render frame
+core.events.on('myGame', 'core/render', () => {
+  const cam = core.events.emitSync('camera/state', {}).output;
+  core.events.emitSync('audio/listener:update', {
+    x: cam.x + cam.width  / 2,
+    y: cam.y + cam.height / 2,
+  });
+});
+
+// Reposition a moving source at runtime (e.g. a walking NPC)
+core.events.on('myGame', 'core/update', () => {
+  core.events.emitSync('audio/source:move', {
+    instanceId: 'waterfall',
+    x: npc.x,
+    y: npc.y,
+  });
+});
+```
+
+> **Note**: `audio/source:move` emits a `console.warn` in development if `instanceId` is valid but the instance was not created with `position` (i.e. has no `PannerNode`), making misconfigured spatial calls immediately visible.
+
+---
+
+### PathfindingManager (`pathfinding`)
+
+A* pathfinding on top of the collision tile map.  The cost grid is rebuilt automatically whenever `collision/tilemap:set` fires (full reload) or `tilemap/set-tile` fires (single-cell O(1) update).  A 512-entry LRU cache avoids recomputing the same path on consecutive frames.
+
+Must be registered **after** `CollisionManager` and `EntityManager`.
+
+#### Event Contract
+
+| Event                     | Async? | Description |
+|---------------------------|--------|-------------|
+| `pathfinding/find`        | ✗ sync | Run A* from `from` to `to` (world pixels); returns `path[]`, `cost`, optional `nearest` |
+| `pathfinding/weight:set`  | ✗ sync | Override movement cost for a specific tile value |
+| `pathfinding/cache:clear` | ✗ sync | Manually invalidate the path cache |
+
+#### `pathfinding/find` parameters
+
+| Parameter                 | Type       | Default    | Description |
+|---------------------------|------------|------------|-------------|
+| `from`                    | `{x,y}`    | —          | Start position in world pixels |
+| `to`                      | `{x,y}`    | —          | Goal position in world pixels |
+| `includeDynamicObstacles` | `boolean`  | `false`    | Treat entity tile positions as dynamic obstacles (results not cached) |
+| `tagFilter`               | `string[]` | —          | With `includeDynamicObstacles`: only entities carrying **all** of these tags block the path |
+| `fallbackToNearest`       | `boolean`  | `false`    | When the goal tile is impassable, BFS outward to the nearest passable cell; actual target returned in `output.nearest` |
+| `smoothPath`              | `boolean`  | `false`    | Apply string-pulling (line-of-sight) to remove staircase waypoints from diagonal paths |
+| `maxIterations`           | `number`   | `10 000`   | Abort A* after this many iterations |
+
+#### Usage
+
+```ts
+import { createEngine, PathfindingManager } from 'inkshot-engine';
+import { EntityManager, CollisionManager, TilemapManager } from 'inkshot-engine';
+import type { PathfindingFindParams, PathfindingFindOutput } from 'inkshot-engine';
+
+const { core } = await createEngine({
+  plugins: [
+    new EntityManager(),
+    new CollisionManager(),
+    new TilemapManager(),
+    new PathfindingManager(),           // 4-dir: new PathfindingManager({ directions: 4 })
+  ],
+});
+
+// ① Basic path request (after tilemap is loaded)
+const { output } = core.events.emitSync<PathfindingFindParams, PathfindingFindOutput>(
+  'pathfinding/find',
+  { from: player.position, to: target.position },
+);
+if (output.found) followPath(output.path);
+
+// ② Avoid entities tagged 'obstacle' as dynamic obstacles
+const { output: dyn } = core.events.emitSync('pathfinding/find', {
+  from: npc.position,
+  to:   goal.position,
+  includeDynamicObstacles: true,
+  tagFilter: ['obstacle'],   // decorative sprites / HUD anchors are ignored
+});
+
+// ③ Clicking on an impassable tile → nearest reachable cell
+const { output: near } = core.events.emitSync('pathfinding/find', {
+  from: player.position,
+  to:   clickPosition,
+  fallbackToNearest: true,
+});
+if (near.found) {
+  if (near.nearest) console.log('Redirected to:', near.nearest);
+  followPath(near.path);
+}
+
+// ④ Smooth diagonal paths (removes staircase waypoints)
+const { output: smooth } = core.events.emitSync('pathfinding/find', {
+  from: player.position,
+  to:   target.position,
+  smoothPath: true,
+});
+
+// ⑤ Weighted terrain (mud = 2× cost, lava = impassable)
+core.events.emitSync('pathfinding/weight:set', { tileId: 3, cost: 2 });
+core.events.emitSync('pathfinding/weight:set', { tileId: 4, cost: Infinity });
+
+// ⑥ Manual cache invalidation (e.g. after a script-driven layout change)
+core.events.emitSync('pathfinding/cache:clear', {});
+```
+
+---
+
 ## Renderer & Layers
 
 The `Renderer` manages named render layers on the Pixi stage.  Display objects should always be placed inside a layer rather than added to the root stage.
@@ -1190,6 +1391,13 @@ import type {
   ParticleConfig, ParticleEmitOutput, ParticleCompleteParams,
   ParticleMoveParams, ParticlePauseParams, ParticleResumeParams,
   ParticleCountOutput, ParticleUpdateParams,
+  // Audio
+  AudioPlayParams, AudioPlayOutput,
+  AudioListenerUpdateParams, AudioSourceMoveParams,
+  AudioStateOutput, AudioListOutput, AudioInstanceInfo,
+  // Pathfinding
+  PathfindingFindParams, PathfindingFindOutput,
+  PathfindingWeightSetParams, PathfindingCacheClearParams,
   // Events
   EventHandler, ListenerOptions,
 } from 'inkshot-engine';
