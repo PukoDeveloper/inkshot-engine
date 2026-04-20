@@ -461,3 +461,268 @@ describe('TweenManager', () => {
     expect(obj.x).toBe(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Tween — repeat (finite)
+// ---------------------------------------------------------------------------
+
+describe('Tween — repeat', () => {
+  it('repeat: 2 plays a total of 3 times then completes', () => {
+    const obj = makeObj({ x: 0 });
+    const tween = new Tween(obj, { x: 100 }, { duration: 100, repeat: 2 });
+
+    // Cycle 1
+    tween.advance(100); // completes cycle 1, begins cycle 2 (x snaps to from=0)
+    expect(obj.x).toBeCloseTo(0);
+    expect(tween.isCompleted).toBe(false);
+
+    // Cycle 2
+    tween.advance(100); // completes cycle 2, begins cycle 3
+    expect(obj.x).toBeCloseTo(0);
+    expect(tween.isCompleted).toBe(false);
+
+    // Cycle 3 — final play
+    tween.advance(100); // completes cycle 3 → done
+    expect(obj.x).toBe(100);
+    expect(tween.isCompleted).toBe(true);
+  });
+
+  it('repeat: -1 loops indefinitely (same as loop: true)', () => {
+    const obj = makeObj({ x: 0 });
+    const tween = new Tween(obj, { x: 100 }, { duration: 100, repeat: -1 });
+
+    tween.advance(1000); // many cycles
+    expect(tween.isCompleted).toBe(false);
+  });
+
+  it('calls onComplete exactly once after all repeats', () => {
+    const obj = makeObj({ x: 0 });
+    const onComplete = vi.fn();
+    const tween = new Tween(obj, { x: 100 }, { duration: 100, repeat: 1, onComplete });
+
+    tween.advance(300); // enough time for 2 full cycles
+    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it('excess time past last repeat carries into completion', () => {
+    const obj = makeObj({ x: 0 });
+    const tween = new Tween(obj, { x: 100 }, { duration: 100, repeat: 0 });
+
+    // repeat:0 = play once, like the default
+    const done = tween.advance(200);
+    expect(done).toBe(true);
+    expect(obj.x).toBe(100);
+  });
+
+  it('repeat resets from-values each cycle', () => {
+    const obj = makeObj({ x: 0 });
+    const tween = new Tween(obj, { x: 100 }, { duration: 100, repeat: 1 });
+
+    tween.advance(100); // cycle 1 ends, x snaps back to 0
+    tween.advance(50);  // halfway through cycle 2 → from=0, to=100
+    expect(obj.x).toBeCloseTo(50);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tween — repeatDelay
+// ---------------------------------------------------------------------------
+
+describe('Tween — repeatDelay', () => {
+  it('waits between repeat cycles', () => {
+    const obj = makeObj({ x: 0 });
+    const tween = new Tween(obj, { x: 100 }, { duration: 100, repeat: 1, repeatDelay: 50 });
+
+    tween.advance(100); // cycle 1 done, enter repeat delay
+    tween.advance(30);  // 30 ms into 50 ms delay → animation not yet started
+    expect(obj.x).toBeCloseTo(0);
+    expect(tween.isCompleted).toBe(false);
+  });
+
+  it('resumes animating after repeat delay expires', () => {
+    const obj = makeObj({ x: 0 });
+    const tween = new Tween(obj, { x: 100 }, { duration: 100, repeat: 1, repeatDelay: 50 });
+
+    tween.advance(100); // end of cycle 1
+    tween.advance(50);  // repeat delay expires, 0 ms into cycle 2
+    tween.advance(50);  // 50 ms into cycle 2 → x = 50
+    expect(obj.x).toBeCloseTo(50);
+  });
+
+  it('carries excess time past repeat delay boundary', () => {
+    const obj = makeObj({ x: 0 });
+    // duration=100, repeatDelay=50
+    const tween = new Tween(obj, { x: 100 }, { duration: 100, repeat: 1, repeatDelay: 50 });
+
+    // Advance 170 ms: 100 ms cycle 1 + 50 ms delay + 20 ms into cycle 2
+    tween.advance(170);
+    expect(obj.x).toBeCloseTo(20);
+    expect(tween.isCompleted).toBe(false);
+  });
+
+  it('repeat delay with loop: true pauses between each loop', () => {
+    const obj = makeObj({ x: 0 });
+    const tween = new Tween(obj, { x: 100 }, { duration: 100, loop: true, repeatDelay: 50 });
+
+    tween.advance(100); // end of cycle 1, enter delay
+    tween.advance(20);  // 20 ms into delay → still at 0
+    expect(obj.x).toBeCloseTo(0);
+
+    tween.advance(30);  // delay done, 0 ms into cycle 2
+    tween.advance(50);  // 50 ms into cycle 2
+    expect(obj.x).toBeCloseTo(50);
+    expect(tween.isCompleted).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tween — seek / seekProgress / progress
+// ---------------------------------------------------------------------------
+
+describe('Tween — seek / seekProgress / progress', () => {
+  it('seek jumps the playhead to the given time', () => {
+    const obj = makeObj({ x: 0 });
+    const tween = new Tween(obj, { x: 100 }, { duration: 100 });
+
+    tween.seek(50);
+    expect(obj.x).toBeCloseTo(50);
+  });
+
+  it('seek applies easing correctly', () => {
+    const obj = makeObj({ x: 0 });
+    const tween = new Tween(obj, { x: 100 }, { duration: 100, ease: Easing['easeInQuad'] });
+
+    tween.seek(50); // easeInQuad(0.5) = 0.25
+    expect(obj.x).toBeCloseTo(25);
+  });
+
+  it('seek clamps to [0, duration]', () => {
+    const obj = makeObj({ x: 0 });
+    const tween = new Tween(obj, { x: 100 }, { duration: 100 });
+
+    tween.seek(-50);
+    expect(obj.x).toBeCloseTo(0);
+
+    tween.seek(999);
+    expect(obj.x).toBeCloseTo(100);
+  });
+
+  it('seek captures from-values if tween has not started', () => {
+    const obj = makeObj({ x: 30 });
+    const tween = new Tween(obj, { x: 130 }, { duration: 100 });
+
+    // Tween has not advanced yet; seek captures from=30
+    tween.seek(50); // 50% of 100 = from=30, to=130 → x=80
+    expect(obj.x).toBeCloseTo(80);
+  });
+
+  it('seek does nothing on a killed tween', () => {
+    const obj = makeObj({ x: 0 });
+    const tween = new Tween(obj, { x: 100 }, { duration: 100 });
+    tween.kill();
+    tween.seek(50);
+    expect(obj.x).toBe(0);
+  });
+
+  it('seekProgress jumps to normalised position', () => {
+    const obj = makeObj({ x: 0 });
+    const tween = new Tween(obj, { x: 100 }, { duration: 100 });
+
+    tween.seekProgress(0.75);
+    expect(obj.x).toBeCloseTo(75);
+  });
+
+  it('progress getter returns 0 before first advance', () => {
+    const obj = makeObj({ x: 0 });
+    const tween = new Tween(obj, { x: 100 }, { duration: 100 });
+    expect(tween.progress).toBe(0);
+  });
+
+  it('progress getter reflects current elapsed / duration', () => {
+    const obj = makeObj({ x: 0 });
+    const tween = new Tween(obj, { x: 100 }, { duration: 100 });
+
+    tween.advance(40);
+    expect(tween.progress).toBeCloseTo(0.4);
+
+    tween.advance(60);
+    expect(tween.progress).toBe(1);
+  });
+
+  it('progress returns 1 for duration=0 tween after advance', () => {
+    const obj = makeObj({ x: 0 });
+    const tween = new Tween(obj, { x: 42 }, { duration: 0 });
+    tween.advance(0);
+    expect(tween.progress).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TweenManager — tween/finished event
+// ---------------------------------------------------------------------------
+
+describe('TweenManager — tween/finished event', () => {
+  let core: Core;
+  let manager: TweenManager;
+
+  beforeEach(() => {
+    core = createCoreStub();
+    manager = new TweenManager();
+    manager.init(core);
+  });
+
+  it('emits tween/finished when a tween completes naturally', () => {
+    const obj = makeObj({ x: 0 }) as Record<string, unknown>;
+    const finished = vi.fn();
+    core.events.on('test', 'tween/finished', finished);
+
+    core.events.emitSync('tween/to', {
+      target: obj,
+      props: { x: 100 },
+      duration: 100,
+      id: 'hero',
+    });
+
+    core.events.emitSync('core/tick', { delta: 1, elapsed: 150 }); // completes
+    expect(finished).toHaveBeenCalledTimes(1);
+
+    const [params] = finished.mock.calls[0] as [Record<string, unknown>];
+    expect(params['id']).toBe('hero');
+    expect(params['target']).toBe(obj);
+  });
+
+  it('does not emit tween/finished when a tween is killed', () => {
+    const obj = makeObj({ x: 0 }) as Record<string, unknown>;
+    const finished = vi.fn();
+    core.events.on('test', 'tween/finished', finished);
+
+    core.events.emitSync('tween/to', {
+      target: obj,
+      props: { x: 100 },
+      duration: 100,
+      id: 'doomed',
+    });
+
+    core.events.emitSync('tween/kill', { id: 'doomed' });
+    core.events.emitSync('core/tick', { delta: 1, elapsed: 50 });
+    expect(finished).not.toHaveBeenCalled();
+  });
+
+  it('emits tween/finished with auto-generated id', () => {
+    const obj = makeObj({ x: 0 }) as Record<string, unknown>;
+    const finished = vi.fn();
+    core.events.on('test', 'tween/finished', finished);
+
+    const { output } = core.events.emitSync<
+      { target: Record<string, unknown>; props: Record<string, number>; duration: number },
+      { id: string }
+    >('tween/to', { target: obj, props: { x: 100 }, duration: 100 });
+
+    core.events.emitSync('core/tick', { delta: 1, elapsed: 200 });
+    expect(finished).toHaveBeenCalledTimes(1);
+
+    const [params] = finished.mock.calls[0] as [Record<string, unknown>];
+    expect(params['id']).toBe(output.id);
+    expect(params['target']).toBe(obj);
+  });
+});

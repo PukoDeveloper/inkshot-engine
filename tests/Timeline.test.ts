@@ -441,3 +441,294 @@ describe('Timeline — TweenManager integration', () => {
     expect(obj.x).toBeCloseTo(75);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Timeline — playbackRate
+// ---------------------------------------------------------------------------
+
+describe('Timeline — playbackRate', () => {
+  it('playbackRate: 2 runs the timeline at double speed', () => {
+    const obj = makeObj({ x: 0 });
+    const tl = new Timeline();
+    tl.to(obj, { x: 100 }, { duration: 100 });
+    tl.playbackRate = 2;
+
+    tl.advance(25); // 25 real ms × 2 = 50 ms of animation
+    expect(obj.x).toBeCloseTo(50);
+  });
+
+  it('playbackRate: 0.5 runs at half speed', () => {
+    const obj = makeObj({ x: 0 });
+    const tl = new Timeline();
+    tl.to(obj, { x: 100 }, { duration: 100 });
+    tl.playbackRate = 0.5;
+
+    tl.advance(100); // 100 real ms × 0.5 = 50 ms of animation
+    expect(obj.x).toBeCloseTo(50);
+  });
+
+  it('default playbackRate is 1', () => {
+    const tl = new Timeline();
+    expect(tl.playbackRate).toBe(1);
+  });
+
+  it('playbackRate affects when the timeline completes', () => {
+    const obj = makeObj({ x: 0 });
+    const tl = new Timeline();
+    tl.to(obj, { x: 100 }, { duration: 100 });
+    tl.playbackRate = 2;
+
+    const done = tl.advance(50); // 50 × 2 = 100 ms → completes
+    expect(done).toBe(true);
+    expect(tl.isCompleted).toBe(true);
+  });
+
+  it('playbackRate scales call entry timing', () => {
+    const fn = vi.fn();
+    const tl = new Timeline();
+    tl.call(fn, { at: 100 });
+    tl.delay(200);
+    tl.playbackRate = 2;
+
+    tl.advance(40); // 40 × 2 = 80 ms — before callback
+    expect(fn).not.toHaveBeenCalled();
+
+    tl.advance(20); // 20 × 2 = 40 ms → total 120 ms — callback fires
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Timeline — seek / seekProgress / progress
+// ---------------------------------------------------------------------------
+
+describe('Timeline — seek / seekProgress / progress', () => {
+  it('seek positions the playhead and applies tween values', () => {
+    const obj = makeObj({ x: 0 });
+    const tl = new Timeline();
+    tl.to(obj, { x: 100 }, { duration: 100 });
+
+    tl.seek(50);
+    expect(obj.x).toBeCloseTo(50);
+    expect(tl.elapsed).toBeCloseTo(50);
+  });
+
+  it('seek to 0 applies fromProps for fromTo entries', () => {
+    const obj = makeObj({ x: 999 });
+    const tl = new Timeline();
+    tl.fromTo(obj, { x: 0 }, { x: 100 }, { duration: 100 });
+
+    tl.advance(80); // obj.x = 80
+    tl.seek(0);     // tween reset; fromTo onStart sets x=0 at t=0
+    expect(obj.x).toBeCloseTo(0);
+  });
+
+  it('seek to totalDuration positions at the end', () => {
+    const obj = makeObj({ x: 0 });
+    const tl = new Timeline();
+    tl.to(obj, { x: 100 }, { duration: 100 });
+
+    tl.seek(100);
+    expect(obj.x).toBeCloseTo(100);
+  });
+
+  it('seek clamps beyond totalDuration', () => {
+    const obj = makeObj({ x: 0 });
+    const tl = new Timeline();
+    tl.to(obj, { x: 100 }, { duration: 100 });
+
+    tl.seek(9999);
+    expect(obj.x).toBeCloseTo(100);
+  });
+
+  it('seek does not invoke call entry callbacks', () => {
+    const fn = vi.fn();
+    const obj = makeObj();
+    const tl = new Timeline();
+    tl.to(obj, { x: 100 }, { duration: 200 });
+    tl.call(fn, { at: 50 });
+
+    tl.seek(100); // passes the callback position
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it('call entries after seek position are still triggered on advance', () => {
+    const fn = vi.fn();
+    const obj = makeObj();
+    const tl = new Timeline();
+    tl.to(obj, { x: 100 }, { duration: 200 });
+    tl.call(fn, { at: 150 });
+
+    tl.seek(100); // before callback
+    expect(fn).not.toHaveBeenCalled();
+
+    tl.advance(60); // crosses 150 ms mark
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('seekProgress jumps to normalised position', () => {
+    const obj = makeObj({ x: 0 });
+    const tl = new Timeline();
+    tl.to(obj, { x: 100 }, { duration: 100 });
+
+    tl.seekProgress(0.75);
+    expect(obj.x).toBeCloseTo(75);
+  });
+
+  it('progress getter returns 0 before any advancement', () => {
+    const tl = new Timeline();
+    tl.to(makeObj(), { x: 100 }, { duration: 100 });
+    expect(tl.progress).toBe(0);
+  });
+
+  it('progress getter reflects elapsed / totalDuration', () => {
+    const obj = makeObj({ x: 0 });
+    const tl = new Timeline();
+    tl.to(obj, { x: 100 }, { duration: 100 });
+
+    tl.advance(40);
+    expect(tl.progress).toBeCloseTo(0.4);
+
+    tl.advance(60);
+    expect(tl.progress).toBe(1);
+  });
+
+  it('seek continues to play after repositioning', () => {
+    const obj = makeObj({ x: 0 });
+    const tl = new Timeline();
+    tl.to(obj, { x: 100 }, { duration: 100 });
+
+    tl.seek(30);          // jump to 30 ms
+    tl.advance(20);       // advance 20 ms more → 50 ms total
+    expect(obj.x).toBeCloseTo(50);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Timeline — reset
+// ---------------------------------------------------------------------------
+
+describe('Timeline — reset', () => {
+  it('reset restores the timeline to initial state', () => {
+    const obj = makeObj({ x: 0 });
+    const tl = new Timeline();
+    tl.to(obj, { x: 100 }, { duration: 100 });
+
+    tl.advance(100); // complete
+    expect(tl.isCompleted).toBe(true);
+
+    tl.reset();
+    expect(tl.isCompleted).toBe(false);
+    expect(tl.isKilled).toBe(false);
+    expect(tl.elapsed).toBe(0);
+  });
+
+  it('timeline replays after reset', () => {
+    const obj = makeObj({ x: 0 });
+    const tl = new Timeline();
+    tl.to(obj, { x: 100 }, { duration: 100 });
+
+    tl.advance(100); // complete, obj.x = 100
+    tl.reset();
+    obj.x = 0; // reset target for observation
+
+    tl.advance(50); // 50% of replay → x = 50
+    expect(obj.x).toBeCloseTo(50);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Timeline — repeat (finite)
+// ---------------------------------------------------------------------------
+
+describe('Timeline — repeat', () => {
+  it('repeat: 2 plays the timeline 3 times then completes', () => {
+    const obj = makeObj({ x: 0 });
+    const tl = new Timeline({ repeat: 2 });
+    tl.to(obj, { x: 100 }, { duration: 100 });
+
+    // Cycle 1
+    tl.advance(100);
+    expect(tl.isCompleted).toBe(false);
+
+    // Cycle 2
+    tl.advance(100);
+    expect(tl.isCompleted).toBe(false);
+
+    // Cycle 3 — final play
+    tl.advance(100);
+    expect(tl.isCompleted).toBe(true);
+  });
+
+  it('repeat: -1 loops indefinitely', () => {
+    const obj = makeObj({ x: 0 });
+    const tl = new Timeline({ repeat: -1 });
+    tl.to(obj, { x: 100 }, { duration: 100 });
+
+    tl.advance(1000);
+    expect(tl.isCompleted).toBe(false);
+  });
+
+  it('calls onComplete once after all repeats', () => {
+    const obj = makeObj();
+    const onComplete = vi.fn();
+    const tl = new Timeline({ repeat: 1, onComplete });
+    tl.to(obj, { x: 100 }, { duration: 100 });
+
+    tl.advance(300); // 3 × 100 ms
+    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it('repeat resets call entries between cycles', () => {
+    const fn = vi.fn();
+    const tl = new Timeline({ repeat: 1 });
+    tl.call(fn, { at: 0 });
+    tl.delay(100);
+
+    tl.advance(100); // cycle 1 ends
+    tl.advance(100); // cycle 2 ends
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Timeline — repeatDelay
+// ---------------------------------------------------------------------------
+
+describe('Timeline — repeatDelay', () => {
+  it('does not complete during repeat delay', () => {
+    const obj = makeObj({ x: 0 });
+    const tl = new Timeline({ repeat: 1, repeatDelay: 50 });
+    tl.to(obj, { x: 100 }, { duration: 100 });
+
+    tl.advance(100); // cycle 1 done, enter repeat delay
+    expect(tl.isCompleted).toBe(false);
+
+    tl.advance(30);  // 30 ms into 50 ms delay
+    expect(tl.isCompleted).toBe(false);
+  });
+
+  it('resumes animating after repeat delay expires', () => {
+    const obj = makeObj({ x: 0 });
+    const tl = new Timeline({ repeat: 1, repeatDelay: 50 });
+    // Use fromTo so cycle 2 animates from 0→100 regardless of cycle 1 end state.
+    tl.fromTo(obj, { x: 0 }, { x: 100 }, { duration: 100 });
+
+    tl.advance(100); // cycle 1 done
+    tl.advance(50);  // repeat delay expires (0 ms excess)
+    tl.advance(50);  // 50 ms into cycle 2 → x = 50
+    expect(obj.x).toBeCloseTo(50);
+  });
+
+  it('carries excess time past repeat delay boundary', () => {
+    const obj = makeObj({ x: 0 });
+    const tl = new Timeline({ repeat: 1, repeatDelay: 50 });
+    // Use fromTo so cycle 2 always starts from 0.
+    tl.fromTo(obj, { x: 0 }, { x: 100 }, { duration: 100 });
+
+    // 100 ms cycle 1 + 50 ms delay + 30 ms into cycle 2 = 180 ms total
+    tl.advance(180);
+    expect(obj.x).toBeCloseTo(30);
+    expect(tl.isCompleted).toBe(false);
+  });
+});

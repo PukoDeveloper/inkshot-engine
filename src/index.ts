@@ -149,7 +149,7 @@ export { TweenManager, Tween, Easing } from './plugins/TweenManager.js';
 export type { EasingFn, TweenOptions, Advanceable } from './plugins/TweenManager.js';
 export { Timeline } from './plugins/Timeline.js';
 export type { TimelineOptions } from './plugins/Timeline.js';
-export type { TweenToParams, TweenToOutput, TweenKillParams } from './types/tween.js';
+export type { TweenToParams, TweenToOutput, TweenKillParams, TweenFinishedParams } from './types/tween.js';
 
 // Types
 export type {

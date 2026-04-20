@@ -34,6 +34,18 @@ export interface TimelineOptions {
   onComplete?: () => void;
   /** Whether to repeat the timeline indefinitely. Tweens inside the timeline are reset via `Tween.reset()` on each loop iteration, which re-captures `from` values from the target at that moment. */
   loop?: boolean;
+  /**
+   * Number of additional times to replay after the first play.
+   * `0` = play once (default). `-1` = infinite (same as `loop: true`).
+   * Ignored when `loop: true`.
+   */
+  repeat?: number;
+  /**
+   * Delay in milliseconds inserted between each repeat cycle.
+   * Defaults to `0`.  Has no effect unless `repeat` or `loop` causes the
+   * timeline to restart.
+   */
+  repeatDelay?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -80,7 +92,7 @@ export class Timeline implements Advanceable {
   /** Total timeline duration in ms. */
   private _totalDuration = 0;
 
-  /** Timeline playhead position in ms. */
+  /** Timeline playhead position in ms (within the current cycle). */
   private _elapsed = 0;
 
   /**
@@ -97,13 +109,35 @@ export class Timeline implements Advanceable {
   private _completed = false;
   private _loopCount = 0;
 
+  /** Playback speed multiplier.  `2` = double speed; `0.5` = half speed. */
+  private _playbackRate = 1;
+
+  /**
+   * Total number of additional plays allowed after the first.
+   * `Infinity` for infinite loops (`loop: true` or `repeat: -1`).
+   */
+  private readonly _totalRepeats: number;
+  /** How many repeat cycles have been completed so far. */
+  private _repeatsDone = 0;
+  /** Whether the timeline is currently counting down a between-cycle delay. */
+  private _inRepeatDelay = false;
+  /** Remaining milliseconds of the current between-cycle delay countdown. */
+  private _repeatDelayRemaining = 0;
+
   private readonly _opts: Required<TimelineOptions>;
 
   constructor(options: TimelineOptions = {}) {
     this._opts = {
       onComplete: options.onComplete ?? (() => undefined),
       loop: options.loop ?? false,
+      repeat: options.repeat ?? 0,
+      repeatDelay: options.repeatDelay ?? 0,
     };
+    this._totalRepeats = this._opts.loop
+      ? Infinity
+      : this._opts.repeat === -1
+        ? Infinity
+        : this._opts.repeat;
   }
 
   // ---------------------------------------------------------------------------
@@ -135,9 +169,30 @@ export class Timeline implements Advanceable {
     return this._totalDuration;
   }
 
-  /** Current playhead position in milliseconds. */
+  /** Current playhead position in milliseconds (within the current cycle). */
   get elapsed(): number {
     return this._elapsed;
+  }
+
+  /**
+   * Normalised progress of the current cycle `[0, 1]`.
+   * Returns `1` for a zero-duration timeline.
+   */
+  get progress(): number {
+    if (this._totalDuration === 0) return 1;
+    return Math.min(this._elapsed / this._totalDuration, 1);
+  }
+
+  /**
+   * Playback speed multiplier applied to every `advance()` call.
+   * `1.0` = normal speed (default), `2.0` = double speed, `0.5` = half speed.
+   */
+  get playbackRate(): number {
+    return this._playbackRate;
+  }
+
+  set playbackRate(rate: number) {
+    this._playbackRate = rate;
   }
 
   // ---------------------------------------------------------------------------
@@ -172,6 +227,74 @@ export class Timeline implements Advanceable {
       if (entry.type === 'tween') entry.tween.kill();
     }
     return this;
+  }
+
+  /**
+   * Reset the timeline to its initial (pre-start) state so it can be replayed.
+   *
+   * All repeat counters, the playhead, and internal tween states are cleared.
+   * Target properties are **not** touched.
+   */
+  reset(): this {
+    this._elapsed = 0;
+    this._completed = false;
+    this._killed = false;
+    this._paused = false;
+    this._loopCount = 0;
+    this._repeatsDone = 0;
+    this._inRepeatDelay = false;
+    this._repeatDelayRemaining = 0;
+    this._resetEntries();
+    return this;
+  }
+
+  /**
+   * Jump the playhead to `timeMs` within the current cycle.
+   *
+   * - Clamps to `[0, totalDuration]`.
+   * - Advances all managed tweens to the correct state at that position
+   *   (callbacks inside tweens may fire during the fast-forward).
+   * - Call entries that fall before `timeMs` are marked as triggered but
+   *   their callbacks are **not** invoked.
+   * - Does nothing if the timeline has been killed.
+   */
+  seek(timeMs: number): this {
+    if (this._killed) return this;
+
+    const clamped = Math.max(0, Math.min(timeMs, this._totalDuration));
+
+    // Reset everything, then drive tweens to the target position.
+    this._resetEntries();
+    this._elapsed = 0;
+    this._completed = false;
+    this._inRepeatDelay = false;
+
+    // Mark call entries as triggered without invoking them.
+    for (const entry of this._entries) {
+      if (entry.type === 'call') {
+        entry.called = clamped >= entry.at;
+      }
+    }
+
+    // Fast-forward all tweens to their correct state at clamped time.
+    // Always advance (even by 0) so that onStart fires and from-values are
+    // captured (important for fromTo entries at t=0).
+    for (const entry of this._entries) {
+      if (entry.type === 'tween') {
+        entry.tween.advance(clamped);
+      }
+    }
+
+    this._elapsed = clamped;
+    return this;
+  }
+
+  /**
+   * Jump the playhead to a normalised position `[0, 1]` within the current
+   * cycle.  Equivalent to `seek(progress * totalDuration)`.
+   */
+  seekProgress(value: number): this {
+    return this.seek(value * this._totalDuration);
   }
 
   // ---------------------------------------------------------------------------
@@ -324,6 +447,12 @@ export class Timeline implements Advanceable {
   /**
    * Advance the timeline by `dt` milliseconds.
    *
+   * The raw `dt` is scaled by {@link playbackRate} before being applied, so
+   * setting `playbackRate = 2` makes the timeline play at double speed.
+   *
+   * Excess time past a cycle boundary (loop or repeat) is carried into the
+   * next cycle within the same call, mirroring {@link Tween} behaviour.
+   *
    * @returns `true` when the timeline is finished and should be removed from
    *   the manager.
    */
@@ -332,38 +461,74 @@ export class Timeline implements Advanceable {
     if (this._completed) return true;
     if (this._paused) return false;
 
-    this._elapsed += dt;
+    let scaledDt = dt * this._playbackRate;
 
-    // ── Drive tweens ──────────────────────────────────────────────────────
-    for (const entry of this._entries) {
-      if (entry.type === 'tween') {
-        if (!entry.tween.isCompleted && !entry.tween.isKilled) {
-          entry.tween.advance(dt);
+    // ── Repeat delay (between-cycle pause) ───────────────────────────────
+    if (this._inRepeatDelay) {
+      this._repeatDelayRemaining -= scaledDt;
+      if (this._repeatDelayRemaining > 0) return false;
+      // Carry excess past the repeat delay into the new cycle.
+      scaledDt = -this._repeatDelayRemaining;
+      this._repeatDelayRemaining = 0;
+      this._inRepeatDelay = false;
+      this._elapsed = 0;
+    }
+
+    let remainingDt = scaledDt;
+    do {
+      const tickDt = remainingDt;
+      remainingDt = 0;
+
+      this._elapsed += tickDt;
+
+      // ── Drive tweens ────────────────────────────────────────────────────
+      for (const entry of this._entries) {
+        if (entry.type === 'tween') {
+          if (!entry.tween.isCompleted && !entry.tween.isKilled) {
+            entry.tween.advance(tickDt);
+          }
+          continue;
         }
-        continue;
+
+        // ── Fire callbacks at the correct moment ──────────────────────────
+        if (!entry.called && this._elapsed >= entry.at) {
+          entry.called = true;
+          entry.fn();
+        }
       }
 
-      // ── Fire callbacks at the correct moment ──────────────────────────
-      if (!entry.called && this._elapsed >= entry.at) {
-        entry.called = true;
-        entry.fn();
-      }
-    }
+      // ── Check completion ────────────────────────────────────────────────
+      if (this._elapsed >= this._totalDuration) {
+        if (this._repeatsDone < this._totalRepeats) {
+          this._repeatsDone++;
+          this._loopCount++;
+          const excess = this._elapsed - this._totalDuration;
+          const repeatDelay = this._opts.repeatDelay;
 
-    // ── Check completion ──────────────────────────────────────────────────
-    if (this._elapsed >= this._totalDuration) {
-      if (this._opts.loop) {
-        this._loopCount++;
-        this._elapsed = 0;
-        // Reset all tweens and call entries for the next loop.
-        this._resetEntries();
-        return false;
-      }
+          this._resetEntries();
+          this._elapsed = 0;
 
-      this._completed = true;
-      this._opts.onComplete();
-      return true;
-    }
+          if (repeatDelay > 0) {
+            const delayRemaining = repeatDelay - excess;
+            if (delayRemaining > 0) {
+              this._inRepeatDelay = true;
+              this._repeatDelayRemaining = delayRemaining;
+              return false;
+            }
+            // Excess consumed the delay; carry remainder into new cycle.
+            remainingDt = -delayRemaining;
+          } else {
+            remainingDt = excess;
+          }
+
+          continue;
+        }
+
+        this._completed = true;
+        this._opts.onComplete();
+        return true;
+      }
+    } while (remainingDt > 0);
 
     return false;
   }

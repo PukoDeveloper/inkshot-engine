@@ -1,6 +1,11 @@
 import type { Core } from '../core/Core.js';
 import type { EnginePlugin } from '../types/plugin.js';
-import type { TweenToParams, TweenToOutput, TweenKillParams } from '../types/tween.js';
+import type {
+  TweenToParams,
+  TweenToOutput,
+  TweenKillParams,
+  TweenFinishedParams,
+} from '../types/tween.js';
 
 // ---------------------------------------------------------------------------
 // Easing
@@ -91,6 +96,18 @@ export interface TweenOptions {
    * Combine with `loop: true` for a continuous ping-pong animation.
    */
   yoyo?: boolean;
+  /**
+   * Number of additional times to replay after the first play.
+   * `0` = play once (default). `-1` = infinite (same as `loop: true`).
+   * Ignored when `loop: true`.
+   */
+  repeat?: number;
+  /**
+   * Delay in milliseconds inserted between each repeat cycle.
+   * Defaults to `0`.  Has no effect unless `repeat` or `loop` causes the
+   * tween to restart.
+   */
+  repeatDelay?: number;
   /** Called once when the tween first starts animating (after any delay). */
   onStart?: () => void;
   /** Called every tick while the tween is animating, with the current eased progress `0–1`. */
@@ -169,6 +186,18 @@ export class Tween<T extends object = object> {
   private _killed = false;
   private _completed = false;
 
+  /**
+   * Total number of additional plays allowed after the first.
+   * `Infinity` for infinite loops (`loop: true` or `repeat: -1`).
+   */
+  private readonly _totalRepeats: number;
+  /** How many repeat cycles have been completed so far. */
+  private _repeatsDone = 0;
+  /** Whether the tween is currently counting down a between-cycle delay. */
+  private _inRepeatDelay = false;
+  /** Remaining milliseconds of the current between-cycle delay countdown. */
+  private _repeatDelayRemaining = 0;
+
   constructor(target: T, props: Record<string, number>, options: TweenOptions) {
     this.target = target;
     this._toProps = { ...props };
@@ -177,9 +206,16 @@ export class Tween<T extends object = object> {
       delay: 0,
       loop: false,
       yoyo: false,
+      repeat: 0,
+      repeatDelay: 0,
       ...options,
     };
     this._delayRemaining = this._opts.delay;
+    this._totalRepeats = this._opts.loop
+      ? Infinity
+      : this._opts.repeat === -1
+        ? Infinity
+        : this._opts.repeat;
   }
 
   // ---------------------------------------------------------------------------
@@ -204,6 +240,16 @@ export class Tween<T extends object = object> {
   /** `true` if the tween has finished naturally. */
   get isCompleted(): boolean {
     return this._completed;
+  }
+
+  /**
+   * Normalised progress of the current pass `[0, 1]`.
+   * Returns `0` before the tween has started, `1` once complete.
+   */
+  get progress(): number {
+    if (!this._started) return 0;
+    const { duration } = this._opts;
+    return duration > 0 ? Math.min(this._elapsed / duration, 1) : 1;
   }
 
   // ---------------------------------------------------------------------------
@@ -252,15 +298,74 @@ export class Tween<T extends object = object> {
     this._killed = false;
     this._completed = false;
     this._delayRemaining = this._opts.delay;
+    this._repeatsDone = 0;
+    this._inRepeatDelay = false;
+    this._repeatDelayRemaining = 0;
     return this;
+  }
+
+  /**
+   * Jump the playhead to `timeMs` within the current forward pass.
+   *
+   * - Clamps to `[0, duration]`.
+   * - Captures `from` values if the tween has not yet started.
+   * - Fires `onUpdate` with the eased progress at the target time.
+   * - Does nothing if the tween has been killed.
+   */
+  seek(timeMs: number): this {
+    if (this._killed) return this;
+
+    const { duration, ease } = this._opts;
+    const clamped = Math.max(0, Math.min(timeMs, duration));
+
+    // Ensure the tween is started (capture from values).
+    if (!this._started) {
+      this._started = true;
+      this._delayRemaining = 0;
+      this._inRepeatDelay = false;
+      this._repeatDelayRemaining = 0;
+      this._opts.onStart?.();
+      const tgt0 = this.target as Record<string, number>;
+      this._props = new Map(
+        Object.entries(this._toProps).map(([key, to]) => [
+          key,
+          { from: (tgt0[key] as number | undefined) ?? 0, to },
+        ]),
+      );
+    }
+
+    this._elapsed = clamped;
+    this._completed = false;
+    this._inRepeatDelay = false;
+
+    const rawT = duration > 0 ? clamped / duration : 1;
+    const t = this._backward ? 1 - rawT : rawT;
+    const easedT = ease(t);
+
+    const tgt = this.target as Record<string, number>;
+    for (const [key, state] of this._props!) {
+      tgt[key] = state.from + (state.to - state.from) * easedT;
+    }
+    this._opts.onUpdate?.(easedT);
+
+    return this;
+  }
+
+  /**
+   * Jump the playhead to a normalised position `[0, 1]` within the current
+   * forward pass.  Equivalent to `seek(progress * duration)`.
+   */
+  seekProgress(value: number): this {
+    return this.seek(value * this._opts.duration);
   }
 
   /**
    * Advance the tween by `dt` milliseconds.
    *
-   * Excess time past a phase boundary (e.g. the end of a forward yoyo pass)
-   * is carried into the next phase in the same call, so a single large `dt`
-   * can advance through multiple phases without needing repeated calls.
+   * Excess time past a phase boundary (e.g. the end of a forward yoyo pass,
+   * or a repeat-delay expiry) is carried into the next phase in the same
+   * call, so a single large `dt` can advance through multiple phases without
+   * needing repeated calls.
    *
    * @returns `true` when the tween is finished and should be removed from
    *   the manager (either killed or completed).
@@ -270,13 +375,23 @@ export class Tween<T extends object = object> {
     if (this._completed) return true;
     if (this._paused) return false;
 
-    // ── Delay ────────────────────────────────────────────────────────────
+    // ── Initial delay ─────────────────────────────────────────────────────
     if (this._delayRemaining > 0) {
       this._delayRemaining -= dt;
       if (this._delayRemaining > 0) return false;
       // Carry over excess time past the delay into the active phase.
       dt = -this._delayRemaining;
       this._delayRemaining = 0;
+    }
+
+    // ── Repeat delay (between-cycle pause) ────────────────────────────────
+    if (this._inRepeatDelay) {
+      this._repeatDelayRemaining -= dt;
+      if (this._repeatDelayRemaining > 0) return false;
+      // Carry excess past the repeat delay into the new cycle.
+      dt = -this._repeatDelayRemaining;
+      this._repeatDelayRemaining = 0;
+      this._inRepeatDelay = false;
     }
 
     // ── Capture 'from' values on first active tick ────────────────────────
@@ -294,7 +409,8 @@ export class Tween<T extends object = object> {
       );
     }
 
-    const { duration, ease, loop, yoyo } = this._opts;
+    const { duration, ease, yoyo } = this._opts;
+    const repeatDelay = this._opts.repeatDelay;
     const tgt = this.target as Record<string, number>;
 
     // ── Phase loop: carry excess time across yoyo / loop boundaries ───────
@@ -328,22 +444,42 @@ export class Tween<T extends object = object> {
         continue;
       }
 
-      if (loop) {
-        // Full cycle done → restart, carry excess.
+      // ── Full cycle complete (non-yoyo, or yoyo backward pass done) ───────
+      if (this._repeatsDone < this._totalRepeats) {
+        this._repeatsDone++;
         this._backward = false;
         this._elapsed = 0;
-        remainingDt = excess;
+
+        if (repeatDelay > 0) {
+          const delayRemaining = repeatDelay - excess;
+          if (delayRemaining > 0) {
+            // Snap to start-of-cycle values and wait for the repeat delay.
+            if (!yoyo) {
+              for (const [key, state] of this._props!) {
+                tgt[key] = state.from;
+              }
+            }
+            this._inRepeatDelay = true;
+            this._repeatDelayRemaining = delayRemaining;
+            return false;
+          }
+          // Excess exceeded the delay; carry the remainder into the new cycle.
+          remainingDt = -delayRemaining;
+        } else {
+          remainingDt = excess;
+        }
+
         if (!yoyo) {
-          // For plain loop, snap back to 'from' to avoid a one-frame glitch.
+          // For plain repeat, snap back to 'from' to avoid a one-frame glitch.
           for (const [key, state] of this._props!) {
             tgt[key] = state.from;
           }
         }
-        // For yoyo + loop the backward pass already left values at 'from'.
+        // For yoyo + repeat the backward pass already left values at 'from'.
         continue;
       }
 
-      // ── No loop: snap to exact final values and complete ─────────────────
+      // ── No more repeats: snap to exact final values and complete ──────────
       for (const [key, state] of this._props!) {
         tgt[key] = this._backward ? state.from : state.to;
       }
@@ -416,6 +552,8 @@ export class TweenManager implements EnginePlugin {
           delay: params.delay,
           loop: params.loop,
           yoyo: params.yoyo,
+          repeat: params.repeat,
+          repeatDelay: params.repeatDelay,
         });
         const id = params.id ?? nextId();
         this.add(tween, id);
@@ -524,12 +662,21 @@ export class TweenManager implements EnginePlugin {
 
     for (const item of done) {
       this._active.delete(item);
-      // Remove from IDs map
+      // Remove from IDs map and emit tween/finished for natural completions.
+      let id: string | undefined;
       for (const [k, v] of this._ids) {
         if (v === item) {
+          id = k;
           this._ids.delete(k);
           break;
         }
+      }
+      if (item.isCompleted && this._core) {
+        const finishedParams: TweenFinishedParams = { id };
+        if (item instanceof Tween) {
+          finishedParams.target = item.target;
+        }
+        this._core.events.emitSync('tween/finished', finishedParams);
       }
     }
   };

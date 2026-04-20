@@ -22,6 +22,14 @@ export interface TweenToParams {
   /** Whether the tween should reverse on alternate iterations (requires `loop`). */
   yoyo?: boolean;
   /**
+   * Number of additional times to replay after the first play.
+   * `0` = play once (default). `-1` = infinite (same as `loop: true`).
+   * Ignored when `loop: true`.
+   */
+  repeat?: number;
+  /** Delay in milliseconds inserted between each repeat cycle. Defaults to `0`. */
+  repeatDelay?: number;
+  /**
    * Optional stable identifier.  Pass the same ID to `tween/kill` to cancel
    * this specific tween without needing a reference to the object.
    */
@@ -32,6 +40,17 @@ export interface TweenToParams {
 export interface TweenToOutput {
   /** The ID associated with the created tween (auto-generated if none was supplied). */
   id: string;
+}
+
+/**
+ * EventBus params emitted as `tween/finished` when a tween or timeline
+ * completes naturally (i.e. is not killed).
+ */
+export interface TweenFinishedParams {
+  /** The ID of the finished animatable, if one was assigned. */
+  id?: string;
+  /** The target object of the finished tween. Absent for timelines. */
+  target?: object;
 }
 
 /** EventBus params for `tween/kill` — stop one or more tweens. */
