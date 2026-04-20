@@ -428,29 +428,6 @@ describe('DialogueManager', () => {
       };
     }
 
-    function startAndCapture(treeId: string, tree: DialogueTree): string {
-      core.events.emitSync('dialogue/register', { treeId, tree });
-      let landed = '';
-      const ns = `cap_${treeId}`;
-      core.events.on(ns, 'dialogue/ended', () => {});
-      // We just need to know which branch we entered (both are 'end' nodes)
-      const nodeH = vi.fn();
-      core.events.on(ns, 'dialogue/node', nodeH);
-      // Actually 'end' nodes go straight to ended — check nodeId via ended?
-      // Easier: override with non-end nodes
-      const nodeCapture: string[] = [];
-      const capNs = `nodeCapNs_${treeId}`;
-      core.events.on(capNs, 'dialogue/started', () => {});
-      core.events.emitSync('dialogue/start', { treeId });
-      void nodeH;
-      // For end nodes, no dialogue/node is emitted — check isActive instead
-      // We'll check via state:get
-      const { output } = core.events.emitSync<Record<string,never>, DialogueStateGetOutput>('dialogue/state:get', {});
-      landed = output.active ? output.nodeId ?? '' : 'ENDED';
-      void nodeCapture;
-      return landed;
-    }
-
     it('not condition: negates a true condition', () => {
       core.events.on('notTest', 'game/state:get', (_p: unknown, o: { state: string }) => {
         o.state = 'playing';
