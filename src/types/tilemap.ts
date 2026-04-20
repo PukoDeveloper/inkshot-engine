@@ -1,3 +1,5 @@
+import type { Filter } from 'pixi.js';
+
 // ---------------------------------------------------------------------------
 // Tileset
 // ---------------------------------------------------------------------------
@@ -226,6 +228,30 @@ export interface TilemapLayerDef {
    * Required when `collider` is `true`; ignored otherwise.
    */
   solidTileIds?: number[];
+
+  /**
+   * One or more Pixi `Filter` objects applied to this layer's `Container`.
+   *
+   * Filters are applied immediately when the layer is created during
+   * `tilemap/load`, and can be updated at runtime via
+   * `tilemap/layer:set-filter`.
+   *
+   * @example Apply a colour tint to a single layer
+   * ```ts
+   * import { ColorMatrixFilter } from 'pixi.js';
+   *
+   * const tint = new ColorMatrixFilter();
+   * tint.tint(0xff0000); // red overlay
+   *
+   * await core.events.emit('tilemap/load', {
+   *   mapData: {
+   *     layers: [{ name: 'lava', data: [...], filters: tint }],
+   *     // ...
+   *   },
+   * });
+   * ```
+   */
+  filters?: Filter | Filter[];
 }
 
 // ---------------------------------------------------------------------------
@@ -377,3 +403,14 @@ export interface TilemapLoadedParams {
 /** Notification params emitted with `tilemap/unloaded` after the map is removed. */
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface TilemapUnloadedParams {}
+
+/** Params for `tilemap/layer:set-filter`. */
+export interface TilemapLayerSetFilterParams {
+  /** Zero-based layer index to update. */
+  layerIndex: number;
+  /**
+   * One or more Pixi `Filter` objects to apply to the layer.
+   * Pass `null` or an empty array to remove all filters from the layer.
+   */
+  filters: Filter | Filter[] | null;
+}

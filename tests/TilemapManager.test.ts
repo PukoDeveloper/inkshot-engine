@@ -60,6 +60,7 @@ vi.mock('pixi.js', async () => {
     alpha = 1;
     visible = true;
     cullable = false;
+    filters: unknown[] = [];
     children: unknown[] = [];
 
     addChild(child: unknown) {
@@ -592,6 +593,106 @@ describe('TilemapManager', () => {
           layerIndex: 0, col: 15, row: 15, tileId: 2,
         });
       }).not.toThrow();
+    });
+  });
+
+  // ── Layer filters ─────────────────────────────────────────────────────────
+
+  describe('layer filters', () => {
+    /** Minimal fake filter object that satisfies the type check in tests. */
+    const makeFilter = () => ({ label: 'test-filter' }) as unknown as import('pixi.js').Filter;
+
+    it('applies a single filter to a layer container on load', async () => {
+      const filter = makeFilter();
+      const data = makeMapData({
+        layers: [{ name: 'ground', data: new Array(16).fill(1), filters: filter }],
+      });
+      await loadMap(core, data);
+
+      const layerContainer = worldLayer.children[0] as { filters: unknown[] };
+      expect(layerContainer.filters).toEqual([filter]);
+    });
+
+    it('applies an array of filters to a layer container on load', async () => {
+      const f1 = makeFilter();
+      const f2 = makeFilter();
+      const data = makeMapData({
+        layers: [{ name: 'ground', data: new Array(16).fill(1), filters: [f1, f2] }],
+      });
+      await loadMap(core, data);
+
+      const layerContainer = worldLayer.children[0] as { filters: unknown[] };
+      expect(layerContainer.filters).toEqual([f1, f2]);
+    });
+
+    it('leaves filters empty when none are specified in the layer def', async () => {
+      await loadMap(core, makeMapData()); // no filters field
+      const layerContainer = worldLayer.children[0] as { filters: unknown[] };
+      expect(layerContainer.filters).toEqual([]);
+    });
+
+    it('tilemap/layer:set-filter replaces filters at runtime', async () => {
+      await loadMap(core, makeMapData());
+
+      const filter = makeFilter();
+      core.events.emitSync('tilemap/layer:set-filter', {
+        layerIndex: 0,
+        filters: filter,
+      });
+
+      const layerContainer = worldLayer.children[0] as { filters: unknown[] };
+      expect(layerContainer.filters).toEqual([filter]);
+    });
+
+    it('tilemap/layer:set-filter with null clears all filters', async () => {
+      const filter = makeFilter();
+      const data = makeMapData({
+        layers: [{ name: 'ground', data: new Array(16).fill(1), filters: filter }],
+      });
+      await loadMap(core, data);
+
+      core.events.emitSync('tilemap/layer:set-filter', {
+        layerIndex: 0,
+        filters: null,
+      });
+
+      const layerContainer = worldLayer.children[0] as { filters: unknown[] };
+      expect(layerContainer.filters).toEqual([]);
+    });
+
+    it('tilemap/layer:set-filter with empty array clears all filters', async () => {
+      const filter = makeFilter();
+      const data = makeMapData({
+        layers: [{ name: 'ground', data: new Array(16).fill(1), filters: filter }],
+      });
+      await loadMap(core, data);
+
+      core.events.emitSync('tilemap/layer:set-filter', {
+        layerIndex: 0,
+        filters: [],
+      });
+
+      const layerContainer = worldLayer.children[0] as { filters: unknown[] };
+      expect(layerContainer.filters).toEqual([]);
+    });
+
+    it('tilemap/layer:set-filter does nothing for an out-of-range layer index', async () => {
+      await loadMap(core, makeMapData());
+      expect(() => {
+        core.events.emitSync('tilemap/layer:set-filter', {
+          layerIndex: 99,
+          filters: makeFilter(),
+        });
+      }).not.toThrow();
+    });
+
+    it('direct setLayerFilter API applies filters correctly', async () => {
+      await loadMap(core, makeMapData());
+      const filter = makeFilter();
+      tm.setLayerFilter(0, filter);
+
+      const layerContainer = worldLayer.children[0] as { filters: unknown[] };
+      expect(layerContainer.filters).toEqual([filter]);
     });
   });
 });

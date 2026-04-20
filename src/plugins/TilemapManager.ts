@@ -1,4 +1,5 @@
 import { Assets, Container, Rectangle, Sprite, Texture } from 'pixi.js';
+import type { Filter } from 'pixi.js';
 import type { Core } from '../core/Core.js';
 import type { EnginePlugin } from '../types/plugin.js';
 import type { CoreUpdateParams } from '../types/rendering.js';
@@ -10,6 +11,7 @@ import type {
   TilemapGetTileOutput,
   TilemapGetTileParams,
   TilemapLayerDef,
+  TilemapLayerSetFilterParams,
   TilemapLoadOutput,
   TilemapLoadParams,
   TilesetDef,
@@ -87,14 +89,15 @@ interface AnimatedSpriteRef {
  *   push their tile data to `CollisionManager` via `collision/tilemap:set`.
  *
  * ### EventBus API
- * | Event              | Params / Output                              |
- * |--------------------|----------------------------------------------|
- * | `tilemap/load`     | `TilemapLoadParams → TilemapLoadOutput`      |
- * | `tilemap/unload`   | `TilemapUnloadParams`                        |
- * | `tilemap/set-tile` | `TilemapSetTileParams`                       |
- * | `tilemap/get-tile` | `TilemapGetTileParams → TilemapGetTileOutput`|
- * | `tilemap/loaded`   | `TilemapLoadedParams` (notification)         |
- * | `tilemap/unloaded` | (notification)                               |
+ * | Event                       | Params / Output                                     |
+ * |-----------------------------|-----------------------------------------------------|
+ * | `tilemap/load`              | `TilemapLoadParams → TilemapLoadOutput`             |
+ * | `tilemap/unload`            | `TilemapUnloadParams`                               |
+ * | `tilemap/set-tile`          | `TilemapSetTileParams`                              |
+ * | `tilemap/get-tile`          | `TilemapGetTileParams → TilemapGetTileOutput`       |
+ * | `tilemap/layer:set-filter`  | `TilemapLayerSetFilterParams`                       |
+ * | `tilemap/loaded`            | `TilemapLoadedParams` (notification)                |
+ * | `tilemap/unloaded`          | (notification)                                      |
  *
  * ### Direct API
  * ```ts
@@ -179,6 +182,7 @@ export class TilemapManager implements EnginePlugin {
     core.events.on(this.namespace, 'tilemap/unload', this._onUnload);
     core.events.on(this.namespace, 'tilemap/set-tile', this._onSetTile);
     core.events.on(this.namespace, 'tilemap/get-tile', this._onGetTile);
+    core.events.on(this.namespace, 'tilemap/layer:set-filter', this._onLayerSetFilter);
     core.events.on(this.namespace, 'core/update', this._onUpdate);
   }
 
@@ -233,6 +237,25 @@ export class TilemapManager implements EnginePlugin {
     }
   }
 
+  /**
+   * Apply Pixi `Filter`(s) to a layer's `Container` at runtime.
+   *
+   * Pass `null` or an empty array to remove all filters from the layer.
+   *
+   * @param layerIndex  Zero-based layer index.
+   * @param filters     Filter(s) to apply, or `null` / `[]` to clear.
+   */
+  setLayerFilter(layerIndex: number, filters: Filter | Filter[] | null): void {
+    const container = this._layerContainers[layerIndex];
+    if (!container) return;
+
+    if (!filters || (Array.isArray(filters) && filters.length === 0)) {
+      container.filters = [];
+    } else {
+      container.filters = Array.isArray(filters) ? filters : [filters];
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Event handlers
   // ---------------------------------------------------------------------------
@@ -279,6 +302,12 @@ export class TilemapManager implements EnginePlugin {
       layerContainer.zIndex = li * 10 + (layerDef.zOffset ?? 0);
       layerContainer.visible = layerDef.visible !== false;
       layerContainer.alpha = layerDef.opacity ?? 1;
+
+      if (layerDef.filters) {
+        layerContainer.filters = Array.isArray(layerDef.filters)
+          ? layerDef.filters
+          : [layerDef.filters];
+      }
 
       this._layerContainers.push(layerContainer);
       this._worldLayer!.addChild(layerContainer);
@@ -329,6 +358,10 @@ export class TilemapManager implements EnginePlugin {
     output: TilemapGetTileOutput,
   ): void => {
     output.tileId = this.getTile(params.layerIndex, params.col, params.row);
+  };
+
+  private readonly _onLayerSetFilter = (params: TilemapLayerSetFilterParams): void => {
+    this.setLayerFilter(params.layerIndex, params.filters);
   };
 
   private readonly _onUpdate = (params: CoreUpdateParams): void => {

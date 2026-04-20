@@ -193,6 +193,7 @@ export type {
   TilemapGetTileOutput,
   TilemapLoadedParams,
   TilemapUnloadedParams,
+  TilemapLayerSetFilterParams,
 } from './types/tilemap.js';
 
 // Tween system
