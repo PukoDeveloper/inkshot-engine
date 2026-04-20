@@ -16,13 +16,15 @@
 - [ ] 與 `ObjectPool` 整合，避免 GC 壓力
 - [ ] 事件：`particle/complete`（Burst 結束時發出）
 
-### 2. Tilemap 渲染器 (Tilemap Renderer)
-- [ ] 新增 `TilemapRenderer` plugin（namespace: `tilemap`）
-- [ ] 支援讀取 Tiled 編輯器輸出的 JSON 格式地圖
-- [ ] 支援多圖層 tileset 渲染（背景、前景、裝飾層）
-- [ ] 支援動態 tile（動態切換貼圖）
-- [ ] 與現有 `CollisionManager` 的 `collision/tilemap:set` 整合（自動同步碰撞層）
-- [ ] 事件：`tilemap/load`、`tilemap/unload`、`tilemap/set-tile`
+### 2. Tilemap 渲染器 (Tilemap Renderer) ✅
+- [x] 新增 `TilemapManager` plugin（namespace: `tilemap`）
+- [x] 分塊渲染（Chunk-based rendering）：地圖切分為 N×N Tile 的 Chunk，每個 Chunk 設 `cullable=true`，Pixi 自動略過不在視口內的 Chunk，支援 10 000×10 000+ Tile 規模地圖
+- [x] 支援多圖層（Multiple layers）：任意數量圖層，每層可獨立設定 opacity、visible、zOffset
+- [x] 支援動態 Tile（動畫 Tile）：`animatedTiles` 定義多幀序列，由 `core/update` 驅動，直接更新 Sprite 貼圖不重建整個 Chunk
+- [x] 支援 Auto-tiling（自動連接）：4-bit / 8-bit 相鄰遮罩，`autoConnect:true` 自動對放置格與周邊格重算 variant Tile ID
+- [x] 與現有 `CollisionManager` 的 `collision/tilemap:set` 整合（圖層設 `collider:true` 自動同步碰撞資料）
+- [x] 事件：`tilemap/load`、`tilemap/unload`、`tilemap/set-tile`、`tilemap/get-tile`、`tilemap/loaded`、`tilemap/unloaded`
+- [x] 直接 API：`getTile()`、`setTile()`
 
 ---
 
