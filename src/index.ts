@@ -340,4 +340,35 @@ export type {
   UIStackPanelProps,
   UIScrollViewWidget,
   UIStackPanelWidget,
+  UIDialogueBoxProps,
 } from './types/ui.js';
+
+// Dialogue system
+export { DialogueManager } from './plugins/DialogueManager.js';
+export {
+  parseDialogueMarkup,
+  buildTextSegments,
+  getSpeedAtIndex,
+} from './plugins/DialogueMarkupParser.js';
+export type {
+  ParsedMarkup,
+  ColorSpan,
+  SpeedSpan,
+  PauseMark,
+} from './plugins/DialogueMarkupParser.js';
+export type {
+  DialogueTextSegment,
+  DialogueShowTextParams,
+  DialogueShowChoicesParams,
+  DialogueAdvanceParams,
+  DialogueChoiceParams,
+  DialogueEndCommandParams,
+  DialogueStateGetOutput,
+  DialogueStartedParams,
+  DialogueNodeParams,
+  DialogueTextTickParams,
+  DialogueChoicesParams,
+  DialogueAdvancedParams,
+  DialogueChoiceMadeParams,
+  DialogueEndedParams,
+} from './types/dialogue.js';

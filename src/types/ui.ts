@@ -357,6 +357,34 @@ export interface UIDialogProps extends UICreateParams {
   readonly modal?: boolean;
 }
 
+/**
+ * Props for the built-in `dialoguebox` widget.
+ *
+ * The widget subscribes to `dialogue/*` events and renders the active speaker,
+ * body text (with typewriter effect), portrait slot, choice buttons, and a
+ * continue indicator.
+ */
+export interface UIDialogueBoxProps extends UICreateParams {
+  readonly type: 'dialoguebox';
+  /** Panel width in pixels. Default: `600`. */
+  readonly width?: number;
+  /** Panel height in pixels. Default: `160`. */
+  readonly height?: number;
+  /** Panel background colour. Default: `0x1a1a2e`. */
+  readonly backgroundColor?: number;
+  /** Body text colour. Default: `0xffffff`. */
+  readonly textColor?: number;
+  /** Speaker name colour. Default: `0xffd700`. */
+  readonly nameColor?: number;
+  /** Panel corner radius. Default: `8`. */
+  readonly cornerRadius?: number;
+  /**
+   * When `true` (default) a 64×64 portrait slot is reserved on the left side
+   * of the panel.
+   */
+  readonly showPortrait?: boolean;
+}
+
 /** Props for the built-in `stack` (StackPanel) widget. */
 export interface UIStackPanelProps extends UICreateParams {
   readonly type: 'stack';

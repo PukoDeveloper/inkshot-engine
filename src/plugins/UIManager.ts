@@ -1,4 +1,4 @@
-import { Container, Graphics, Text } from 'pixi.js';
+import { Container, Graphics, HTMLText, Text } from 'pixi.js';
 import type { Core } from '../core/Core.js';
 import type { EnginePlugin } from '../types/plugin.js';
 import type {
@@ -29,7 +29,15 @@ import type {
   UIStackPanelProps,
   UIScrollViewWidget,
   UIStackPanelWidget,
+  UIDialogueBoxProps,
 } from '../types/ui.js';
+import type {
+  DialogueNodeParams,
+  DialogueTextTickParams,
+  DialogueChoicesParams,
+  DialogueEndedParams,
+  DialogueTextSegment,
+} from '../types/dialogue.js';
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -692,6 +700,234 @@ function createStackPanel(id: string, props: UIStackPanelProps, _core: Core): UI
 }
 
 // ---------------------------------------------------------------------------
+// Built-in widget: DialogueBox — markup helpers
+// ---------------------------------------------------------------------------
+
+/** Escape characters that are special in HTML. */
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/**
+ * Convert dialogue text segments into an HTML string suitable for
+ * {@link https://pixijs.com/guides/components/text PixiJS HTMLText}.
+ *
+ * Segments without a `color` are rendered as plain (escaped) text; coloured
+ * segments are wrapped in `<span style="color:#rrggbb;">…</span>`.
+ */
+function segmentsToHtml(segments: ReadonlyArray<DialogueTextSegment>): string {
+  if (segments.length === 0) return '';
+  if (segments.length === 1 && segments[0]!.color === undefined) {
+    return escapeHtml(segments[0]!.text);
+  }
+  return segments
+    .map(seg => {
+      const escaped = escapeHtml(seg.text);
+      if (seg.color !== undefined) {
+        const hex = `#${seg.color.toString(16).padStart(6, '0')}`;
+        return `<span style="color:${hex};">${escaped}</span>`;
+      }
+      return escaped;
+    })
+    .join('');
+}
+
+// ---------------------------------------------------------------------------
+// Built-in widget: DialogueBox
+// ---------------------------------------------------------------------------
+
+function createDialogueBox(id: string, props: UIDialogueBoxProps, core: Core): UIWidget {
+  const boxWidth     = props.width           ?? 600;
+  const boxHeight    = props.height          ?? 160;
+  const bgColor      = props.backgroundColor ?? 0x1a1a2e;
+  const textColor    = props.textColor       ?? 0xffffff;
+  const nameColor    = props.nameColor       ?? 0xffd700;
+  const radius       = props.cornerRadius    ?? 8;
+  const showPortrait = props.showPortrait    !== false;
+
+  const portraitSize = 64;
+  const portraitPad  = showPortrait ? portraitSize + 16 : 0;
+  const padH         = 12;
+  const padV         = 10;
+  const textAreaX    = padH + portraitPad;
+  const textAreaW    = boxWidth - textAreaX - padH;
+
+  const root = new Container();
+  root.label = `ui:dialoguebox:${id}`;
+
+  // Panel background
+  const panel = new Graphics();
+  panel.roundRect(0, 0, boxWidth, boxHeight, radius);
+  panel.fill({ color: bgColor });
+  panel.stroke({ width: 1, color: 0x44446a });
+  root.addChild(panel);
+
+  // Portrait placeholder (simple box drawn on demand)
+  const portraitSlot = new Graphics();
+  if (showPortrait) {
+    portraitSlot.x = padH;
+    portraitSlot.y = (boxHeight - portraitSize) / 2;
+    root.addChild(portraitSlot);
+  }
+
+  // Speaker name
+  const nameNode = new Text({
+    text: '',
+    style: { fontSize: 14, fill: nameColor, fontFamily: 'Arial', fontWeight: 'bold' },
+  });
+  nameNode.x = textAreaX;
+  nameNode.y = padV;
+  root.addChild(nameNode);
+
+  // Body text — HTMLText supports inline colour via <span style="color:…">
+  const bodyNode = new HTMLText({
+    text: '',
+    style: {
+      fontSize: 13,
+      fill: textColor,
+      fontFamily: 'Arial',
+      wordWrap: true,
+      wordWrapWidth: textAreaW,
+    },
+  });
+  bodyNode.x = textAreaX;
+  bodyNode.y = padV + 22;
+  root.addChild(bodyNode);
+
+  // Choices container
+  const choicesContainer = new Container();
+  choicesContainer.x = textAreaX;
+  choicesContainer.y = padV + 22;
+  choicesContainer.visible = false;
+  root.addChild(choicesContainer);
+
+  // Continue indicator (▼)
+  const continueIndicator = new Text({
+    text: '▼',
+    style: { fontSize: 12, fill: 0xaaaaaa, fontFamily: 'Arial' },
+  });
+  continueIndicator.x = boxWidth - padH - 14;
+  continueIndicator.y = boxHeight - padV - 16;
+  continueIndicator.visible = false;
+  root.addChild(continueIndicator);
+
+  // ── Choice buttons state ───────────────────────────────────────────────
+  const choiceButtons: Array<{ bg: Graphics; label: Text }> = [];
+
+  function clearChoices(): void {
+    for (const btn of choiceButtons) {
+      choicesContainer.removeChild(btn.bg);
+      choicesContainer.removeChild(btn.label);
+      btn.bg.destroy();
+      btn.label.destroy();
+    }
+    choiceButtons.length = 0;
+  }
+
+  function buildChoices(choices: ReadonlyArray<{ text: string; index: number }>): void {
+    clearChoices();
+    const btnWidth  = textAreaW;
+    const btnHeight = 28;
+    const gap       = 4;
+
+    for (const choice of choices) {
+      const bg = new Graphics();
+      bg.roundRect(0, 0, btnWidth, btnHeight, 4);
+      bg.fill({ color: 0x2d2d5e });
+      bg.stroke({ width: 1, color: 0x5555aa });
+      bg.y = choice.index * (btnHeight + gap);
+      bg.eventMode = 'static';
+      bg.cursor = 'pointer';
+      bg.on('pointerover', () => {
+        bg.clear();
+        bg.roundRect(0, 0, btnWidth, btnHeight, 4);
+        bg.fill({ color: 0x44449c });
+        bg.stroke({ width: 1, color: 0x7777cc });
+      });
+      bg.on('pointerout', () => {
+        bg.clear();
+        bg.roundRect(0, 0, btnWidth, btnHeight, 4);
+        bg.fill({ color: 0x2d2d5e });
+        bg.stroke({ width: 1, color: 0x5555aa });
+      });
+      bg.on('pointertap', () => {
+        core.events.emitSync('dialogue/choice', { index: choice.index });
+      });
+
+      const label = new Text({
+        text: choice.text,
+        style: { fontSize: 12, fill: 0xffffff, fontFamily: 'Arial' },
+      });
+      label.x = 8;
+      label.y = bg.y + (btnHeight - 14) / 2;
+
+      choicesContainer.addChild(bg);
+      choicesContainer.addChild(label);
+      choiceButtons.push({ bg, label });
+    }
+  }
+
+  // ── Subscribe to dialogue events ─────────────────────────────────────
+  const ns = `ui:dialoguebox:${id}`;
+
+  core.events.on<DialogueNodeParams>(ns, 'dialogue/node', (params) => {
+    nameNode.text  = params.speaker ?? '';
+    bodyNode.text  = '';
+    continueIndicator.visible = false;
+    choicesContainer.visible  = false;
+    bodyNode.visible          = true;
+
+    // Draw portrait placeholder
+    if (showPortrait) {
+      portraitSlot.clear();
+      if (params.portrait) {
+        portraitSlot.roundRect(0, 0, portraitSize, portraitSize, 4);
+        portraitSlot.fill({ color: 0x333355 });
+        portraitSlot.stroke({ width: 1, color: 0x5555aa });
+      }
+    }
+  });
+
+  core.events.on<DialogueTextTickParams>(ns, 'dialogue/text:tick', (params) => {
+    bodyNode.text = segmentsToHtml(params.segments);
+    if (params.done) {
+      continueIndicator.visible = true;
+    }
+  });
+
+  core.events.on<DialogueChoicesParams>(ns, 'dialogue/choices', (params) => {
+    bodyNode.visible = false;
+    choicesContainer.visible = true;
+    continueIndicator.visible = false;
+    buildChoices(params.choices);
+  });
+
+  core.events.on<DialogueEndedParams>(ns, 'dialogue/ended', () => {
+    root.visible = false;
+  });
+
+  return {
+    id,
+    type: 'dialoguebox',
+    container: root,
+    show()  { root.visible = true; },
+    hide()  { root.visible = false; },
+    destroy() {
+      clearChoices();
+      core.events.removeNamespace(ns);
+      root.destroy({ children: true });
+    },
+    update(newProps) {
+      if (typeof newProps['speakerName'] === 'string') nameNode.text = newProps['speakerName'] as string;
+      if (typeof newProps['bodyText']    === 'string') bodyNode.text = newProps['bodyText']    as string;
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // UIManager
 // ---------------------------------------------------------------------------
 
@@ -796,6 +1032,7 @@ export class UIManager implements EnginePlugin {
     this._factories.set('scrollview',  createScrollView  as unknown as UIWidgetFactory);
     this._factories.set('dialog',      createDialog      as UIWidgetFactory);
     this._factories.set('stack',       createStackPanel  as unknown as UIWidgetFactory);
+    this._factories.set('dialoguebox', createDialogueBox as UIWidgetFactory);
 
     // ── Event handlers ────────────────────────────────────────────────────
 
