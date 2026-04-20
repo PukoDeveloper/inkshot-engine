@@ -412,12 +412,16 @@ audio library is needed.
 
 Each `audio/play` call creates one **playback instance** with:
 
-- An `AudioBufferSourceNode` (the audio data).
+- An `AudioBufferSourceNode` (the decoded audio data).
 - A per-instance `GainNode` for volume control.
-- The chain: `source → instanceGain → masterGain → destination`.
+- When `position` is supplied: a `PannerNode` for spatial distance attenuation and stereo panning.
+- The audio graph: `source → [PannerNode →] instanceGain → [categoryGain →] masterGain → destination`.
 
 The master `GainNode` is shared across all instances, so a single
 `audio/volume` call (without `instanceId`) affects everything at once.
+
+Category `GainNode`s (one per `category` string, e.g. `'bgm'`, `'sfx'`, `'vo'`) sit between the
+per-instance gain and the master gain, allowing independent volume control per audio category.
 
 The `AudioContext` is **lazy-initialised** on the first `audio/load` or
 `audio/play` call.  This defers creation until after a user gesture, which
@@ -431,18 +435,26 @@ satisfies browser autoplay policies.
 2. Calling `source.stop()`.
 3. On resume, creating a new source node and calling `source.start(0, offset)`.
 
+For **spatial** instances the new source is reconnected through the existing `PannerNode`
+(`newSource.connect(inst.pannerNode ?? inst.gainNode)`) so that all spatial position,
+distance model, and roll-off settings are fully preserved across pause/resume cycles.
+
 ### 7.3 Event Contract
 
-| Event           | Async? | Description |
-|-----------------|--------|-------------|
-| `audio/load`    | ✓      | Fetch, decode, and cache an audio clip by alias key |
-| `audio/play`    | ✗ sync | Start playback; returns `{ instanceId }` |
-| `audio/stop`    | ✗ sync | Stop a specific instance or all instances of a key |
-| `audio/pause`   | ✗ sync | Pause a playing instance, preserving position |
-| `audio/resume`  | ✗ sync | Resume a paused instance from the saved position |
-| `audio/volume`  | ✗ sync | Set master volume (no `instanceId`) or per-instance volume |
-| `audio/unload`  | ✗ sync | Remove a buffer from cache to free memory |
-| `audio/state`   | ✗ `emitSync` | Pull: query `state` and `currentTime` for an instance |
+| Event                   | Async? | Description |
+|-------------------------|--------|-------------|
+| `audio/load`            | ✓      | Fetch, decode, and cache an audio clip by alias key |
+| `audio/play`            | ✗ sync | Start playback; returns `{ instanceId }`.  Pass `position` for spatial audio. |
+| `audio/stop`            | ✗ sync | Stop a specific instance, all instances of a key/category, or all sounds |
+| `audio/pause`           | ✗ sync | Pause a playing instance, recording the playback offset |
+| `audio/resume`          | ✗ sync | Resume a paused instance from the saved offset (spatial chain preserved) |
+| `audio/volume`          | ✗ sync | Set master / category / per-instance volume (with optional linear fade) |
+| `audio/fade-stop`       | ✗ sync | Fade a specific instance to silence over `duration` seconds, then stop it |
+| `audio/unload`          | ✗ sync | Remove a decoded buffer from cache |
+| `audio/state`           | ✗ `emitSync` | Pull: query `state` and `currentTime` for an instance |
+| `audio/list`            | ✗ `emitSync` | Pull: list all active (playing/paused) instances |
+| `audio/listener:update` | ✗ sync | Update the spatial listener position (typically driven by the camera) |
+| `audio/source:move`     | ✗ sync | Reposition a spatial audio source at runtime; warns if the instance has no `PannerNode` |
 
 ### 7.4 Basic Usage
 
@@ -463,32 +475,80 @@ const { core } = await createEngine({
   ],
 });
 
-// ① Play looping background music with a stable ID
+// ① Play looping background music in the 'bgm' category
 core.events.emitSync('audio/play', {
   key: 'bgm:town',
   loop: true,
   volume: 0.6,
   instanceId: 'bgm',
+  category: 'bgm',
 });
 
 // ② Play a one-shot SFX (auto-generated ID)
 core.events.emitSync('audio/play', { key: 'sfx:hit', volume: 1.0 });
 
-// ③ Pause the music during a menu
+// ③ Pause the music during a menu (spatial chain preserved on resume)
 core.events.emitSync('audio/pause',  { instanceId: 'bgm' });
 core.events.emitSync('audio/resume', { instanceId: 'bgm' });
 
-// ④ Lower music volume without affecting SFX
-core.events.emitSync('audio/volume', { instanceId: 'bgm', volume: 0.2 });
+// ④ Fade out and stop over 2 seconds (e.g. scene transition)
+core.events.emitSync('audio/fade-stop', { instanceId: 'bgm', duration: 2 });
 
-// ⑤ Query state
+// ⑤ Duck BGM category during dialogue
+core.events.emitSync('audio/volume', { category: 'bgm', volume: 0.2, duration: 0.5 });
+
+// ⑥ Query state and list all instances
 const { output: s } = core.events.emitSync('audio/state', { instanceId: 'bgm' });
 console.log(s.state, s.currentTime); // "playing", 4.23
 
-// ⑥ Stop and release
+const { output: list } = core.events.emitSync('audio/list', {});
+console.log(list.instances.map(i => i.instanceId));
+
+// ⑦ Stop and release
 core.events.emitSync('audio/stop',   { instanceId: 'bgm' });
 core.events.emitSync('audio/unload', { key: 'bgm:town' });
 ```
+
+### 7.5 Spatial Audio
+
+Pass a `position` to `audio/play` to create a positional sound source routed through a
+`PannerNode`.  Drive the listener with `audio/listener:update` (typically from the camera) so
+that distance attenuation and stereo panning are computed automatically:
+
+```ts
+// Play a looping ambient sound at a world-space position
+core.events.emitSync('audio/play', {
+  key: 'sfx:waterfall',
+  loop: true,
+  instanceId: 'waterfall',
+  position:      { x: 320, y: 240 },
+  maxDistance:   400,
+  rolloffFactor: 1,
+  distanceModel: 'linear',
+});
+
+// Drive the listener from the camera every render frame
+core.events.on('myGame', 'core/render', () => {
+  const cam = core.events.emitSync('camera/state', {}).output;
+  core.events.emitSync('audio/listener:update', {
+    x: cam.x + cam.width  / 2,
+    y: cam.y + cam.height / 2,
+  });
+});
+
+// Reposition a moving spatial source at runtime (e.g. a walking NPC)
+core.events.on('myGame', 'core/update', () => {
+  core.events.emitSync('audio/source:move', {
+    instanceId: 'waterfall',
+    x: npc.x,
+    y: npc.y,
+  });
+});
+```
+
+`audio/source:move` logs a `console.warn` if the target instance exists but was created
+without a `position` parameter (i.e. has no `PannerNode`), making misconfigured spatial
+calls immediately visible during development.
 
 ---
 
@@ -1012,7 +1072,7 @@ Built-in plugins in `src/plugins/`:
 
 | File | Namespace | Description |
 |---|---|---|
-| `AudioManager.ts` | `audio` | Web Audio API playback with pause/resume and per-instance volume |
+| `AudioManager.ts` | `audio` | Web Audio API playback with spatial audio (`PannerNode`), categories, fade, pause/resume |
 | `SaveManager.ts` | `save` | In-memory save slots and global save data |
 | `GameStateManager.ts` | `game` | High-level game phase state machine |
 | `InputManager.ts` | `input` | Keyboard, pointer, and gamepad input; action bindings; per-frame axes cache |
@@ -1027,6 +1087,7 @@ Built-in plugins in `src/plugins/`:
 | `Timeline.ts` | _(n/a)_ | Fluent builder for sequenced/parallel tween animations (used via `TweenManager`) |
 | `TilemapManager.ts` | `tilemap` | Chunk-based tilemap rendering with autotile, animated tiles, and multi-layer support |
 | `ParticleManager.ts` | `particle` | 2D particle emitter system with burst/continuous modes, spawn shapes, and ObjectPool reuse |
+| `PathfindingManager.ts` | `pathfinding` | A* pathfinding with weighted terrain, LRU cache, dynamic obstacles (tag-filtered), `fallbackToNearest`, and `smoothPath` |
 | `LocalStorageSaveAdapter.ts` | _(n/a)_ | `localStorage`-backed persistence adapter for `SaveManager` |
 | `LoadingScreen.ts` | `loading` | Built-in fade-in/fade-out loading overlay wired to `scene/load` |
 
@@ -1375,7 +1436,144 @@ The default factory creates a `Sprite` (when `config.texture` is set) or a small
 
 ---
 
-## 13. TypeScript Style
+## 13. Pathfinding System (PathfindingManager)
+
+The `PathfindingManager` is a built-in `EnginePlugin` (namespace `pathfinding`) that provides
+tile-based A* navigation.  It depends on both `CollisionManager` (for the tile grid) and
+`EntityManager` (for optional dynamic obstacles).
+
+### 13.1 Architecture
+
+```
+collision/tilemap:set  ──► _buildGrid()         rebuild full cost grid
+tilemap/set-tile       ──► _updateCell(row,col)  O(1) single-cell update
+pathfinding/find       ──► _find(params)          A* search → path[]
+```
+
+- **Cost grid** — built from the collision tile map.  `'solid'` tiles (and any tile with a
+  non-empty, non-passable shape) are set to `Infinity` (impassable).  All other cells default
+  to cost `1`.  Costs can be overridden per tile value via `pathfinding/weight:set`.
+- **Dynamic obstacles** — when `includeDynamicObstacles: true` is set, entity positions are
+  queried via `entity/query`.  Use `tagFilter` to restrict which entities count as obstacles
+  (without a filter every entity, including HUD anchors and decorative sprites, would block
+  the path).  Dynamic-obstacle results are never cached.
+- **Path cache** — static A* results are stored in a 512-entry **LRU** `Map` keyed by
+  `"fromRow,fromCol→toRow,toCol"`.  The oldest entry is evicted on overflow, bounding memory
+  use on large open maps.  The cache is fully cleared on `collision/tilemap:set` and on
+  `tilemap/set-tile` (which also updates the affected grid cell in O(1)).
+
+### 13.2 A* Details
+
+| Setting | Value |
+|---------|-------|
+| Heuristic (8-dir) | Chebyshev distance |
+| Heuristic (4-dir) | Manhattan distance |
+| Diagonal movement | Supported by default (`directions: 8`); disable with `directions: 4` |
+| Diagonal cost | `√2 ≈ 1.414` × base cell cost |
+
+**Start-cell guard** — if the starting tile is itself impassable (entity knocked into a wall,
+teleport into a solid), `_find` returns `found: false` immediately instead of running A*
+outward from an unreachable origin.
+
+### 13.3 Event Contract
+
+| Event                     | Async? | Description |
+|---------------------------|--------|-------------|
+| `pathfinding/find`        | ✗ sync | A* path from `from` to `to` (world px); returns `path[]`, `cost`, optional `nearest` |
+| `pathfinding/weight:set`  | ✗ sync | Override the movement cost for a tile value |
+| `pathfinding/cache:clear` | ✗ sync | Manually invalidate the path cache |
+
+### 13.4 `pathfinding/find` Parameters
+
+| Parameter                 | Type       | Default    | Description |
+|---------------------------|------------|------------|-------------|
+| `from`                    | `{x,y}`    | —          | Start position in world pixels |
+| `to`                      | `{x,y}`    | —          | Goal position in world pixels |
+| `includeDynamicObstacles` | `boolean`  | `false`    | Treat entity tile positions as dynamic obstacles (results not cached) |
+| `tagFilter`               | `string[]` | —          | With `includeDynamicObstacles`: only entities with **all** listed tags block the path |
+| `fallbackToNearest`       | `boolean`  | `false`    | BFS from the goal to the nearest passable cell when the goal tile is impassable; actual target in `output.nearest` |
+| `smoothPath`              | `boolean`  | `false`    | String-pull (Bresenham LoS) post-pass to remove staircase waypoints from diagonal paths |
+| `maxIterations`           | `number`   | `10 000`   | Abort A* after this many iterations to protect against pathological inputs |
+
+### 13.5 Constructor Options
+
+```ts
+new PathfindingManager({ directions: 4 | 8 })
+// directions — 4: cardinal only; 8: cardinal + diagonal (default)
+```
+
+### 13.6 Usage
+
+```ts
+import { createEngine, EntityManager, CollisionManager, TilemapManager, PathfindingManager } from 'inkshot-engine';
+import type { PathfindingFindParams, PathfindingFindOutput } from 'inkshot-engine';
+
+const { core } = await createEngine({
+  plugins: [
+    new EntityManager(),
+    new CollisionManager(),
+    new TilemapManager(),
+    new PathfindingManager(),   // or { directions: 4 } for 4-dir only
+  ],
+});
+
+// ── Basic path request ──────────────────────────────────────────────────
+const { output } = core.events.emitSync<PathfindingFindParams, PathfindingFindOutput>(
+  'pathfinding/find',
+  { from: player.position, to: target.position },
+);
+if (output.found) followPath(output.path);
+
+// ── Dynamic obstacles scoped to tagged entities ─────────────────────────
+const { output: dyn } = core.events.emitSync('pathfinding/find', {
+  from: npc.position,
+  to:   goal.position,
+  includeDynamicObstacles: true,
+  tagFilter: ['obstacle'],   // only entities tagged 'obstacle' block the path
+});
+
+// ── Fallback when clicking on a wall ───────────────────────────────────
+const { output: near } = core.events.emitSync('pathfinding/find', {
+  from: player.position,
+  to:   clickPosition,
+  fallbackToNearest: true,
+});
+if (near.found) {
+  if (near.nearest) console.log('Redirected to:', near.nearest);
+  followPath(near.path);
+}
+
+// ── Smooth diagonal paths ────────────────────────────────────────────
+const { output: smooth } = core.events.emitSync('pathfinding/find', {
+  from: player.position,
+  to:   target.position,
+  smoothPath: true,   // string-pulls LoS to remove staircase waypoints
+});
+
+// ── Weighted terrain ─────────────────────────────────────────────────
+core.events.emitSync('pathfinding/weight:set', { tileId: 3, cost: 2 });        // mud (2× cost)
+core.events.emitSync('pathfinding/weight:set', { tileId: 4, cost: Infinity }); // lava (impassable)
+
+// ── Manual cache flush (script-driven layout changes) ────────────────
+core.events.emitSync('pathfinding/cache:clear', {});
+```
+
+### 13.7 Automatic Grid Synchronisation
+
+The grid is kept in sync with two event sources:
+
+| Event                   | Handler behaviour |
+|-------------------------|-------------------|
+| `collision/tilemap:set` | Full grid rebuild (`O(rows × cols)`) + cache clear |
+| `tilemap/set-tile`      | Single-cell update (`O(1)`) + cache clear |
+
+This means opening a door (`tilemap/set-tile` with an empty tile) or placing a block is
+immediately reflected in all subsequent `pathfinding/find` calls — no manual intervention
+needed.
+
+---
+
+## 14. TypeScript Style
 
 - **Strict mode** is enabled.  All code must pass `tsc --strict` without error.
 - Prefer `interface` over `type` for object shapes; use `type` for unions, aliases, and mapped types.
@@ -1386,7 +1584,7 @@ The default factory creates a `Sprite` (when `config.texture` is set) or a small
 
 ---
 
-## 14. Coding Style
+## 15. Coding Style
 
 - 2-space indentation, single quotes, trailing commas (enforced by the project's formatter).
 - Prefer `async/await` over raw Promises.
