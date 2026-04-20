@@ -19,6 +19,7 @@ Everything communicates through a shared **EventBus** — no tight coupling, no 
    - [InputManager (`input`)](#inputmanager-input)
    - [SaveManager (`save`)](#savemanager-save)
    - [GameStateManager (`game`)](#gamestatemanager-game)
+   - [SceneManager (`scene`)](#scenemanager-scene)
 5. [Renderer & Layers](#renderer--layers)
 6. [Writing Your Own Plugin](#writing-your-own-plugin)
 7. [Engine Lifecycle](#engine-lifecycle)
@@ -439,6 +440,64 @@ core.events.emitSync('game/state:set', { state: 'playing' });
 const { output } = core.events.emitSync('game/state:get', {});
 console.log(output.state); // 'playing'
 ```
+
+---
+
+### SceneManager (`scene`)
+
+Manages the registration and lifecycle of game scenes — the primary units of level, room, or screen in the game.
+
+#### Scene Descriptor
+
+```ts
+import type { SceneDescriptor } from 'inkshot-engine';
+
+const mainMenu: SceneDescriptor = {
+  key: 'main-menu',
+  async enter(core) {
+    await core.events.emit('assets/load', { bundle: 'ui' });
+    core.events.emitSync('game/state:set', { state: 'main-menu' });
+  },
+  async exit(core) {
+    await core.events.emit('assets/unload', { bundle: 'ui' });
+  },
+};
+```
+
+#### Event Contract
+
+| Event | Async? | Description |
+|-------|--------|-------------|
+| `scene/register` | ✗ `emitSync` | Register a scene descriptor |
+| `scene/load` | ✓ | Transition: exits current scene, enters new one, emits `scene/changed` |
+| `scene/current` | ✗ `emitSync` | Query the key of the active scene (`null` if none) |
+| `scene/changed` | — emitted | Fired after every transition with `{ from, to }` |
+
+#### Usage
+
+```ts
+import { createEngine, SceneManager } from 'inkshot-engine';
+
+const { core } = await createEngine({ plugins: [new SceneManager()] });
+
+// Register scenes
+core.events.emitSync('scene/register', { scene: mainMenu });
+core.events.emitSync('scene/register', { scene: level1 });
+
+// Transition to the first scene
+await core.events.emit('scene/load', { key: 'main-menu' });
+
+// React to transitions
+core.events.on('hud', 'scene/changed', ({ from, to }) => {
+  console.log(`Scene: ${from ?? 'none'} → ${to}`);
+});
+
+// Query current scene
+const { output } = core.events.emitSync('scene/current', {});
+console.log(output.key); // 'main-menu'
+```
+
+Transition effects (fade-out / fade-in) can be added by subscribing to the `before` and `after` phases of `scene/load` respectively — `SceneManager` always runs in the `main` phase.
 
 ---
 

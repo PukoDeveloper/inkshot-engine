@@ -455,7 +455,228 @@ core.events.emitSync('audio/unload', { key: 'bgm:town' });
 
 ---
 
-## 8. File & Module Conventions
+## 8. Scene System (SceneManager)
+
+The `SceneManager` is a built-in `EnginePlugin` (namespace `scene`) that manages the registration and lifecycle of game **scenes** — the primary units of level, room, or screen in the game.
+
+### 8.1 Scene Descriptor
+
+A scene is any object that satisfies the `SceneDescriptor` interface.  Class-based or plain-object scenes are equally valid.
+
+```ts
+import type { SceneDescriptor } from 'inkshot-engine';
+
+const mainMenuScene: SceneDescriptor = {
+  key: 'main-menu',
+  async enter(core) {
+    await core.events.emit('assets/load', { bundle: 'ui' });
+    core.events.emitSync('game/state:set', { state: 'main-menu' });
+  },
+  async exit(core) {
+    await core.events.emit('assets/unload', { bundle: 'ui' });
+  },
+};
+```
+
+| Property | Required | Description |
+|---|---|---|
+| `key` | ✓ | Unique identifier string, e.g. `'main-menu'`, `'level-1'` |
+| `enter(core)` | ✓ | Called when the scene becomes active.  Load assets, spawn entities, set up listeners. |
+| `exit(core)` | ✗ | Called when the scene is about to be replaced.  Unload assets, remove listeners. |
+
+### 8.2 Event Contract
+
+| Event            | Async? | Description |
+|------------------|--------|-------------|
+| `scene/register` | ✗ `emitSync` | Register a scene descriptor in the registry |
+| `scene/load`     | ✓      | Transition to a scene: exits the current scene, enters the new one, emits `scene/changed` |
+| `scene/current`  | ✗ `emitSync` | Query the key of the currently active scene (`null` if none) |
+| `scene/changed`  | — emitted | Fired after every transition with `{ from, to }` |
+
+The `scene/load` event fires the full **three-phase pipeline**, enabling hook points for transition effects:
+
+```
+scene/load-before  →  scene/load  →  scene/load-after
+  └─ fade-out           └─ SceneManager        └─ fade-in
+     (optional)            exits old scene,       (optional)
+                           enters new scene
+```
+
+### 8.3 Usage
+
+```ts
+import { createEngine, SceneManager } from 'inkshot-engine';
+import type { SceneDescriptor } from 'inkshot-engine';
+
+const mainMenu: SceneDescriptor = {
+  key: 'main-menu',
+  async enter(core) {
+    await core.events.emit('assets/load', { bundle: 'ui' });
+    core.events.emitSync('game/state:set', { state: 'main-menu' });
+  },
+  async exit(core) {
+    await core.events.emit('assets/unload', { bundle: 'ui' });
+  },
+};
+
+const level1: SceneDescriptor = {
+  key: 'level-1',
+  async enter(core) {
+    await core.events.emit('assets/load', { bundle: 'level-1' });
+    core.events.emitSync('game/state:set', { state: 'playing' });
+    core.events.emitSync('entity/create', { tags: ['player'], position: { x: 100, y: 100 } });
+  },
+  async exit(core) {
+    const { output } = core.events.emitSync('entity/query', { tags: ['player'] });
+    for (const entity of output.entities ?? []) {
+      core.events.emitSync('entity/destroy', { id: entity.id });
+    }
+    await core.events.emit('assets/unload', { bundle: 'level-1' });
+  },
+};
+
+const { core } = await createEngine({
+  plugins: [new SceneManager()],
+});
+
+// Register all scenes at startup
+core.events.emitSync('scene/register', { scene: mainMenu });
+core.events.emitSync('scene/register', { scene: level1 });
+
+// Load the first scene
+await core.events.emit('scene/load', { key: 'main-menu' });
+
+// Transition later (e.g. on "Start Game" button click)
+await core.events.emit('scene/load', { key: 'level-1' });
+
+// React to all transitions
+core.events.on('hud', 'scene/changed', ({ from, to }) => {
+  console.log(`Scene: ${from ?? 'none'} → ${to}`);
+});
+
+// Query current scene
+const { output } = core.events.emitSync('scene/current', {});
+console.log(output.key); // 'level-1'
+```
+
+### 8.4 Adding Transition Effects
+
+Because `scene/load` fires a `before` → `main` → `after` pipeline, screen transitions can be added without modifying `SceneManager`:
+
+```ts
+// A dedicated transition plugin
+core.events.on('transitions', 'scene/load', async () => {
+  await fadeOut(500); // play fade-out during before phase
+}, { phase: 'before' });
+
+core.events.on('transitions', 'scene/load', async () => {
+  await fadeIn(500); // play fade-in during after phase
+}, { phase: 'after' });
+```
+
+---
+
+## 9. Game Flow Design
+
+This section describes the recommended end-to-end game flow using the built-in plugin suite.
+
+### 9.1 High-Level Phases
+
+```
+Engine starts
+    │
+    ▼
+[ none ]  ──── (first scene/load) ────►  [ main-menu ]
+                                               │
+                              (player presses Start)
+                                               │
+                                               ▼
+                                         [ playing ]
+                                         /         \
+                              (pause key)           (player dies / level ends)
+                                  │                         │
+                                  ▼                         ▼
+                             [ paused ]              [ game-over ]
+                                  │                         │
+                             (resume)              (back to menu / retry)
+                                  │                         │
+                                  └────────────►  [ playing ]
+```
+
+`GameStateManager` owns the phase labels; `SceneManager` drives the actual content transitions.  The two are **independent** — a `SceneManager` transition does not automatically change the `GameStateManager` phase; scenes are responsible for calling `game/state:set` themselves in their `enter` / `exit` hooks.
+
+### 9.2 Recommended Plugin Initialisation Order
+
+```
+createEngine({
+  plugins: [
+    new ResourceManager(),       // must be first — others depend on assets/preload
+    new AudioManager(),
+    new LocalizationManager(),
+    new InputManager(),
+    new SaveManager(),
+    new GameStateManager(),
+    new EntityManager(),
+    new SceneManager(),          // scenes depend on all of the above
+  ],
+});
+```
+
+### 9.3 Full Startup Sequence
+
+```
+createEngine()
+    │
+    ├── Core.init()                 → emits core/init
+    ├── new Renderer(core)          → creates world / fx / ui / system layers
+    ├── ResourceManager.init()      → registers asset/preload, asset/load, …
+    ├── AudioManager.init()         → registers audio/play, audio/stop, …
+    ├── LocalizationManager.init()  → registers i18n/load, i18n/t, …
+    ├── InputManager.init()         → attaches keyboard / pointer listeners
+    ├── SaveManager.init()          → registers save/slot:*, save/global:*
+    ├── GameStateManager.init()     → registers game/state:set, game/state:get
+    ├── EntityManager.init()        → registers entity/create, entity/destroy, …
+    ├── SceneManager.init()         → registers scene/register, scene/load, …
+    │
+    ├── (your game plugin — preload assets, register scenes, set initial state)
+    │
+    └── Core.start()               → game loop starts
+                                      → emits core/start
+                                      → emits core/tick every frame
+```
+
+### 9.4 Scene Transition Sequence
+
+When `scene/load` is emitted the following steps happen in order:
+
+```
+scene/load emitted
+    │
+    ├── BEFORE phase  (e.g. fade-out transition)
+    │
+    ├── MAIN phase  (SceneManager)
+    │     ├── currentScene.exit(core)    [if a scene is active]
+    │     ├── nextScene.enter(core)
+    │     └── emits scene/changed { from, to }
+    │
+    └── AFTER phase  (e.g. fade-in transition)
+```
+
+### 9.5 Save / Load Integration
+
+The `GameStateManager` automatically transitions to `'playing'` and emits `game/started` after a successful `save/slot:load`.  Pair this with `scene/load` in your own handler to restore the correct scene:
+
+```ts
+core.events.on('myGame', 'game/started', async () => {
+  const { output: slot } = core.events.emitSync('save/slot:get', { id: activeSlotId });
+  const sceneName = slot.slot?.data.currentScene as string ?? 'level-1';
+  await core.events.emit('scene/load', { key: sceneName });
+});
+```
+
+---
+
+## 10. File & Module Conventions
 
 | Path | Purpose |
 |---|---|
@@ -476,6 +697,7 @@ Built-in plugins in `src/plugins/`:
 | `InputManager.ts` | `input` | Keyboard and pointer input |
 | `ResourceManager.ts` | `assets` | Multi-mode asset loading with cache-first guarantee |
 | `LocalizationManager.ts` | `i18n` | JSON locale loading, key lookup, variable substitution, and token interpolation |
+| `SceneManager.ts` | `scene` | Scene registration, lifecycle management, and transition orchestration |
 
 Rules:
 
@@ -485,7 +707,7 @@ Rules:
 
 ---
 
-## 9. TypeScript Style
+## 11. TypeScript Style
 
 - **Strict mode** is enabled.  All code must pass `tsc --strict` without error.
 - Prefer `interface` over `type` for object shapes; use `type` for unions, aliases, and mapped types.
@@ -496,7 +718,7 @@ Rules:
 
 ---
 
-## 10. Coding Style
+## 12. Coding Style
 
 - 2-space indentation, single quotes, trailing commas (enforced by the project's formatter).
 - Prefer `async/await` over raw Promises.
@@ -511,7 +733,7 @@ Rules:
 
 ---
 
-## 11. Lifecycle Summary
+## 13. Lifecycle Summary
 
 ```
 createEngine(options)
