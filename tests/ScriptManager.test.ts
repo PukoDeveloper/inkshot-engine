@@ -1219,4 +1219,388 @@ describe('ScriptManager', () => {
       await flushMicrotasks();
     });
   });
+
+  // -------------------------------------------------------------------------
+  // Bug fix: if command warns when label is missing
+  // -------------------------------------------------------------------------
+
+  describe('bug fix: if warns on missing label', () => {
+    it('emits console.warn when the jump label does not exist', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'if-missing-label',
+          nodes: [
+            { cmd: 'set', var: 'x', value: 1 },
+            { cmd: 'if',  var: 'x', value: 1, jump: 'nonexistent-label' },
+          ],
+        },
+      });
+      core.events.emitSync('script/run', { id: 'if-missing-label' });
+      await flushMicrotasks();
+
+      expect(warnSpy).toHaveBeenCalled();
+      const msg = warnSpy.mock.calls.find(
+        (c) => String(c[0]).includes('nonexistent-label'),
+      );
+      expect(msg).toBeDefined();
+      warnSpy.mockRestore();
+    });
+
+    it('does not warn when condition is false (label lookup is skipped)', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'if-false-no-warn',
+          nodes: [
+            { cmd: 'set', var: 'x', value: 0 },
+            { cmd: 'if',  var: 'x', value: 1, jump: 'nonexistent-label' },
+          ],
+        },
+      });
+      core.events.emitSync('script/run', { id: 'if-false-no-warn' });
+      await flushMicrotasks();
+
+      const labelsWarn = warnSpy.mock.calls.find(
+        (c) => String(c[0]).includes('nonexistent-label'),
+      );
+      expect(labelsWarn).toBeUndefined();
+      warnSpy.mockRestore();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // New built-in command: if-not
+  // -------------------------------------------------------------------------
+
+  describe('built-in: if-not', () => {
+    it('jumps when vars[var] !== value', async () => {
+      const order: number[] = [];
+      core.events.emitSync('script/register-command', {
+        cmd: 'mark',
+        handler: (ctx) => { order.push(ctx.node.n as number); },
+      } satisfies ScriptRegisterCommandParams);
+
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'ifnot-taken',
+          nodes: [
+            { cmd: 'set',    var: 'x', value: 0 },
+            { cmd: 'if-not', var: 'x', value: 1, jump: 'branch' },
+            { cmd: 'mark',   n: 99 },   // should be skipped
+            { cmd: 'label',  name: 'branch' },
+            { cmd: 'mark',   n: 1 },
+          ],
+        },
+      });
+      core.events.emitSync('script/run', { id: 'ifnot-taken' });
+      await flushMicrotasks();
+
+      expect(order).toEqual([1]);
+    });
+
+    it('does NOT jump when vars[var] === value', async () => {
+      const order: number[] = [];
+      core.events.emitSync('script/register-command', {
+        cmd: 'mark',
+        handler: (ctx) => { order.push(ctx.node.n as number); },
+      } satisfies ScriptRegisterCommandParams);
+
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'ifnot-not-taken',
+          nodes: [
+            { cmd: 'set',    var: 'x', value: 1 },
+            { cmd: 'if-not', var: 'x', value: 1, jump: 'branch' },
+            { cmd: 'mark',   n: 1 },
+            { cmd: 'label',  name: 'branch' },
+            { cmd: 'mark',   n: 2 },
+          ],
+        },
+      });
+      core.events.emitSync('script/run', { id: 'ifnot-not-taken' });
+      await flushMicrotasks();
+
+      expect(order).toEqual([1, 2]);
+    });
+
+    it('warns when required fields are missing', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      core.events.emitSync('script/define', {
+        script: { id: 'ifnot-bad', nodes: [{ cmd: 'if-not', var: 'x' }] },
+      });
+      core.events.emitSync('script/run', { id: 'ifnot-bad' });
+      await flushMicrotasks();
+      expect(warnSpy).toHaveBeenCalled();
+      warnSpy.mockRestore();
+    });
+
+    it('warns when jump label is missing', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'ifnot-no-label',
+          nodes: [
+            { cmd: 'set',    var: 'x', value: 0 },
+            { cmd: 'if-not', var: 'x', value: 1, jump: 'ghost' },
+          ],
+        },
+      });
+      core.events.emitSync('script/run', { id: 'ifnot-no-label' });
+      await flushMicrotasks();
+      const msg = warnSpy.mock.calls.find((c) => String(c[0]).includes('ghost'));
+      expect(msg).toBeDefined();
+      warnSpy.mockRestore();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // New built-in commands: if-gt / if-lt
+  // -------------------------------------------------------------------------
+
+  describe('built-in: if-gt', () => {
+    it('jumps when vars[var] > value', async () => {
+      const order: number[] = [];
+      core.events.emitSync('script/register-command', {
+        cmd: 'mark',
+        handler: (ctx) => { order.push(ctx.node.n as number); },
+      } satisfies ScriptRegisterCommandParams);
+
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'ifgt-taken',
+          nodes: [
+            { cmd: 'set',   var: 'score', value: 100 },
+            { cmd: 'if-gt', var: 'score', value: 50, jump: 'high' },
+            { cmd: 'mark',  n: 99 },     // skipped
+            { cmd: 'label', name: 'high' },
+            { cmd: 'mark',  n: 1 },
+          ],
+        },
+      });
+      core.events.emitSync('script/run', { id: 'ifgt-taken' });
+      await flushMicrotasks();
+
+      expect(order).toEqual([1]);
+    });
+
+    it('does NOT jump when vars[var] === value', async () => {
+      const order: number[] = [];
+      core.events.emitSync('script/register-command', {
+        cmd: 'mark',
+        handler: (ctx) => { order.push(ctx.node.n as number); },
+      } satisfies ScriptRegisterCommandParams);
+
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'ifgt-equal',
+          nodes: [
+            { cmd: 'set',   var: 'score', value: 50 },
+            { cmd: 'if-gt', var: 'score', value: 50, jump: 'high' },
+            { cmd: 'mark',  n: 1 },
+            { cmd: 'label', name: 'high' },
+            { cmd: 'mark',  n: 2 },
+          ],
+        },
+      });
+      core.events.emitSync('script/run', { id: 'ifgt-equal' });
+      await flushMicrotasks();
+
+      expect(order).toEqual([1, 2]);
+    });
+
+    it('warns when value is not a number', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'ifgt-bad',
+          nodes: [{ cmd: 'if-gt', var: 'x', value: 'not-a-number', jump: 'somewhere' }],
+        },
+      });
+      core.events.emitSync('script/run', { id: 'ifgt-bad' });
+      await flushMicrotasks();
+      expect(warnSpy).toHaveBeenCalled();
+      warnSpy.mockRestore();
+    });
+  });
+
+  describe('built-in: if-lt', () => {
+    it('jumps when vars[var] < value', async () => {
+      const order: number[] = [];
+      core.events.emitSync('script/register-command', {
+        cmd: 'mark',
+        handler: (ctx) => { order.push(ctx.node.n as number); },
+      } satisfies ScriptRegisterCommandParams);
+
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'iflt-taken',
+          nodes: [
+            { cmd: 'set',   var: 'hp', value: 10 },
+            { cmd: 'if-lt', var: 'hp', value: 50, jump: 'low-hp' },
+            { cmd: 'mark',  n: 99 },    // skipped
+            { cmd: 'label', name: 'low-hp' },
+            { cmd: 'mark',  n: 1 },
+          ],
+        },
+      });
+      core.events.emitSync('script/run', { id: 'iflt-taken' });
+      await flushMicrotasks();
+
+      expect(order).toEqual([1]);
+    });
+
+    it('does NOT jump when vars[var] >= value', async () => {
+      const order: number[] = [];
+      core.events.emitSync('script/register-command', {
+        cmd: 'mark',
+        handler: (ctx) => { order.push(ctx.node.n as number); },
+      } satisfies ScriptRegisterCommandParams);
+
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'iflt-not-taken',
+          nodes: [
+            { cmd: 'set',   var: 'hp', value: 50 },
+            { cmd: 'if-lt', var: 'hp', value: 50, jump: 'low-hp' },
+            { cmd: 'mark',  n: 1 },
+            { cmd: 'label', name: 'low-hp' },
+            { cmd: 'mark',  n: 2 },
+          ],
+        },
+      });
+      core.events.emitSync('script/run', { id: 'iflt-not-taken' });
+      await flushMicrotasks();
+
+      expect(order).toEqual([1, 2]);
+    });
+
+    it('warns when required fields are missing', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      core.events.emitSync('script/define', {
+        script: { id: 'iflt-bad', nodes: [{ cmd: 'if-lt', var: 'x' }] },
+      });
+      core.events.emitSync('script/run', { id: 'iflt-bad' });
+      await flushMicrotasks();
+      expect(warnSpy).toHaveBeenCalled();
+      warnSpy.mockRestore();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Enhanced built-in: wait-event with timeout
+  // -------------------------------------------------------------------------
+
+  describe('built-in: wait-event — timeout', () => {
+    it('continues normally when the event fires before the timeout', async () => {
+      const order: string[] = [];
+      core.events.emitSync('script/register-command', {
+        cmd: 'mark-str',
+        handler: (ctx) => { order.push(ctx.node.s as string); },
+      } satisfies ScriptRegisterCommandParams);
+
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'we-timeout-not-hit',
+          nodes: [
+            { cmd: 'wait-event', event: 'npc/arrived', timeout: 5000 },
+            { cmd: 'mark-str',   s: 'after-event' },
+          ],
+        },
+      });
+      core.events.emitSync('script/run', { id: 'we-timeout-not-hit' });
+      await flushMicrotasks();
+
+      // Fire the event before timeout expires
+      core.events.emitSync('npc/arrived', {});
+      await flushMicrotasks();
+
+      expect(order).toContain('after-event');
+    });
+
+    it('continues from next node when timeout fires and no timeoutJump', async () => {
+      const ended = vi.fn();
+      core.events.on('test', 'script/ended', ended);
+
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'we-timeout-fallthrough',
+          nodes: [{ cmd: 'wait-event', event: 'never/fires', timeout: 10 }],
+        },
+      });
+      core.events.emitSync('script/run', { id: 'we-timeout-fallthrough' });
+
+      // Wait for the 10 ms timeout
+      await new Promise<void>((resolve) => setTimeout(resolve, 50));
+
+      expect(ended).toHaveBeenCalledOnce();
+      expect(sm.isRunning).toBe(false);
+    });
+
+    it('jumps to timeoutJump label when timeout fires', async () => {
+      const order: string[] = [];
+      core.events.emitSync('script/register-command', {
+        cmd: 'mark-str',
+        handler: (ctx) => { order.push(ctx.node.s as string); },
+      } satisfies ScriptRegisterCommandParams);
+
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'we-timeout-jump',
+          nodes: [
+            { cmd: 'wait-event', event: 'never/fires', timeout: 10, timeoutJump: 'fallback' },
+            { cmd: 'mark-str',   s: 'should-not-run' },
+            { cmd: 'jump',       target: 'done' },
+            { cmd: 'label',      name: 'fallback' },
+            { cmd: 'mark-str',   s: 'timed-out' },
+            { cmd: 'label',      name: 'done' },
+          ],
+        },
+      });
+      core.events.emitSync('script/run', { id: 'we-timeout-jump' });
+
+      await new Promise<void>((resolve) => setTimeout(resolve, 50));
+
+      expect(order).toContain('timed-out');
+      expect(order).not.toContain('should-not-run');
+    });
+
+    it('does not fire the timeout when the script is stopped first', async () => {
+      const ended = vi.fn();
+      core.events.on('test', 'script/ended', ended);
+
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'we-stop-before-timeout',
+          nodes: [{ cmd: 'wait-event', event: 'never/fires', timeout: 5000 }],
+        },
+      });
+      core.events.emitSync('script/run', { id: 'we-stop-before-timeout' });
+      await flushMicrotasks();
+
+      core.events.emitSync('script/stop', {});
+      await flushMicrotasks();
+
+      expect(ended).toHaveBeenCalledOnce();
+      expect(sm.isRunning).toBe(false);
+    });
+
+    it('warns when timeoutJump label does not exist', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'we-timeout-bad-label',
+          nodes: [{ cmd: 'wait-event', event: 'never/fires', timeout: 10, timeoutJump: 'ghost' }],
+        },
+      });
+      core.events.emitSync('script/run', { id: 'we-timeout-bad-label' });
+      await new Promise<void>((resolve) => setTimeout(resolve, 50));
+
+      const msg = warnSpy.mock.calls.find((c) => String(c[0]).includes('ghost'));
+      expect(msg).toBeDefined();
+      warnSpy.mockRestore();
+    });
+  });
 });

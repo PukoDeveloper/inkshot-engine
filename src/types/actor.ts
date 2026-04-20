@@ -318,3 +318,41 @@ export interface ActorStateChangedParams {
   /** The previous value (may be `undefined` if the key was not set before). */
   readonly previous: unknown;
 }
+
+/** Parameters for `actor/state:patch`. */
+export interface ActorStatePatchParams {
+  /** Target instance ID. */
+  readonly instanceId: string;
+  /**
+   * An object whose keys are state keys to update and whose values are the
+   * new values to assign.  All keys are written atomically before any
+   * notification is emitted.
+   */
+  readonly patch: Record<string, unknown>;
+}
+
+/**
+ * Emitted after all keys in a `actor/state:patch` call have been written.
+ *
+ * Unlike `actor/state:changed` (which fires once per key), this event fires
+ * exactly **once** per patch, regardless of how many keys were updated.
+ */
+export interface ActorStatePatchedParams {
+  /** ID of the actor instance whose state was patched. */
+  readonly instanceId: string;
+  /** The patch object that was applied (shallow copy). */
+  readonly patch: Record<string, unknown>;
+  /** Previous values for every key that was in the patch, keyed by key name. */
+  readonly previous: Record<string, unknown>;
+}
+
+/** Output for `actor/list`. */
+export interface ActorListOutput {
+  /**
+   * Snapshot of all currently live actor instances.
+   *
+   * The array contains live references — mutate with care.
+   * Prefer `actor/state:set` / `actor/state:patch` to modify state.
+   */
+  instances: ActorInstance[];
+}

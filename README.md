@@ -26,10 +26,12 @@ Everything communicates through a shared **EventBus** — no tight coupling, no 
    - [ParticleManager (`particle`)](#particlemanager-particle)
    - [AudioManager (`audio`)](#audiomanager-audio)
    - [PathfindingManager (`pathfinding`)](#pathfindingmanager-pathfinding)
-5. [Renderer & Layers](#renderer--layers)
-6. [Writing Your Own Plugin](#writing-your-own-plugin)
-7. [Engine Lifecycle](#engine-lifecycle)
-8. [TypeScript Tips](#typescript-tips)
+5. [Script System (ScriptManager)](#script-system-scriptmanager)
+6. [Actor System (ActorManager)](#actor-system-actormanager)
+7. [Renderer & Layers](#renderer--layers)
+8. [Writing Your Own Plugin](#writing-your-own-plugin)
+9. [Engine Lifecycle](#engine-lifecycle)
+10. [TypeScript Tips](#typescript-tips)
 
 ---
 
@@ -1477,6 +1479,144 @@ const segments = buildTextSegments(plain, 10, colorSpans);
 // Get the typewriter speed at character index 12
 const speed = getSpeedAtIndex(12, speedSpans, 40);
 ```
+
+---
+
+## Script System (ScriptManager)
+
+`ScriptManager` executes data-defined scripts as ordered lists of **command nodes**.
+Multiple scripts run concurrently as independent *instances* identified by an `instanceId`.
+
+### Built-in Commands
+
+| Command         | Fields                                                  | Description                                                         |
+|-----------------|---------------------------------------------------------|---------------------------------------------------------------------|
+| `label`         | `name`                                                  | Position marker — no-op at runtime                                  |
+| `jump`          | `target`                                                | Unconditional jump to a label                                       |
+| `if`            | `var`, `value`, `jump`                                  | Jump when `vars[var] === value`; warns if label missing             |
+| `if-not`        | `var`, `value`, `jump`                                  | Jump when `vars[var] !== value`                                     |
+| `if-gt`         | `var` (string), `value` (number), `jump`                | Jump when `vars[var] > value` (numeric comparison)                  |
+| `if-lt`         | `var` (string), `value` (number), `jump`                | Jump when `vars[var] < value` (numeric comparison)                  |
+| `set`           | `var`, `value`                                          | Write a value into the variable store                               |
+| `wait`          | `ms`                                                    | Pause for N milliseconds                                            |
+| `emit`          | `event`, `params?`                                      | Fire a custom event synchronously                                   |
+| `say`           | `text?`, `speaker?`, `portrait?`, `speed?`              | Show dialogue text (requires `DialogueManager`), await advance      |
+| `choices`       | `choices`, `prompt?`, `var?`                            | Show choices, store picked index in `var`                           |
+| `end`           | —                                                       | Close the dialogue session                                          |
+| `wait-event`    | `event`, `var?`, `timeout?` (ms), `timeoutJump?`        | Suspend until an event fires; optional timeout with label fallback  |
+| `call`          | `id`, `vars?`                                           | Run a sub-script inline (shared vars, awaited)                      |
+| `fork`          | `id`, `instanceId?`, `vars?`, `priority?`               | Launch a concurrent instance (fire-and-forget)                      |
+| `wait-instance` | `instanceId`                                            | Suspend until a named instance finishes                             |
+| `stop-instance` | `instanceId`                                            | Stop another running instance                                       |
+
+### `wait-event` with Timeout
+
+```ts
+// Wait up to 3 seconds for the player to arrive; on timeout jump to 'idle'
+{ cmd: 'wait-event', event: 'player/arrived', timeout: 3000, timeoutJump: 'idle' }
+```
+
+If the event fires before the timeout the script continues normally.
+If the timeout fires first, execution jumps to `timeoutJump` (if given) or falls through.
+
+### Numeric Comparisons
+
+```ts
+const huntScript: ScriptDef = {
+  id: 'hunt',
+  nodes: [
+    { cmd: 'set',   var: 'hp', value: 30 },
+    { cmd: 'if-lt', var: 'hp', value: 50, jump: 'flee' },   // hp < 50 → flee
+    { cmd: 'if-gt', var: 'hp', value: 80, jump: 'charge' }, // hp > 80 → charge
+    { cmd: 'jump',  target: 'normal' },
+    { cmd: 'label', name: 'flee' },
+    // …
+  ],
+};
+```
+
+---
+
+## Actor System (ActorManager)
+
+`ActorManager` manages game characters driven by a **trigger table** and scripts.
+
+### Quick Example
+
+```ts
+import { ActorManager, ScriptManager } from 'inkshot-engine';
+import type { ActorDef } from 'inkshot-engine';
+
+const merchantDef: ActorDef = {
+  id: 'merchant',
+  initialState: { isAvailable: true, gold: 500 },
+  scripts: [
+    { id: 'merchant-patrol',   nodes: [/* … */] },
+    { id: 'merchant-dialogue', nodes: [/* … */] },
+  ],
+  triggers: [
+    // Auto-start patrol when spawned (fires only on THIS instance, not existing ones)
+    { id: 'auto-patrol',    event: 'actor/spawned',   script: 'merchant-patrol',   mode: 'concurrent' },
+    // Player interaction blocks the primary lane; restores patrol after dialogue
+    {
+      id:            'player-interact',
+      event:         'player/interact',
+      condition:     (ctx) =>
+        ctx.actorState['isAvailable'] === true &&
+        (ctx.eventPayload as { targetId: string }).targetId === ctx.actorInstance.id,
+      script:        'merchant-dialogue',
+      mode:          'blocking',
+      priority:      10,
+      onEnd:         'restore',
+      varsFromEvent: (p) => ({ playerId: (p as { playerId: string }).playerId }),
+    },
+  ],
+};
+
+core.events.emitSync('actor/define', { def: merchantDef });
+core.events.emitSync('actor/spawn',  { actorType: 'merchant', instanceId: 'merchant-1' });
+```
+
+### Batch State Updates
+
+```ts
+// Update three keys with a single notification
+core.events.emitSync('actor/state:patch', {
+  instanceId: 'merchant-1',
+  patch: { gold: 0, isAvailable: false, quest: 'done' },
+});
+// Emits actor/state:patched once with { patch, previous }
+```
+
+### Listing All Live Instances
+
+```ts
+import type { ActorListOutput } from 'inkshot-engine';
+
+const { output } = core.events.emitSync<unknown, ActorListOutput>('actor/list', {});
+for (const inst of output.instances) {
+  console.log(inst.id, inst.actorType, inst.state);
+}
+```
+
+### Event Reference
+
+| Event                  | Description                                              |
+|------------------------|----------------------------------------------------------|
+| `actor/define`         | Register an actor type blueprint                         |
+| `actor/spawn`          | Create a new instance → `ActorSpawnOutput`               |
+| `actor/despawn`        | Remove a live instance                                   |
+| `actor/state:set`      | Write a single state key → emits `actor/state:changed`   |
+| `actor/state:patch`    | Write multiple keys atomically → emits `actor/state:patched` |
+| `actor/state:get`      | Read a deep-cloned snapshot → `ActorStateGetOutput`      |
+| `actor/list`           | List all live instances → `ActorListOutput`              |
+| `actor/trigger`        | Manually fire a named trigger on an instance             |
+| `actor/spawned`        | Emitted after spawn + spawned triggers are fired         |
+| `actor/despawned`      | Emitted after an instance is removed                     |
+| `actor/script:started` | A trigger caused a script to start                       |
+| `actor/script:ended`   | A trigger-started script ended                           |
+| `actor/state:changed`  | A single state key was written                           |
+| `actor/state:patched`  | Multiple state keys were written                         |
 
 ---
 

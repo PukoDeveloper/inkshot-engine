@@ -12,6 +12,9 @@ import type {
   ActorStateSetParams,
   ActorStateGetParams,
   ActorStateGetOutput,
+  ActorStatePatchParams,
+  ActorStatePatchedParams,
+  ActorListOutput,
   ActorTriggerParams,
   ActorSpawnedParams,
   ActorDespawnedParams,
@@ -129,14 +132,16 @@ function deepCloneState(state: Record<string, unknown>): Record<string, unknown>
  *
  * ### EventBus API — commands received
  *
- * | Event             | Params / Output                          |
- * |-------------------|------------------------------------------|
- * | `actor/define`    | `ActorDefineParams`                      |
- * | `actor/spawn`     | `ActorSpawnParams → ActorSpawnOutput`    |
- * | `actor/despawn`   | `ActorDespawnParams`                     |
- * | `actor/state:set` | `ActorStateSetParams`                    |
- * | `actor/state:get` | `ActorStateGetParams → ActorStateGetOutput` |
- * | `actor/trigger`   | `ActorTriggerParams`                     |
+ * | Event                | Params / Output                                    |
+ * |----------------------|----------------------------------------------------|
+ * | `actor/define`       | `ActorDefineParams`                                |
+ * | `actor/spawn`        | `ActorSpawnParams → ActorSpawnOutput`              |
+ * | `actor/despawn`      | `ActorDespawnParams`                               |
+ * | `actor/state:set`    | `ActorStateSetParams`                              |
+ * | `actor/state:patch`  | `ActorStatePatchParams`                            |
+ * | `actor/state:get`    | `ActorStateGetParams → ActorStateGetOutput`        |
+ * | `actor/list`         | `→ ActorListOutput`                                |
+ * | `actor/trigger`      | `ActorTriggerParams`                               |
  *
  * ### EventBus API — notifications emitted
  *
@@ -147,6 +152,7 @@ function deepCloneState(state: Record<string, unknown>): Record<string, unknown>
  * | `actor/script:started` | `ActorScriptStartedParams`   |
  * | `actor/script:ended`   | `ActorScriptEndedParams`     |
  * | `actor/state:changed`  | `ActorStateChangedParams`    |
+ * | `actor/state:patched`  | `ActorStatePatchedParams`    |
  */
 export class ActorManager implements EnginePlugin {
   readonly namespace = 'actor';
@@ -239,7 +245,37 @@ export class ActorManager implements EnginePlugin {
       'actor/state:get',
       (params, output) => {
         const instance = this._instances.get(params.instanceId);
-        output.state = instance ? { ...instance.state } : null;
+        output.state = instance ? deepCloneState(instance.state) : null;
+      },
+    );
+
+    // ── actor/state:patch ─────────────────────────────────────────────────────
+    events.on<ActorStatePatchParams>(this.namespace, 'actor/state:patch', (params) => {
+      const instance = this._instances.get(params.instanceId);
+      if (!instance) {
+        console.warn(
+          `[ActorManager] actor/state:patch: instance "${params.instanceId}" not found.`,
+        );
+        return;
+      }
+      const previous: Record<string, unknown> = {};
+      for (const key of Object.keys(params.patch)) {
+        previous[key] = instance.state[key];
+        instance.state[key] = params.patch[key];
+      }
+      core.events.emitSync<ActorStatePatchedParams>('actor/state:patched', {
+        instanceId: params.instanceId,
+        patch:      { ...params.patch },
+        previous,
+      });
+    });
+
+    // ── actor/list ────────────────────────────────────────────────────────────
+    events.on<Record<string, never>, ActorListOutput>(
+      this.namespace,
+      'actor/list',
+      (_params, output) => {
+        output.instances = [...this._instances.values()];
       },
     );
 
@@ -343,11 +379,12 @@ export class ActorManager implements EnginePlugin {
     this._instances.set(instanceId, instance);
 
     // Bind event listeners for all triggers.
+    // Exception: 'actor/spawned' triggers are fired directly (see below) rather
+    // than via a persistent listener, to avoid them re-firing when OTHER actors
+    // are spawned later and emit 'actor/spawned' themselves.
     const offs: Array<() => void> = [];
     for (const trigger of def.triggers) {
-      // actor/spawned is a special case: fire immediately after spawn.
-      // We still register a real listener for future instances but also
-      // call the trigger directly right after emitting actor/spawned.
+      if (trigger.event === 'actor/spawned') continue;
       const off = core.events.on(
         this.namespace,
         trigger.event,
@@ -359,9 +396,16 @@ export class ActorManager implements EnginePlugin {
     }
     this._offFns.set(instanceId, offs);
 
-    // Notify that the actor is live.  This fires any 'actor/spawned' triggers
-    // registered above via the event bus.
-    core.events.emitSync<ActorSpawnedParams>('actor/spawned', { instance });
+    // Notify that the actor is live.
+    const spawnedPayload: ActorSpawnedParams = { instance };
+    core.events.emitSync<ActorSpawnedParams>('actor/spawned', spawnedPayload);
+
+    // Fire 'actor/spawned' triggers directly on this instance only.
+    for (const trigger of def.triggers) {
+      if (trigger.event === 'actor/spawned') {
+        this._runTrigger(instance, trigger, spawnedPayload);
+      }
+    }
 
     return instance;
   }
@@ -457,11 +501,14 @@ export class ActorManager implements EnginePlugin {
     });
 
     // Listen for the script ending on this lane so we can emit actor/script:ended.
-    const off = core.events.once<ScriptEndedParams>(
+    // We use on() + explicit off() instead of once() so that a script/ended
+    // from an *unrelated* lane does not consume this listener prematurely.
+    const off = core.events.on<ScriptEndedParams>(
       this.namespace,
       'script/ended',
       (endedParams) => {
         if (endedParams.instanceId !== laneId) return;
+        off();
         core.events.emitSync<ActorScriptEndedParams>('actor/script:ended', {
           instanceId: instance.id,
           triggerId:  trigger.id,
@@ -513,11 +560,14 @@ export class ActorManager implements EnginePlugin {
     });
 
     // Listen for the script ending on the primary lane.
-    const off = core.events.once<ScriptEndedParams>(
+    // We use on() + explicit off() instead of once() so that a script/ended
+    // from an *unrelated* lane does not consume this listener prematurely.
+    const off = core.events.on<ScriptEndedParams>(
       this.namespace,
       'script/ended',
       (endedParams) => {
         if (endedParams.instanceId !== laneId) return;
+        off();
         this._onBlockingEnded(instance, trigger);
       },
     );

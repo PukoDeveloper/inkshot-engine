@@ -3,7 +3,12 @@ import { EventBus } from '../src/core/EventBus.js';
 import { ActorManager } from '../src/plugins/ActorManager.js';
 import { ScriptManager } from '../src/plugins/ScriptManager.js';
 import type { Core } from '../src/core/Core.js';
-import type { ActorDef, ActorSpawnOutput } from '../src/types/actor.js';
+import type {
+  ActorDef,
+  ActorSpawnOutput,
+  ActorStatePatchedParams,
+  ActorListOutput,
+} from '../src/types/actor.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -765,6 +770,325 @@ describe('ActorManager', () => {
 
       expect(started).not.toHaveBeenCalled();
       expect(am.instances).toHaveLength(0);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Bug fix: once listener does not get consumed by a different script/ended
+  // -------------------------------------------------------------------------
+
+  describe('bug fix: once listener isolation (actor/script:ended emits correctly)', () => {
+    it('actor/script:ended fires for concurrent trigger even when another script ends first', async () => {
+      const ended = vi.fn();
+      core.events.on('test', 'actor/script:ended', ended);
+
+      // Register a "hang" command that suspends until explicitly stopped
+      core.events.emitSync('script/register-command', {
+        cmd: 'hang',
+        handler: (ctx: import('../src/types/script.js').ScriptContext) =>
+          new Promise<void>((resolve) => ctx.onStop(resolve)),
+      });
+
+      // An unrelated script that ends quickly (it will emit script/ended first)
+      core.events.emitSync('script/define', {
+        script: { id: 'unrelated', nodes: [] },
+      });
+
+      const def: ActorDef = {
+        id: 'npc',
+        scripts: [{ id: 'npc-vfx', nodes: [{ cmd: 'hang' }] }],
+        triggers: [{ id: 'vfx', event: 'world/vfx', script: 'npc-vfx', mode: 'concurrent' }],
+      };
+      core.events.emitSync('actor/define', { def });
+      core.events.emitSync('actor/spawn', { actorType: 'npc', instanceId: 'npc-1' });
+
+      // Fire the concurrent trigger first
+      core.events.emitSync('world/vfx', {});
+      await flushMicrotasks();
+
+      // Now start and immediately end an unrelated script — this used to consume
+      // the actor's once listener, preventing actor/script:ended from firing.
+      core.events.emitSync('script/run', { id: 'unrelated', instanceId: 'other-instance' });
+      await flushMicrotasks();
+
+      // The concurrent script is still running; actor/script:ended has NOT fired yet
+      expect(ended).not.toHaveBeenCalled();
+
+      // Now stop the actor's concurrent lane
+      core.events.emitSync('script/stop', { instanceId: 'npc-1:vfx' });
+      await flushMicrotasks();
+
+      // actor/script:ended must fire exactly once for the correct trigger
+      expect(ended).toHaveBeenCalledOnce();
+      expect(ended.mock.calls[0]![0]).toMatchObject({
+        instanceId: 'npc-1',
+        triggerId:  'vfx',
+        mode:       'concurrent',
+      });
+    });
+
+    it('onEnd: restore fires correctly after an unrelated script/ended', async () => {
+      const scriptStarted: string[] = [];
+      core.events.on('test', 'script/started', (p: { id: string }) => {
+        scriptStarted.push(p.id);
+      });
+
+      core.events.emitSync('script/register-command', {
+        cmd: 'hang',
+        handler: (ctx: import('../src/types/script.js').ScriptContext) =>
+          new Promise<void>((resolve) => ctx.onStop(resolve)),
+      });
+
+      // An unrelated short-lived script
+      core.events.emitSync('script/define', {
+        script: { id: 'quick', nodes: [] },
+      });
+
+      const def: ActorDef = {
+        id: 'guard',
+        scripts: [
+          { id: 'guard-patrol',   nodes: [{ cmd: 'hang' }] },
+          { id: 'guard-dialogue', nodes: []                 },
+        ],
+        triggers: [
+          {
+            id:       'auto-patrol',
+            event:    'actor/spawned',
+            script:   'guard-patrol',
+            mode:     'concurrent',
+          },
+          {
+            id:       'talk',
+            event:    'player/talk',
+            script:   'guard-dialogue',
+            mode:     'blocking',
+            priority: 10,
+            onEnd:    'restore',
+          },
+        ],
+      };
+      core.events.emitSync('actor/define', { def });
+      core.events.emitSync('actor/spawn', { actorType: 'guard', instanceId: 'g1' });
+      await flushMicrotasks();
+
+      // Start patrol on the primary lane
+      core.events.emitSync('script/run', {
+        id:         'guard-patrol',
+        instanceId: 'g1',
+        priority:   0,
+      });
+      await flushMicrotasks();
+
+      // Fire dialogue trigger
+      core.events.emitSync('player/talk', {});
+      await flushMicrotasks();
+
+      const beforeUnrelated = scriptStarted.slice();
+
+      // Fire an unrelated script that ends immediately — previously this would
+      // consume the blocking listener and prevent onEnd: 'restore' from firing
+      core.events.emitSync('script/run', { id: 'quick', instanceId: 'other' });
+      await flushMicrotasks();
+
+      // guard-dialogue ends naturally (empty nodes), then onEnd: 'restore' should
+      // re-launch guard-patrol
+      expect(scriptStarted).toContain('guard-patrol');
+      // It should have been launched at least twice: once initially, once via restore
+      const patrolCount = scriptStarted.filter((id) => id === 'guard-patrol').length;
+      expect(patrolCount).toBeGreaterThanOrEqual(2);
+
+      // Cleanup
+      core.events.emitSync('script/stop', { instanceId: 'g1' });
+      await flushMicrotasks();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Bug fix: actor/spawned triggers do not fire for pre-existing instances
+  // -------------------------------------------------------------------------
+
+  describe('bug fix: actor/spawned does not broadcast to existing instances', () => {
+    it('spawning a second instance does not re-fire actor/spawned triggers on the first', async () => {
+      const patrolStarted = vi.fn();
+      core.events.on('test', 'script/started', (p: { id: string; instanceId: string }) => {
+        if (p.id === 'npc-patrol') patrolStarted(p.instanceId);
+      });
+
+      const def: ActorDef = {
+        id: 'npc',
+        scripts: [{ id: 'npc-patrol', nodes: [] }],
+        triggers: [
+          { id: 'auto', event: 'actor/spawned', script: 'npc-patrol', mode: 'concurrent' },
+        ],
+      };
+      core.events.emitSync('actor/define', { def });
+
+      // Spawn first instance — auto-patrol should start for npc-1 only
+      core.events.emitSync('actor/spawn', { actorType: 'npc', instanceId: 'npc-1' });
+      await flushMicrotasks();
+
+      expect(patrolStarted).toHaveBeenCalledOnce();
+      expect(patrolStarted.mock.calls[0]![0]).toBe('npc-1:auto');
+
+      // Spawn second instance — npc-1's patrol trigger must NOT fire again
+      core.events.emitSync('actor/spawn', { actorType: 'npc', instanceId: 'npc-2' });
+      await flushMicrotasks();
+
+      // Total: npc-1 once + npc-2 once = 2 total, not 3
+      expect(patrolStarted).toHaveBeenCalledTimes(2);
+      const calls = patrolStarted.mock.calls.map((c) => c[0] as string);
+      expect(calls).toContain('npc-1:auto');
+      expect(calls).toContain('npc-2:auto');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Bug fix: actor/state:get returns a deep clone
+  // -------------------------------------------------------------------------
+
+  describe('bug fix: actor/state:get deep clones nested state', () => {
+    it('mutating a nested array in the snapshot does not affect the live state', () => {
+      core.events.emitSync('actor/define', {
+        def: {
+          ...makeSimpleDef('hero'),
+          initialState: { inventory: ['sword', 'potion'] },
+        },
+      });
+      core.events.emitSync('actor/spawn', { actorType: 'hero', instanceId: 'h1' });
+
+      type Out = { state: Record<string, unknown> | null };
+      const result = core.events.emitSync<unknown, Out>('actor/state:get', { instanceId: 'h1' });
+      const snapshot = result.output.state!;
+
+      // Mutate the nested array in the snapshot
+      (snapshot['inventory'] as string[]).push('shield');
+
+      // The live instance must be unaffected
+      const live = am.getInstance('h1')!.state['inventory'] as string[];
+      expect(live).toHaveLength(2);
+      expect(live).not.toContain('shield');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // actor/state:patch
+  // -------------------------------------------------------------------------
+
+  describe('actor/state:patch', () => {
+    beforeEach(() => {
+      core.events.emitSync('actor/define', {
+        def: { ...makeSimpleDef(), initialState: { gold: 100, hp: 50, level: 1 } },
+      });
+      core.events.emitSync('actor/spawn', { actorType: 'hero', instanceId: 'h1' });
+    });
+
+    it('updates multiple keys atomically', () => {
+      core.events.emitSync('actor/state:patch', {
+        instanceId: 'h1',
+        patch: { gold: 200, hp: 75 },
+      });
+      const inst = am.getInstance('h1')!;
+      expect(inst.state['gold']).toBe(200);
+      expect(inst.state['hp']).toBe(75);
+      expect(inst.state['level']).toBe(1); // unchanged
+    });
+
+    it('emits actor/state:patched with patch and previous values', () => {
+      const patched = vi.fn();
+      core.events.on('test', 'actor/state:patched', patched);
+
+      core.events.emitSync('actor/state:patch', {
+        instanceId: 'h1',
+        patch: { gold: 500, level: 2 },
+      });
+
+      expect(patched).toHaveBeenCalledOnce();
+      const p = patched.mock.calls[0]![0] as ActorStatePatchedParams;
+      expect(p.instanceId).toBe('h1');
+      expect(p.patch).toMatchObject({ gold: 500, level: 2 });
+      expect(p.previous).toMatchObject({ gold: 100, level: 1 });
+    });
+
+    it('emits only one actor/state:patched event per patch call', () => {
+      const count = vi.fn();
+      core.events.on('test', 'actor/state:patched', count);
+
+      core.events.emitSync('actor/state:patch', {
+        instanceId: 'h1',
+        patch: { gold: 1, hp: 2, level: 3 },
+      });
+
+      expect(count).toHaveBeenCalledOnce();
+    });
+
+    it('warns when instance does not exist', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      core.events.emitSync('actor/state:patch', {
+        instanceId: 'ghost',
+        patch: { gold: 1 },
+      });
+      expect(warn).toHaveBeenCalled();
+      warn.mockRestore();
+    });
+
+    it('adds a new key that did not exist before (previous value is undefined)', () => {
+      const patched = vi.fn();
+      core.events.on('test', 'actor/state:patched', patched);
+
+      core.events.emitSync('actor/state:patch', {
+        instanceId: 'h1',
+        patch: { newKey: 'hello' },
+      });
+
+      expect(am.getInstance('h1')!.state['newKey']).toBe('hello');
+      const p = patched.mock.calls[0]![0] as ActorStatePatchedParams;
+      expect(p.previous['newKey']).toBeUndefined();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // actor/list
+  // -------------------------------------------------------------------------
+
+  describe('actor/list', () => {
+    it('returns an empty array when no instances are spawned', () => {
+      const result = core.events.emitSync<Record<string, never>, ActorListOutput>(
+        'actor/list',
+        {},
+      );
+      expect(result.output.instances).toEqual([]);
+    });
+
+    it('returns all currently live instances', () => {
+      core.events.emitSync('actor/define', { def: makeSimpleDef('hero') });
+      core.events.emitSync('actor/spawn', { actorType: 'hero', instanceId: 'h1' });
+      core.events.emitSync('actor/spawn', { actorType: 'hero', instanceId: 'h2' });
+      core.events.emitSync('actor/spawn', { actorType: 'hero', instanceId: 'h3' });
+
+      const result = core.events.emitSync<Record<string, never>, ActorListOutput>(
+        'actor/list',
+        {},
+      );
+      const ids = result.output.instances.map((i) => i.id);
+      expect(ids).toContain('h1');
+      expect(ids).toContain('h2');
+      expect(ids).toContain('h3');
+      expect(ids).toHaveLength(3);
+    });
+
+    it('reflects despawns immediately', () => {
+      core.events.emitSync('actor/define', { def: makeSimpleDef('hero') });
+      core.events.emitSync('actor/spawn',   { actorType: 'hero', instanceId: 'h1' });
+      core.events.emitSync('actor/spawn',   { actorType: 'hero', instanceId: 'h2' });
+      core.events.emitSync('actor/despawn', { instanceId: 'h1' });
+
+      const result = core.events.emitSync<Record<string, never>, ActorListOutput>(
+        'actor/list',
+        {},
+      );
+      const ids = result.output.instances.map((i) => i.id);
+      expect(ids).not.toContain('h1');
+      expect(ids).toContain('h2');
     });
   });
 });

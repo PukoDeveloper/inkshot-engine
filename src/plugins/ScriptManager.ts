@@ -97,22 +97,25 @@ interface RunState {
  *
  * ### Built-in commands
  *
- * | Command         | Fields                                                 | Description                                                    |
- * |-----------------|--------------------------------------------------------|----------------------------------------------------------------|
- * | `label`         | `name` (string)                                        | Position marker (no-op at runtime)                             |
- * | `jump`          | `target` (string)                                      | Unconditional jump to a label                                  |
- * | `if`            | `var`, `value`, `jump`                                 | Jump to a label when `vars[var] === value`                     |
- * | `set`           | `var` (string), `value`                                | Write a value into the script variable store                   |
- * | `wait`          | `ms` (number)                                          | Pause execution for `ms` milliseconds                          |
- * | `emit`          | `event` (string), `params?` (object)                   | Emit a custom event synchronously                              |
- * | `say`           | `text?`, `speaker?`, `portrait?`, `speed?`, …          | Show dialogue text, wait for advance                           |
- * | `choices`       | `choices` (string[]), `prompt?`, `var?`                | Show choices, store picked index in `var`                      |
- * | `end`           | —                                                      | Close the dialogue session                                     |
- * | `wait-event`    | `event` (string), `var?` (string)                      | Suspend until an event fires; optionally store payload in `var`|
- * | `call`          | `id` (string), `vars?` (object)                        | Run a sub-script inline and await its completion               |
- * | `fork`          | `id` (string), `instanceId?`, `vars?`, `priority?`     | Launch a concurrent instance (fire-and-forget)                 |
- * | `wait-instance` | `instanceId` (string)                                  | Suspend until a named instance finishes                        |
- * | `stop-instance` | `instanceId` (string)                                  | Stop another running instance                                  |
+ * | Command         | Fields                                                       | Description                                                            |
+ * |-----------------|--------------------------------------------------------------|------------------------------------------------------------------------|
+ * | `label`         | `name` (string)                                              | Position marker (no-op at runtime)                                     |
+ * | `jump`          | `target` (string)                                            | Unconditional jump to a label                                          |
+ * | `if`            | `var`, `value`, `jump`                                       | Jump to a label when `vars[var] === value`                             |
+ * | `if-not`        | `var`, `value`, `jump`                                       | Jump to a label when `vars[var] !== value`                             |
+ * | `if-gt`         | `var` (string), `value` (number), `jump`                     | Jump to a label when `vars[var] > value` (numeric)                     |
+ * | `if-lt`         | `var` (string), `value` (number), `jump`                     | Jump to a label when `vars[var] < value` (numeric)                     |
+ * | `set`           | `var` (string), `value`                                      | Write a value into the script variable store                           |
+ * | `wait`          | `ms` (number)                                                | Pause execution for `ms` milliseconds                                  |
+ * | `emit`          | `event` (string), `params?` (object)                         | Emit a custom event synchronously                                      |
+ * | `say`           | `text?`, `speaker?`, `portrait?`, `speed?`, …                | Show dialogue text, wait for advance                                   |
+ * | `choices`       | `choices` (string[]), `prompt?`, `var?`                      | Show choices, store picked index in `var`                              |
+ * | `end`           | —                                                            | Close the dialogue session                                             |
+ * | `wait-event`    | `event` (string), `var?`, `timeout?` (ms), `timeoutJump?`   | Suspend until an event fires; optional timeout with label fallback     |
+ * | `call`          | `id` (string), `vars?` (object)                              | Run a sub-script inline and await its completion                       |
+ * | `fork`          | `id` (string), `instanceId?`, `vars?`, `priority?`           | Launch a concurrent instance (fire-and-forget)                         |
+ * | `wait-instance` | `instanceId` (string)                                        | Suspend until a named instance finishes                                |
+ * | `stop-instance` | `instanceId` (string)                                        | Stop another running instance                                          |
  *
  * ---
  *
@@ -572,7 +575,86 @@ export class ScriptManager implements EnginePlugin {
       }
       if (ctx.vars[varName] === expected) {
         const idx = this._findLabel(ctx.script, labelName);
-        if (idx !== -1) ctx.jumpTo(idx);
+        if (idx !== -1) {
+          ctx.jumpTo(idx);
+        } else {
+          console.warn(
+            `[ScriptManager] if: label "${labelName}" not found ` +
+            `in script "${ctx.script.id}".`,
+          );
+        }
+      }
+    });
+
+    // ── if-not: conditional jump when vars[var] !== value ─────────────────
+    this._commands.set('if-not', (ctx) => {
+      const varName   = ctx.node.var  as string | undefined;
+      const expected  = ctx.node.value;
+      const labelName = ctx.node.jump as string | undefined;
+      if (!varName || !labelName) {
+        console.warn(
+          '[ScriptManager] if-not: requires "var", "value", and "jump" fields.',
+        );
+        return;
+      }
+      if (ctx.vars[varName] !== expected) {
+        const idx = this._findLabel(ctx.script, labelName);
+        if (idx !== -1) {
+          ctx.jumpTo(idx);
+        } else {
+          console.warn(
+            `[ScriptManager] if-not: label "${labelName}" not found ` +
+            `in script "${ctx.script.id}".`,
+          );
+        }
+      }
+    });
+
+    // ── if-gt: jump when vars[var] > value (numeric) ──────────────────────
+    this._commands.set('if-gt', (ctx) => {
+      const varName   = ctx.node.var   as string | undefined;
+      const threshold = ctx.node.value as number | undefined;
+      const labelName = ctx.node.jump  as string | undefined;
+      if (!varName || typeof threshold !== 'number' || !labelName) {
+        console.warn(
+          '[ScriptManager] if-gt: requires "var" (string), "value" (number), and "jump" fields.',
+        );
+        return;
+      }
+      if ((ctx.vars[varName] as number) > threshold) {
+        const idx = this._findLabel(ctx.script, labelName);
+        if (idx !== -1) {
+          ctx.jumpTo(idx);
+        } else {
+          console.warn(
+            `[ScriptManager] if-gt: label "${labelName}" not found ` +
+            `in script "${ctx.script.id}".`,
+          );
+        }
+      }
+    });
+
+    // ── if-lt: jump when vars[var] < value (numeric) ──────────────────────
+    this._commands.set('if-lt', (ctx) => {
+      const varName   = ctx.node.var   as string | undefined;
+      const threshold = ctx.node.value as number | undefined;
+      const labelName = ctx.node.jump  as string | undefined;
+      if (!varName || typeof threshold !== 'number' || !labelName) {
+        console.warn(
+          '[ScriptManager] if-lt: requires "var" (string), "value" (number), and "jump" fields.',
+        );
+        return;
+      }
+      if ((ctx.vars[varName] as number) < threshold) {
+        const idx = this._findLabel(ctx.script, labelName);
+        if (idx !== -1) {
+          ctx.jumpTo(idx);
+        } else {
+          console.warn(
+            `[ScriptManager] if-lt: label "${labelName}" not found ` +
+            `in script "${ctx.script.id}".`,
+          );
+        }
       }
     });
 
@@ -664,28 +746,74 @@ export class ScriptManager implements EnginePlugin {
     // ── wait-event: suspend until a named event fires ──────────────────────
     //
     // Fields:
-    //   event  (string)  – the event name to wait for
-    //   var    (string)  – optional: store the event payload in this variable
+    //   event        (string)  – the event name to wait for
+    //   var          (string)  – optional: store the event payload in this variable
+    //   timeout      (number)  – optional: milliseconds before giving up
+    //   timeoutJump  (string)  – optional: label to jump to on timeout; when
+    //                            omitted the script simply continues from the
+    //                            next node after the wait-event
     //
     // Example: wait for the player to enter a trigger zone, then proceed
     //   { cmd: 'wait-event', event: 'zone/entered', var: 'zonePayload' }
+    //
+    // Example: with a 5-second timeout fallback
+    //   { cmd: 'wait-event', event: 'npc/arrived', timeout: 5000, timeoutJump: 'fallback' }
     this._commands.set('wait-event', (ctx) => {
-      const event = ctx.node.event as string | undefined;
+      const event       = ctx.node.event       as string | undefined;
       if (!event) {
         console.warn('[ScriptManager] wait-event: missing "event" field.');
         return;
       }
-      const varName = ctx.node.var as string | undefined;
+      const varName     = ctx.node.var         as string | undefined;
+      const timeoutMs   = ctx.node.timeout     as number | undefined;
+      const timeoutJump = ctx.node.timeoutJump as string | undefined;
+
       return new Promise<void>((resolve) => {
-        const off = ctx.core.events.once(
+        let settled = false;
+
+        const settle = (): void => {
+          if (settled) return;
+          settled = true;
+          off();
+          if (timeoutHandle !== null) {
+            clearTimeout(timeoutHandle);
+            timeoutHandle = null;
+          }
+          resolve();
+        };
+
+        // Use on() + manual off() so the timeout can cancel the listener
+        // and to avoid race conditions if multiple events fire in sequence.
+        const off = ctx.core.events.on(
           this.namespace,
           event,
           (payload: unknown) => {
+            if (settled) return;
             if (varName) ctx.vars[varName] = payload;
-            resolve();
+            settle();
           },
         );
-        ctx.onStop(() => { off(); resolve(); });
+
+        let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+        if (typeof timeoutMs === 'number') {
+          timeoutHandle = setTimeout(() => {
+            if (settled) return;
+            if (timeoutJump) {
+              const idx = this._findLabel(ctx.script, timeoutJump);
+              if (idx !== -1) {
+                ctx.jumpTo(idx);
+              } else {
+                console.warn(
+                  `[ScriptManager] wait-event: timeout label "${timeoutJump}" not found ` +
+                  `in script "${ctx.script.id}".`,
+                );
+              }
+            }
+            settle();
+          }, timeoutMs);
+        }
+
+        ctx.onStop(settle);
       });
     });
 
