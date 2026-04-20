@@ -1015,7 +1015,8 @@ Built-in plugins in `src/plugins/`:
 | `AudioManager.ts` | `audio` | Web Audio API playback with pause/resume and per-instance volume |
 | `SaveManager.ts` | `save` | In-memory save slots and global save data |
 | `GameStateManager.ts` | `game` | High-level game phase state machine |
-| `InputManager.ts` | `input` | Keyboard and pointer input |
+| `InputManager.ts` | `input` | Keyboard, pointer, and gamepad input; action bindings; per-frame axes cache |
+| `TimerManager.ts` | `timer` | One-shot timers, repeating intervals, cooldown tracking, and `cancel-all` |
 | `ResourceManager.ts` | `assets` | Multi-mode asset loading with cache-first guarantee |
 | `LocalizationManager.ts` | `i18n` | JSON locale loading, key lookup, variable substitution, and token interpolation |
 | `SceneManager.ts` | `scene` | Scene registration, lifecycle management, and transition orchestration |

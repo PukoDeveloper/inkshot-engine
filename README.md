@@ -17,6 +17,7 @@ Everything communicates through a shared **EventBus** — no tight coupling, no 
    - [ResourceManager (`assets`)](#resourcemanager-assets)
    - [LocalizationManager (`i18n`)](#localizationmanager-i18n)
    - [InputManager (`input`)](#inputmanager-input)
+   - [TimerManager (`timer`)](#timermanager-timer)
    - [SaveManager (`save`)](#savemanager-save)
    - [GameStateManager (`game`)](#gamestatemanager-game)
    - [SceneManager (`scene`)](#scenemanager-scene)
@@ -318,9 +319,9 @@ console.log(output.result); // "Language: English — Start Game"
 
 ### InputManager (`input`)
 
-Captures keyboard and pointer events from the browser and re-emits them on the bus.  Pointer-move events are throttled to **one per frame** to avoid flooding the bus.
+Captures keyboard, pointer, and gamepad events from the browser and re-emits them on the bus.  Pointer-move events are throttled to **one per frame** to avoid flooding the bus.  Gamepad state is polled once per `core/tick`; axes are snapshotted into a per-frame cache for consistent reads.
 
-#### Event Contract
+#### Event Contract — Keyboard & Pointer
 
 | Event | Direction | Description |
 |-------|-----------|-------------|
@@ -331,20 +332,36 @@ Captures keyboard and pointer events from the browser and re-emits them on the b
 | `input/pointer:move` | — emitted | Pointer moved (throttled, once per frame) |
 | `input/key:pressed` | ✗ `emitSync` | Query whether a key is currently held |
 | `input/pointer:state` | ✗ `emitSync` | Query current pointer position and pressed buttons |
-| `input/action:bind` | ✗ `emitSync` | Map a logical action to one or more key codes |
-| `input/action:triggered` | — emitted | Fired when a bound action key changes state |
+| `input/action:bind` | ✗ `emitSync` | Map a logical action to one or more key codes; re-registering replaces the existing binding |
+| `input/action:triggered` | — emitted | Fired when a bound action key or button changes state |
+
+#### Event Contract — Gamepad
+
+| Event | Direction | Description |
+|-------|-----------|-------------|
+| `input/gamepad:button:down` | — emitted | A gamepad button transitions released → pressed |
+| `input/gamepad:button:up` | — emitted | A gamepad button transitions pressed → released |
+| `input/gamepad:axes` | — emitted | Per-frame raw analog axes (any axis > 0.05 deadzone) |
+| `input/gamepad:axis:bind` | ✗ `emitSync` | Map an analog axis to a logical action; re-registering the same tuple replaces the existing binding |
+| `input/gamepad:vibrate` | ✗ `emitSync` | Trigger haptic feedback on a connected gamepad |
+| `input/gamepad:connected` | — emitted | A gamepad was connected (browser `gamepadconnected` DOM event) |
+| `input/gamepad:disconnected` | — emitted | A gamepad was disconnected (browser `gamepaddisconnected` DOM event) |
 
 #### Usage
 
 ```ts
 import { createEngine, InputManager } from 'inkshot-engine';
 
+const inputManager = new InputManager();
 const { core } = await createEngine({
-  plugins: [new InputManager()],
+  plugins: [inputManager],
 });
 
-// Bind logical actions
-core.events.emitSync('input/action:bind', { action: 'jump', codes: ['Space', 'ArrowUp'] });
+// Bind logical actions (keyboard + gamepad together)
+core.events.emitSync('input/action:bind', {
+  action: 'jump',
+  codes: ['Space', 'ArrowUp', 'Gamepad:0:0'],  // keyboard or gamepad button 0
+});
 
 // React to actions (decoupled from physical keys)
 core.events.on('myGame', 'input/action:triggered', ({ action, state }) => {
@@ -355,7 +372,90 @@ core.events.on('myGame', 'input/action:triggered', ({ action, state }) => {
 core.events.on('myGame', 'core/tick', () => {
   const { output } = core.events.emitSync('input/key:pressed', { code: 'KeyW' });
   if (output.pressed) player.moveForward();
+
+  // Read cached gamepad axes (snapshotted this frame)
+  const axes = inputManager.getGamepadAxes(0);
+  if (axes[0] > 0.5) player.moveRight();
 });
+
+// Bind a gamepad analog axis to a logical action
+core.events.emitSync('input/gamepad:axis:bind', {
+  action: 'move-right',
+  axisIndex: 0,
+  direction: 'positive',
+  threshold: 0.5,
+});
+
+// React to connect / disconnect
+core.events.on('myGame', 'input/gamepad:connected', ({ gamepadIndex, id }) => {
+  console.log(`Gamepad ${gamepadIndex} connected: ${id}`);
+});
+```
+
+---
+
+### TimerManager (`timer`)
+
+Provides **one-shot timers**, **repeating intervals**, and **cooldown tracking**, all driven by `core/tick`.  Timers automatically pause and resume with the game loop (`core/pause` / `core/resume`).
+
+A **burst safety cap** (10 fires per tick) prevents a flood of callbacks when the browser tab resumes after being backgrounded with a large accumulated `dt`.
+
+#### Event Contract
+
+| Event | Direction | Description |
+|-------|-----------|-------------|
+| `timer/once` | ✗ `emitSync` | Fire once after `delay` ms; re-registering the same `id` resets it |
+| `timer/interval` | ✗ `emitSync` | Fire every `interval` ms; optionally stop after `repeat` fires |
+| `timer/cancel` | ✗ `emitSync` | Cancel a specific timer or cooldown by `id`; emits `timer/cancelled` |
+| `timer/cancel-all` | ✗ `emitSync` | Cancel every active timer and cooldown at once; returns `output.cancelledCount` |
+| `timer/cooldown` | ✗ `emitSync` | Start/reset a cooldown, or query its readiness; returns `output.ready` |
+| `timer/fired` | — emitted | A once or interval timer fired; carries `{ id, count }` |
+| `timer/cancelled` | — emitted | A timer/cooldown was explicitly cancelled |
+
+#### Direct Accessor API (pull, no EventBus needed)
+
+When you hold a reference to the `TimerManager` instance you can query state synchronously without going through the bus:
+
+| Method | Returns |
+|--------|---------|
+| `isTimerActive(id)` | `true` while a once/interval timer is still waiting to fire |
+| `getTimeRemaining(id)` | Milliseconds until the next fire (`0` if not active) |
+| `getCooldownProgress(id)` | Completion ratio `0`–`1` (`1` when ready / unknown) |
+
+#### Usage
+
+```ts
+import { createEngine, TimerManager } from 'inkshot-engine';
+
+const timerManager = new TimerManager();
+const { core } = await createEngine({
+  plugins: [timerManager],
+});
+
+// One-shot: fire once after 2 s
+core.events.emitSync('timer/once', { id: 'respawn', delay: 2000 });
+
+// Interval: fire every 500 ms, stop after 5 fires
+core.events.emitSync('timer/interval', { id: 'tick', interval: 500, repeat: 5 });
+
+// Listen for fires
+core.events.on('myGame', 'timer/fired', ({ id, count }) => {
+  if (id === 'respawn') spawnPlayer();
+});
+
+// Cooldown: 1 s attack cooldown
+core.events.emitSync('timer/cooldown', { id: 'attack', duration: 1000 });
+const { output } = core.events.emitSync('timer/cooldown', { id: 'attack' });
+if (output.ready) performAttack();
+
+// Pull accessors — no EventBus round-trip needed
+core.events.on('myGame', 'core/tick', () => {
+  ui.setCountdown(Math.ceil(timerManager.getTimeRemaining('respawn') / 1000));
+  attackBar.setFill(timerManager.getCooldownProgress('attack'));
+});
+
+// Cancel everything on scene transition
+core.events.emitSync('timer/cancel-all', {});
 ```
 
 ---
@@ -1071,6 +1171,11 @@ import type {
   I18nTParams, I18nTOutput, I18nInterpolateParams, I18nInterpolateOutput,
   // Input
   InputActionTriggeredParams,
+  InputGamepadConnectedParams, InputGamepadDisconnectedParams,
+  InputGamepadAxisBindParams, InputGamepadAxesParams,
+  // Timer
+  TimerFiredParams, TimerCancelledParams, TimerCancelAllOutput,
+  TimerCooldownOutput,
   // Save
   SaveSlotSaveOutput,
   // Collision
