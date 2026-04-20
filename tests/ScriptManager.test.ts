@@ -531,8 +531,147 @@ describe('ScriptManager', () => {
   // Starting a new script while one is running
   // -------------------------------------------------------------------------
 
-  describe('starting a new script interrupts the current one', () => {
-    it('emits ended for the old script and started for the new one', async () => {
+  // -------------------------------------------------------------------------
+  // Multi-instance concurrency & interruption
+  // -------------------------------------------------------------------------
+
+  describe('multi-instance concurrency', () => {
+    it('two scripts with different instanceIds run concurrently', async () => {
+      const order: string[] = [];
+      core.events.on('test', 'script/started', (p: ScriptStartedParams) => {
+        order.push(`started:${p.instanceId}`);
+      });
+      core.events.on('test', 'script/ended', (p: ScriptEndedParams) => {
+        order.push(`ended:${p.instanceId}`);
+      });
+
+      core.events.emitSync('script/register-command', {
+        cmd: 'hang',
+        handler: (ctx) => new Promise<void>((resolve) => ctx.onStop(resolve)),
+      } satisfies ScriptRegisterCommandParams);
+
+      core.events.emitSync('script/define', {
+        script: { id: 'patrol', nodes: [{ cmd: 'hang' }] },
+      });
+
+      // Two NPC instances share the same script definition but run concurrently
+      core.events.emitSync('script/run', { id: 'patrol', instanceId: 'guard-1' });
+      core.events.emitSync('script/run', { id: 'patrol', instanceId: 'guard-2' });
+      await flushMicrotasks();
+
+      expect(sm.isRunning).toBe(true);
+      expect(sm.runningInstances).toHaveLength(2);
+
+      // Stop only guard-1
+      core.events.emitSync('script/stop', { instanceId: 'guard-1' });
+      await flushMicrotasks();
+
+      expect(order).toContain('ended:guard-1');
+      expect(order).not.toContain('ended:guard-2');
+      expect(sm.runningInstances).toHaveLength(1);
+      expect(sm.runningInstances[0]!.instanceId).toBe('guard-2');
+
+      // Stop remaining
+      core.events.emitSync('script/stop', {});
+      await flushMicrotasks();
+      expect(sm.isRunning).toBe(false);
+    });
+
+    it('same instanceId: new run replaces existing one', async () => {
+      const events: string[] = [];
+      core.events.on('test', 'script/started', (p: ScriptStartedParams) => {
+        events.push(`started:${p.instanceId}:${p.id}`);
+      });
+      core.events.on('test', 'script/ended', (p: ScriptEndedParams) => {
+        events.push(`ended:${p.instanceId}:${p.id}`);
+      });
+
+      core.events.emitSync('script/register-command', {
+        cmd: 'hang',
+        handler: (ctx) => new Promise<void>((resolve) => ctx.onStop(resolve)),
+      } satisfies ScriptRegisterCommandParams);
+
+      core.events.emitSync('script/define', {
+        script: { id: 'patrol', nodes: [{ cmd: 'hang' }] },
+      });
+      core.events.emitSync('script/define', {
+        script: { id: 'chase', nodes: [] },
+      });
+
+      core.events.emitSync('script/run', { id: 'patrol', instanceId: 'guard-1' });
+      await flushMicrotasks();
+
+      // Same instanceId — replaces patrol with chase
+      core.events.emitSync('script/run', { id: 'chase', instanceId: 'guard-1' });
+      await flushMicrotasks();
+
+      expect(events).toContain('started:guard-1:patrol');
+      expect(events).toContain('ended:guard-1:patrol');
+      expect(events).toContain('started:guard-1:chase');
+      expect(events).toContain('ended:guard-1:chase');
+    });
+
+    it('exclusive: true stops all running instances before starting', async () => {
+      const ended: string[] = [];
+      core.events.on('test', 'script/ended', (p: ScriptEndedParams) => {
+        ended.push(p.instanceId);
+      });
+
+      core.events.emitSync('script/register-command', {
+        cmd: 'hang',
+        handler: (ctx) => new Promise<void>((resolve) => ctx.onStop(resolve)),
+      } satisfies ScriptRegisterCommandParams);
+
+      core.events.emitSync('script/define', {
+        script: { id: 'npc', nodes: [{ cmd: 'hang' }] },
+      });
+      core.events.emitSync('script/define', {
+        script: { id: 'cutscene', nodes: [] },
+      });
+
+      // Start two NPC instances
+      core.events.emitSync('script/run', { id: 'npc', instanceId: 'npc-1' });
+      core.events.emitSync('script/run', { id: 'npc', instanceId: 'npc-2' });
+      await flushMicrotasks();
+      expect(sm.runningInstances).toHaveLength(2);
+
+      // Exclusive cutscene — stops everything first
+      core.events.emitSync('script/run', { id: 'cutscene', exclusive: true });
+      await flushMicrotasks();
+
+      expect(ended).toContain('npc-1');
+      expect(ended).toContain('npc-2');
+      expect(sm.isRunning).toBe(false); // cutscene also ended (empty nodes)
+    });
+
+    it('script/stop with no instanceId stops all instances', async () => {
+      core.events.emitSync('script/register-command', {
+        cmd: 'hang',
+        handler: (ctx) => new Promise<void>((resolve) => ctx.onStop(resolve)),
+      } satisfies ScriptRegisterCommandParams);
+
+      core.events.emitSync('script/define', {
+        script: { id: 'npc', nodes: [{ cmd: 'hang' }] },
+      });
+
+      core.events.emitSync('script/run', { id: 'npc', instanceId: 'a' });
+      core.events.emitSync('script/run', { id: 'npc', instanceId: 'b' });
+      core.events.emitSync('script/run', { id: 'npc', instanceId: 'c' });
+      await flushMicrotasks();
+      expect(sm.runningInstances).toHaveLength(3);
+
+      core.events.emitSync('script/stop', {});
+      await flushMicrotasks();
+      expect(sm.isRunning).toBe(false);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Priority system
+  // -------------------------------------------------------------------------
+
+  describe('priority', () => {
+    it('higher-priority run interrupts same-instanceId lower-priority run', async () => {
       const events: string[] = [];
       core.events.on('test', 'script/started', (p: ScriptStartedParams) => {
         events.push(`started:${p.id}`);
@@ -541,29 +680,486 @@ describe('ScriptManager', () => {
         events.push(`ended:${p.id}`);
       });
 
-      // Script A: uses a custom async command that hangs until stopped
       core.events.emitSync('script/register-command', {
         cmd: 'hang',
         handler: (ctx) => new Promise<void>((resolve) => ctx.onStop(resolve)),
       } satisfies ScriptRegisterCommandParams);
 
       core.events.emitSync('script/define', {
-        script: { id: 'A', nodes: [{ cmd: 'hang' }] },
+        script: { id: 'patrol', nodes: [{ cmd: 'hang' }] },
       });
       core.events.emitSync('script/define', {
-        script: { id: 'B', nodes: [] },
+        script: { id: 'chase', nodes: [] },
       });
 
-      core.events.emitSync('script/run', { id: 'A' });
+      core.events.emitSync('script/run', { id: 'patrol', instanceId: 'guard', priority: 0 });
       await flushMicrotasks();
 
-      core.events.emitSync('script/run', { id: 'B' });
+      // Higher priority wins — patrol is interrupted
+      core.events.emitSync('script/run', { id: 'chase', instanceId: 'guard', priority: 10 });
       await flushMicrotasks();
 
-      expect(events).toContain('started:A');
-      expect(events).toContain('ended:A');
-      expect(events).toContain('started:B');
-      expect(events).toContain('ended:B');
+      expect(events).toContain('ended:patrol');
+      expect(events).toContain('started:chase');
+    });
+
+    it('lower-priority run is rejected when a higher-priority run is active', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const started = vi.fn();
+      core.events.on('test', 'script/started', started);
+
+      core.events.emitSync('script/register-command', {
+        cmd: 'hang',
+        handler: (ctx) => new Promise<void>((resolve) => ctx.onStop(resolve)),
+      } satisfies ScriptRegisterCommandParams);
+
+      core.events.emitSync('script/define', {
+        script: { id: 'chase', nodes: [{ cmd: 'hang' }] },
+      });
+      core.events.emitSync('script/define', {
+        script: { id: 'patrol', nodes: [] },
+      });
+
+      core.events.emitSync('script/run', { id: 'chase',  instanceId: 'guard', priority: 10 });
+      await flushMicrotasks();
+
+      // Lower priority should be rejected
+      core.events.emitSync('script/run', { id: 'patrol', instanceId: 'guard', priority: 0 });
+      await flushMicrotasks();
+
+      expect(warnSpy).toHaveBeenCalled();
+      // Only 'chase' should have started (patrol was rejected)
+      expect(started).toHaveBeenCalledOnce();
+      expect((started.mock.calls[0]![0] as ScriptStartedParams).id).toBe('chase');
+
+      core.events.emitSync('script/stop', {});
+      warnSpy.mockRestore();
+    });
+
+    it('equal-priority run replaces the existing one', async () => {
+      const started: string[] = [];
+      core.events.on('test', 'script/started', (p: ScriptStartedParams) => {
+        started.push(p.id);
+      });
+
+      core.events.emitSync('script/register-command', {
+        cmd: 'hang',
+        handler: (ctx) => new Promise<void>((resolve) => ctx.onStop(resolve)),
+      } satisfies ScriptRegisterCommandParams);
+
+      core.events.emitSync('script/define', {
+        script: { id: 'patrol-a', nodes: [{ cmd: 'hang' }] },
+      });
+      core.events.emitSync('script/define', {
+        script: { id: 'patrol-b', nodes: [] },
+      });
+
+      core.events.emitSync('script/run', { id: 'patrol-a', instanceId: 'guard', priority: 5 });
+      await flushMicrotasks();
+      core.events.emitSync('script/run', { id: 'patrol-b', instanceId: 'guard', priority: 5 });
+      await flushMicrotasks();
+
+      expect(started).toContain('patrol-a');
+      expect(started).toContain('patrol-b');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // script/state:get – extended output
+  // -------------------------------------------------------------------------
+
+  describe('script/state:get (extended)', () => {
+    it('instances array reflects all running scripts', async () => {
+      core.events.emitSync('script/register-command', {
+        cmd: 'hang',
+        handler: (ctx) => new Promise<void>((resolve) => ctx.onStop(resolve)),
+      } satisfies ScriptRegisterCommandParams);
+
+      core.events.emitSync('script/define', {
+        script: { id: 'npc', nodes: [{ cmd: 'hang' }] },
+      });
+
+      core.events.emitSync('script/run', { id: 'npc', instanceId: 'npc-1', priority: 2 });
+      core.events.emitSync('script/run', { id: 'npc', instanceId: 'npc-2', priority: 3 });
+      await flushMicrotasks();
+
+      const { output } = core.events.emitSync<Record<string, never>, ScriptStateGetOutput>(
+        'script/state:get',
+        {},
+      );
+
+      expect(output.running).toBe(true);
+      expect(output.instances).toHaveLength(2);
+
+      const inst1 = output.instances.find((i) => i.instanceId === 'npc-1')!;
+      const inst2 = output.instances.find((i) => i.instanceId === 'npc-2')!;
+      expect(inst1).toBeDefined();
+      expect(inst1.scriptId).toBe('npc');
+      expect(inst1.priority).toBe(2);
+      expect(inst2).toBeDefined();
+      expect(inst2.priority).toBe(3);
+
+      core.events.emitSync('script/stop', {});
+      await flushMicrotasks();
+    });
+
+    it('instances is empty when idle', () => {
+      const { output } = core.events.emitSync<Record<string, never>, ScriptStateGetOutput>(
+        'script/state:get',
+        {},
+      );
+      expect(output.instances).toEqual([]);
+      expect(output.running).toBe(false);
+      expect(output.scriptId).toBeNull();
+      expect(output.nodeIndex).toBeNull();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // New built-in command: wait-event
+  // -------------------------------------------------------------------------
+
+  describe('built-in: wait-event', () => {
+    it('suspends until the specified event fires', async () => {
+      const ended = vi.fn();
+      core.events.on('test', 'script/ended', ended);
+
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'we-test',
+          nodes: [{ cmd: 'wait-event', event: 'zone/entered' }],
+        },
+      });
+      core.events.emitSync('script/run', { id: 'we-test' });
+      await flushMicrotasks();
+
+      expect(ended).not.toHaveBeenCalled(); // still waiting
+
+      core.events.emitSync('zone/entered', {});
+      await flushMicrotasks();
+
+      expect(ended).toHaveBeenCalledOnce();
+    });
+
+    it('stores the event payload in the variable when var is specified', async () => {
+      let capturedVars: Record<string, unknown> = {};
+
+      core.events.emitSync('script/register-command', {
+        cmd: 'read-vars',
+        handler: (ctx) => { capturedVars = { ...ctx.vars }; },
+      } satisfies ScriptRegisterCommandParams);
+
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'we-var',
+          nodes: [
+            { cmd: 'wait-event', event: 'enemy/died', var: 'killed' },
+            { cmd: 'read-vars' },
+          ],
+        },
+      });
+      core.events.emitSync('script/run', { id: 'we-var' });
+      await flushMicrotasks();
+
+      core.events.emitSync('enemy/died', { id: 'goblin' });
+      await flushMicrotasks();
+
+      expect(capturedVars.killed).toMatchObject({ id: 'goblin' });
+    });
+
+    it('is cancelled cleanly when the script is stopped', async () => {
+      const ended = vi.fn();
+      core.events.on('test', 'script/ended', ended);
+
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'we-stop',
+          nodes: [{ cmd: 'wait-event', event: 'never/fires' }],
+        },
+      });
+      core.events.emitSync('script/run', { id: 'we-stop' });
+      await flushMicrotasks();
+
+      core.events.emitSync('script/stop', {});
+      await flushMicrotasks();
+
+      expect(ended).toHaveBeenCalledOnce();
+      expect(sm.isRunning).toBe(false);
+    });
+
+    it('warns when event field is missing', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      core.events.emitSync('script/define', {
+        script: { id: 'we-bad', nodes: [{ cmd: 'wait-event' }] },
+      });
+      core.events.emitSync('script/run', { id: 'we-bad' });
+      await flushMicrotasks();
+      expect(warnSpy).toHaveBeenCalled();
+      warnSpy.mockRestore();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // New built-in command: call
+  // -------------------------------------------------------------------------
+
+  describe('built-in: call', () => {
+    it('runs a sub-script inline and awaits its completion', async () => {
+      const order: number[] = [];
+
+      core.events.emitSync('script/register-command', {
+        cmd: 'mark',
+        handler: (ctx) => { order.push(ctx.node.n as number); },
+      } satisfies ScriptRegisterCommandParams);
+
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'sub',
+          nodes: [
+            { cmd: 'mark', n: 2 },
+            { cmd: 'mark', n: 3 },
+          ],
+        },
+      });
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'main',
+          nodes: [
+            { cmd: 'mark', n: 1 },
+            { cmd: 'call', id: 'sub' },
+            { cmd: 'mark', n: 4 },
+          ],
+        },
+      });
+      core.events.emitSync('script/run', { id: 'main' });
+      await flushMicrotasks();
+
+      expect(order).toEqual([1, 2, 3, 4]);
+    });
+
+    it('shares the variable store with the caller', async () => {
+      let capturedVars: Record<string, unknown> = {};
+
+      core.events.emitSync('script/register-command', {
+        cmd: 'read-vars',
+        handler: (ctx) => { capturedVars = { ...ctx.vars }; },
+      } satisfies ScriptRegisterCommandParams);
+
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'sub-set',
+          nodes: [{ cmd: 'set', var: 'result', value: 99 }],
+        },
+      });
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'main-call',
+          nodes: [
+            { cmd: 'call', id: 'sub-set' },
+            { cmd: 'read-vars' },
+          ],
+        },
+      });
+      core.events.emitSync('script/run', { id: 'main-call' });
+      await flushMicrotasks();
+
+      expect(capturedVars.result).toBe(99);
+    });
+
+    it('warns when called script id is not defined', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      core.events.emitSync('script/define', {
+        script: { id: 'call-ghost', nodes: [{ cmd: 'call', id: 'nonexistent' }] },
+      });
+      core.events.emitSync('script/run', { id: 'call-ghost' });
+      await flushMicrotasks();
+      expect(warnSpy).toHaveBeenCalled();
+      warnSpy.mockRestore();
+    });
+
+    it('is stopped cleanly when the parent script is stopped mid-call', async () => {
+      const ended = vi.fn();
+      core.events.on('test', 'script/ended', ended);
+
+      core.events.emitSync('script/register-command', {
+        cmd: 'hang',
+        handler: (ctx) => new Promise<void>((resolve) => ctx.onStop(resolve)),
+      } satisfies ScriptRegisterCommandParams);
+
+      core.events.emitSync('script/define', {
+        script: { id: 'sub-hang', nodes: [{ cmd: 'hang' }] },
+      });
+      core.events.emitSync('script/define', {
+        script: { id: 'main-hang', nodes: [{ cmd: 'call', id: 'sub-hang' }] },
+      });
+
+      core.events.emitSync('script/run', { id: 'main-hang' });
+      await flushMicrotasks();
+
+      core.events.emitSync('script/stop', {});
+      await flushMicrotasks();
+
+      expect(ended).toHaveBeenCalledOnce();
+      expect(sm.isRunning).toBe(false);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // New built-in command: fork
+  // -------------------------------------------------------------------------
+
+  describe('built-in: fork', () => {
+    it('launches a new instance without blocking the parent', async () => {
+      const order: string[] = [];
+
+      core.events.emitSync('script/register-command', {
+        cmd: 'mark-str',
+        handler: (ctx) => { order.push(ctx.node.s as string); },
+      } satisfies ScriptRegisterCommandParams);
+
+      core.events.emitSync('script/register-command', {
+        cmd: 'hang',
+        handler: (ctx) => new Promise<void>((resolve) => ctx.onStop(resolve)),
+      } satisfies ScriptRegisterCommandParams);
+
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'forked',
+          nodes: [{ cmd: 'hang' }],  // hangs – parent should not wait for it
+        },
+      });
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'parent',
+          nodes: [
+            { cmd: 'fork',     id: 'forked', instanceId: 'bg' },
+            { cmd: 'mark-str', s: 'after-fork' },
+          ],
+        },
+      });
+      core.events.emitSync('script/run', { id: 'parent' });
+      await flushMicrotasks();
+
+      // Parent continued past the fork
+      expect(order).toContain('after-fork');
+      // Forked instance still running
+      expect(sm.runningInstances.some((i) => i.instanceId === 'bg')).toBe(true);
+
+      core.events.emitSync('script/stop', {});
+      await flushMicrotasks();
+    });
+
+    it('warns when fork script id is missing', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      core.events.emitSync('script/define', {
+        script: { id: 'fork-bad', nodes: [{ cmd: 'fork' }] },
+      });
+      core.events.emitSync('script/run', { id: 'fork-bad' });
+      await flushMicrotasks();
+      expect(warnSpy).toHaveBeenCalled();
+      warnSpy.mockRestore();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // New built-in command: wait-instance
+  // -------------------------------------------------------------------------
+
+  describe('built-in: wait-instance', () => {
+    it('suspends the caller until the target instance ends', async () => {
+      const order: string[] = [];
+
+      core.events.emitSync('script/register-command', {
+        cmd: 'mark-str',
+        handler: (ctx) => { order.push(ctx.node.s as string); },
+      } satisfies ScriptRegisterCommandParams);
+
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'fx',
+          nodes: [
+            { cmd: 'wait', ms: 20 },
+            { cmd: 'mark-str', s: 'fx-done' },
+          ],
+        },
+      });
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'boss',
+          nodes: [
+            { cmd: 'fork',          id: 'fx', instanceId: 'fx-inst' },
+            { cmd: 'wait-instance', instanceId: 'fx-inst' },
+            { cmd: 'mark-str',      s: 'boss-after-fx' },
+          ],
+        },
+      });
+      core.events.emitSync('script/run', { id: 'boss' });
+      await new Promise<void>((resolve) => setTimeout(resolve, 60));
+
+      expect(order.indexOf('fx-done')).toBeLessThan(order.indexOf('boss-after-fx'));
+    });
+
+    it('resolves immediately when target instance is not running', async () => {
+      const ended = vi.fn();
+      core.events.on('test', 'script/ended', ended);
+
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'wi-immediate',
+          nodes: [{ cmd: 'wait-instance', instanceId: 'nonexistent' }],
+        },
+      });
+      core.events.emitSync('script/run', { id: 'wi-immediate' });
+      await flushMicrotasks();
+
+      expect(ended).toHaveBeenCalledOnce();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // New built-in command: stop-instance
+  // -------------------------------------------------------------------------
+
+  describe('built-in: stop-instance', () => {
+    it('stops the specified running instance', async () => {
+      const ended: string[] = [];
+      core.events.on('test', 'script/ended', (p: ScriptEndedParams) => {
+        ended.push(p.instanceId);
+      });
+
+      core.events.emitSync('script/register-command', {
+        cmd: 'hang',
+        handler: (ctx) => new Promise<void>((resolve) => ctx.onStop(resolve)),
+      } satisfies ScriptRegisterCommandParams);
+
+      core.events.emitSync('script/define', {
+        script: { id: 'bg', nodes: [{ cmd: 'hang' }] },
+      });
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'controller',
+          nodes: [
+            { cmd: 'fork',          id: 'bg', instanceId: 'bg-inst' },
+            { cmd: 'stop-instance', instanceId: 'bg-inst' },
+          ],
+        },
+      });
+
+      core.events.emitSync('script/run', { id: 'controller' });
+      await flushMicrotasks();
+
+      expect(ended).toContain('bg-inst');
+    });
+
+    it('warns when instanceId field is missing', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      core.events.emitSync('script/define', {
+        script: { id: 'si-bad', nodes: [{ cmd: 'stop-instance' }] },
+      });
+      core.events.emitSync('script/run', { id: 'si-bad' });
+      await flushMicrotasks();
+      expect(warnSpy).toHaveBeenCalled();
+      warnSpy.mockRestore();
     });
   });
 
@@ -598,6 +1194,29 @@ describe('ScriptManager', () => {
       await flushMicrotasks();
 
       expect(sm.currentScriptId).toBeNull();
+    });
+
+    it('runningInstances returns all active instances', async () => {
+      core.events.emitSync('script/register-command', {
+        cmd: 'hang',
+        handler: (ctx) => new Promise<void>((resolve) => ctx.onStop(resolve)),
+      } satisfies ScriptRegisterCommandParams);
+
+      core.events.emitSync('script/define', {
+        script: { id: 'npc', nodes: [{ cmd: 'hang' }] },
+      });
+
+      core.events.emitSync('script/run', { id: 'npc', instanceId: 'n1', priority: 1 });
+      core.events.emitSync('script/run', { id: 'npc', instanceId: 'n2', priority: 2 });
+      await flushMicrotasks();
+
+      const instances = sm.runningInstances;
+      expect(instances).toHaveLength(2);
+      expect(instances.find((i) => i.instanceId === 'n1')?.priority).toBe(1);
+      expect(instances.find((i) => i.instanceId === 'n2')?.priority).toBe(2);
+
+      core.events.emitSync('script/stop', {});
+      await flushMicrotasks();
     });
   });
 });

@@ -354,6 +354,7 @@ export type {
   ScriptRunParams,
   ScriptStopParams,
   ScriptRegisterCommandParams,
+  ScriptInstanceState,
   ScriptStateGetOutput,
   ScriptStartedParams,
   ScriptEndedParams,

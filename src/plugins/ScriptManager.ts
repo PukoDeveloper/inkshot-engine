@@ -9,6 +9,7 @@ import type {
   ScriptStopParams,
   ScriptRegisterCommandParams,
   ScriptStateGetOutput,
+  ScriptInstanceState,
   ScriptStartedParams,
   ScriptEndedParams,
   ScriptStepParams,
@@ -21,17 +22,22 @@ import type {
 
 interface RunState {
   readonly script: ScriptDef;
+  readonly instanceId: string;
   readonly vars: Record<string, unknown>;
-  /** Cursor: index of the next node to execute. Mutated by jumpTo(). */
-  nextIndex: number;
+  readonly priority: number;
   /** Set to true to break out of the execution loop after the current command. */
   stopped: boolean;
   /**
    * Cleanup functions registered by command handlers via ctx.onStop().
-   * Called by _stop() so that pending promises are resolved and listeners
-   * are unregistered before the run frame is abandoned.
+   * Called by _stopInstance() so that pending promises are resolved and
+   * listeners are unregistered before the run frame is abandoned.
    */
   readonly stopResolvers: Array<() => void>;
+  /**
+   * The node index that the CURRENT _executeNodes frame is about to run.
+   * Updated by the running frame so state:get can report an accurate position.
+   */
+  currentNodeIndex: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -42,10 +48,23 @@ interface RunState {
  * Built-in plugin that executes scripts defined as ordered lists of command
  * nodes.
  *
- * `ScriptManager` is an open-ended execution engine: it ships with a small set
- * of built-in commands and is designed so that **any plugin or game code** can
- * extend it by registering additional commands — either at construction time or
- * dynamically via the `script/register-command` event.
+ * `ScriptManager` supports **concurrent execution**: multiple scripts run
+ * simultaneously as independent *instances*, each identified by a unique
+ * `instanceId`.  This is essential for RPG games where many NPCs need their
+ * own behaviour loops running at the same time.
+ *
+ * ---
+ *
+ * ### Concurrency model
+ *
+ * Scripts run in JavaScript's single-threaded event loop.  Two async chains
+ * interleave naturally — no true parallelism or polling is needed.
+ *
+ * ```
+ * NPC-1 patrol  ──wait(2000)──────────────────────────────►
+ * NPC-2 patrol      ──wait(2000)──────────────────────────►
+ * Player dialogue         ──say──►──choices──►──say──►end
+ * ```
  *
  * ---
  *
@@ -78,41 +97,81 @@ interface RunState {
  *
  * ### Built-in commands
  *
- * | Command   | Fields                                             | Description                                 |
- * |-----------|----------------------------------------------------|---------------------------------------------|
- * | `label`   | `name` (string)                                    | Position marker (no-op at runtime)          |
- * | `jump`    | `target` (string)                                  | Unconditional jump to a label               |
- * | `if`      | `var`, `value`, `jump`                             | Jump to a label when `vars[var] === value`  |
- * | `set`     | `var` (string), `value`                            | Write a value into the script variable store|
- * | `wait`    | `ms` (number)                                      | Pause execution for `ms` milliseconds       |
- * | `emit`    | `event` (string), `params?` (object)               | Emit a custom event synchronously           |
- * | `say`     | `text?`, `speaker?`, `portrait?`, `speed?`, …      | Show dialogue text, wait for advance        |
- * | `choices` | `choices` (string[]), `prompt?`, `var?`            | Show choices, store picked index in `var`   |
- * | `end`     | —                                                  | Close the dialogue session                  |
+ * | Command         | Fields                                                 | Description                                                    |
+ * |-----------------|--------------------------------------------------------|----------------------------------------------------------------|
+ * | `label`         | `name` (string)                                        | Position marker (no-op at runtime)                             |
+ * | `jump`          | `target` (string)                                      | Unconditional jump to a label                                  |
+ * | `if`            | `var`, `value`, `jump`                                 | Jump to a label when `vars[var] === value`                     |
+ * | `set`           | `var` (string), `value`                                | Write a value into the script variable store                   |
+ * | `wait`          | `ms` (number)                                          | Pause execution for `ms` milliseconds                          |
+ * | `emit`          | `event` (string), `params?` (object)                   | Emit a custom event synchronously                              |
+ * | `say`           | `text?`, `speaker?`, `portrait?`, `speed?`, …          | Show dialogue text, wait for advance                           |
+ * | `choices`       | `choices` (string[]), `prompt?`, `var?`                | Show choices, store picked index in `var`                      |
+ * | `end`           | —                                                      | Close the dialogue session                                     |
+ * | `wait-event`    | `event` (string), `var?` (string)                      | Suspend until an event fires; optionally store payload in `var`|
+ * | `call`          | `id` (string), `vars?` (object)                        | Run a sub-script inline and await its completion               |
+ * | `fork`          | `id` (string), `instanceId?`, `vars?`, `priority?`     | Launch a concurrent instance (fire-and-forget)                 |
+ * | `wait-instance` | `instanceId` (string)                                  | Suspend until a named instance finishes                        |
+ * | `stop-instance` | `instanceId` (string)                                  | Stop another running instance                                  |
  *
  * ---
  *
- * ### Extensibility
+ * ### Concurrency & priority
  *
- * Register custom commands at construction time:
  * ```ts
- * const scripts = new ScriptManager({
- *   commands: {
- *     'play-sfx': (ctx) => {
- *       ctx.core.events.emitSync('audio/play', { key: ctx.node.key as string });
- *     },
- *   },
- * });
+ * // Two guard NPCs patrol concurrently (different instanceIds)
+ * core.events.emitSync('script/run', { id: 'npc-patrol', instanceId: 'guard-1', vars: { npcId: 'guard-1' } });
+ * core.events.emitSync('script/run', { id: 'npc-patrol', instanceId: 'guard-2', vars: { npcId: 'guard-2' } });
+ *
+ * // Player spotted — higher-priority chase interrupts guard-1's patrol
+ * core.events.emitSync('script/run', { id: 'npc-chase', instanceId: 'guard-1', priority: 10 });
+ *
+ * // Exclusive cutscene — stops every running instance first
+ * core.events.emitSync('script/run', { id: 'cutscene-intro', exclusive: true });
  * ```
  *
- * Or dynamically after `init()`:
+ * ---
+ *
+ * ### NPC patrol example (looping behaviour)
+ *
  * ```ts
- * core.events.emitSync('script/register-command', {
- *   cmd: 'shake-camera',
- *   handler: async (ctx) => {
- *     await ctx.core.events.emit('camera/shake', { intensity: 10, duration: 300 });
- *   },
- * });
+ * const patrolScript: ScriptDef = {
+ *   id: 'npc-patrol',
+ *   nodes: [
+ *     { cmd: 'label',  name: 'loop' },
+ *     { cmd: 'emit',   event: 'npc/set-velocity', params: { vx: 50 } },
+ *     { cmd: 'wait',   ms: 2000 },
+ *     { cmd: 'emit',   event: 'npc/set-velocity', params: { vx: -50 } },
+ *     { cmd: 'wait',   ms: 2000 },
+ *     { cmd: 'jump',   target: 'loop' },
+ *   ],
+ * };
+ * ```
+ *
+ * ---
+ *
+ * ### `call` / sub-script example
+ *
+ * ```ts
+ * // Sub-script defined separately
+ * const greetScript: ScriptDef = {
+ *   id: 'npc-greet',
+ *   nodes: [
+ *     { cmd: 'say', text: 'Hello traveller!', speaker: 'Guard' },
+ *     { cmd: 'end' },
+ *   ],
+ * };
+ *
+ * // Main NPC script calls the greeting then resumes patrol
+ * const npcScript: ScriptDef = {
+ *   id: 'npc-main',
+ *   nodes: [
+ *     { cmd: 'call',  id: 'npc-greet' },   // inline execution, awaited
+ *     { cmd: 'jump',  target: 'patrol' },
+ *     { cmd: 'label', name: 'patrol' },
+ *     // … patrol nodes …
+ *   ],
+ * };
  * ```
  *
  * ---
@@ -122,8 +181,8 @@ interface RunState {
  * | Event                     | Description                                         |
  * |---------------------------|-----------------------------------------------------|
  * | `script/define`           | Register (or overwrite) a script definition         |
- * | `script/run`              | Start running a registered script                   |
- * | `script/stop`             | Stop the currently running script                   |
+ * | `script/run`              | Start a script instance                             |
+ * | `script/stop`             | Stop one or all running instances                   |
  * | `script/register-command` | Register a new command handler                      |
  * | `script/state:get`        | Query the current execution state                   |
  *
@@ -131,8 +190,8 @@ interface RunState {
  *
  * | Event            | When                                               |
  * |------------------|----------------------------------------------------|
- * | `script/started` | A script begins execution                          |
- * | `script/ended`   | A script finishes normally or is stopped           |
+ * | `script/started` | A script instance begins execution                 |
+ * | `script/ended`   | A script instance finishes normally or is stopped  |
  * | `script/step`    | Before each command node executes                  |
  * | `script/error`   | A command handler throws an unhandled error        |
  *
@@ -170,8 +229,11 @@ export class ScriptManager implements EnginePlugin {
   /** Registry of all command handlers (built-in + externally registered). */
   private readonly _commands = new Map<string, ScriptCommandHandler>();
 
-  /** The active execution state, or `null` when no script is running. */
-  private _running: RunState | null = null;
+  /**
+   * All active execution states, keyed by instanceId.
+   * Multiple instances can run concurrently.
+   */
+  private readonly _running = new Map<string, RunState>();
 
   /**
    * @param options.commands  Additional commands to register at construction
@@ -205,12 +267,42 @@ export class ScriptManager implements EnginePlugin {
         console.warn(`[ScriptManager] script/run: script "${params.id}" is not defined.`);
         return;
       }
-      void this._execute(script, { ...(params.vars ?? {}) });
+
+      const instanceId = params.instanceId ?? params.id;
+      const priority   = params.priority ?? 0;
+      const vars       = { ...(params.vars ?? {}) };
+
+      // exclusive: stop all running instances before starting
+      if (params.exclusive) {
+        this._stopAll();
+      }
+
+      // Priority guard: reject lower-priority runs on the same instance
+      const existing = this._running.get(instanceId);
+      if (existing && priority < existing.priority) {
+        console.warn(
+          `[ScriptManager] script/run: instance "${instanceId}" is already running ` +
+          `"${existing.script.id}" at priority ${existing.priority}. ` +
+          `New script "${params.id}" (priority ${priority}) was rejected.`,
+        );
+        return;
+      }
+
+      // Stop the existing instance (same or lower priority) before replacing
+      if (existing) {
+        this._stopInstance(instanceId);
+      }
+
+      void this._execute(script, instanceId, vars, priority);
     });
 
     // ── script/stop ───────────────────────────────────────────────────────
-    events.on<ScriptStopParams>(this.namespace, 'script/stop', () => {
-      this._stop();
+    events.on<ScriptStopParams>(this.namespace, 'script/stop', (params) => {
+      if (params.instanceId !== undefined) {
+        this._stopInstance(params.instanceId);
+      } else {
+        this._stopAll();
+      }
     });
 
     // ── script/register-command ───────────────────────────────────────────
@@ -227,18 +319,29 @@ export class ScriptManager implements EnginePlugin {
       this.namespace,
       'script/state:get',
       (_params, output) => {
-        output.running   = this._running !== null;
-        output.scriptId  = this._running?.script.id ?? null;
-        output.nodeIndex = this._running?.nextIndex ?? null;
+        const instances: ScriptInstanceState[] = [];
+        for (const state of this._running.values()) {
+          instances.push({
+            instanceId:  state.instanceId,
+            scriptId:    state.script.id,
+            nodeIndex:   state.currentNodeIndex,
+            priority:    state.priority,
+          });
+        }
+        output.running   = instances.length > 0;
+        output.instances = instances;
+        // Legacy single-instance compat fields
+        output.scriptId  = instances[0]?.scriptId ?? null;
+        output.nodeIndex = instances[0]?.nodeIndex ?? null;
       },
     );
   }
 
   destroy(core: Core): void {
-    this._stop();
+    this._stopAll();
     core.events.removeNamespace(this.namespace);
     this._scripts.clear();
-    this._running = null;
+    this._running.clear();
     this._core = null;
   }
 
@@ -246,14 +349,35 @@ export class ScriptManager implements EnginePlugin {
   // Accessors
   // ---------------------------------------------------------------------------
 
-  /** `true` when a script is currently running. */
+  /** `true` when at least one script instance is currently running. */
   get isRunning(): boolean {
-    return this._running !== null;
+    return this._running.size > 0;
   }
 
-  /** ID of the currently running script, or `null` when idle. */
+  /**
+   * ID of the first running script, or `null` when idle.
+   * @deprecated Use `runningInstances` when you need information about
+   *   concurrent instances.
+   */
   get currentScriptId(): string | null {
-    return this._running?.script.id ?? null;
+    return this._running.values().next().value?.script.id ?? null;
+  }
+
+  /**
+   * Snapshot of all currently running script instances.
+   * Useful for saving/restoring game state.
+   */
+  get runningInstances(): ScriptInstanceState[] {
+    const result: ScriptInstanceState[] = [];
+    for (const state of this._running.values()) {
+      result.push({
+        instanceId:  state.instanceId,
+        scriptId:    state.script.id,
+        nodeIndex:   state.currentNodeIndex,
+        priority:    state.priority,
+      });
+    }
+    return result;
   }
 
   // ---------------------------------------------------------------------------
@@ -262,56 +386,89 @@ export class ScriptManager implements EnginePlugin {
 
   private async _execute(
     script: ScriptDef,
+    instanceId: string,
     vars: Record<string, unknown>,
+    priority: number,
   ): Promise<void> {
     const core = this._core;
     if (!core) return;
 
-    // Stop any currently running script before starting the new one.
-    if (this._running) {
-      this._stop();
-    }
-
     const state: RunState = {
       script,
+      instanceId,
       vars,
-      nextIndex: 0,
+      priority,
       stopped: false,
       stopResolvers: [],
+      currentNodeIndex: 0,
     };
-    this._running = state;
+    this._running.set(instanceId, state);
 
-    core.events.emitSync<ScriptStartedParams>('script/started', { id: script.id });
+    core.events.emitSync<ScriptStartedParams>('script/started', {
+      id: script.id,
+      instanceId,
+    });
 
-    while (state.nextIndex < script.nodes.length && !state.stopped) {
-      const index = state.nextIndex;
+    await this._executeNodes(script, state);
+
+    // Only emit ended if this state is still the active one for this instance
+    if (this._running.get(instanceId) === state) {
+      this._running.delete(instanceId);
+      core.events.emitSync<ScriptEndedParams>('script/ended', {
+        id: script.id,
+        instanceId,
+      });
+    }
+  }
+
+  /**
+   * Core execution loop.  Runs the nodes of `script` using the provided
+   * `state` (vars, stopped flag, stopResolvers, instanceId).
+   *
+   * This method is reentrant: the `call` command invokes it recursively with
+   * a different `script` but the **same** `state`, so both levels share the
+   * same variable store and respond to the same stop signal.
+   */
+  private async _executeNodes(script: ScriptDef, state: RunState): Promise<void> {
+    const core = this._core;
+    if (!core) return;
+
+    let nextIndex = 0;
+
+    while (nextIndex < script.nodes.length && !state.stopped) {
+      const index = nextIndex;
       const node  = script.nodes[index]!;
       // Default: advance to the next node.  jumpTo() may override this.
-      state.nextIndex = index + 1;
+      nextIndex = index + 1;
+      // Update the publicly visible position for state:get
+      state.currentNodeIndex = index;
 
       const handler = this._commands.get(node.cmd);
       if (!handler) {
         console.warn(
           `[ScriptManager] Unknown command "${node.cmd}" at index ${index} ` +
-          `in script "${script.id}".`,
+          `in script "${script.id}" (instance: "${state.instanceId}").`,
         );
         continue;
       }
 
       core.events.emitSync<ScriptStepParams>('script/step', {
-        id:    script.id,
+        id:         script.id,
+        instanceId: state.instanceId,
         index,
-        cmd:   node.cmd,
+        cmd:        node.cmd,
       });
 
+      // jumpTo mutates nextIndex via closure
       const ctx: ScriptContext = {
         core,
         script,
         node,
         index,
-        vars: state.vars,
+        vars:       state.vars,
+        instanceId: state.instanceId,
         jumpTo(targetIndex: number): void {
-          state.nextIndex = targetIndex;
+          nextIndex = targetIndex;
         },
         stop(): void {
           state.stopped = true;
@@ -326,13 +483,15 @@ export class ScriptManager implements EnginePlugin {
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         console.error(
-          `[ScriptManager] Error in command "${node.cmd}" at index ${index}:`,
+          `[ScriptManager] Error in command "${node.cmd}" at index ${index} ` +
+          `in script "${script.id}" (instance: "${state.instanceId}"):`,
           err,
         );
         core.events.emitSync<ScriptErrorParams>('script/error', {
-          id: script.id,
+          id:         script.id,
+          instanceId: state.instanceId,
           index,
-          cmd: node.cmd,
+          cmd:        node.cmd,
           message,
         });
         state.stopped = true;
@@ -341,29 +500,34 @@ export class ScriptManager implements EnginePlugin {
       // Clear per-command stop resolvers after the handler completes normally.
       state.stopResolvers.length = 0;
 
-      // If _stop() was called (from outside or via ctx.stop()), or a new script
-      // replaced this run, abandon execution.
-      if (this._running !== state) return;
-    }
-
-    // Only emit ended if this is still the active run.
-    if (this._running === state) {
-      this._running = null;
-      core.events.emitSync<ScriptEndedParams>('script/ended', { id: script.id });
+      // If _stopInstance() replaced or cleared this instance, abandon execution.
+      if (this._running.get(state.instanceId) !== state) return;
     }
   }
 
-  /** Stop the currently running script and emit `script/ended`. */
-  private _stop(): void {
-    if (!this._running) return;
-    const state = this._running;
+  /**
+   * Stop a specific running instance and emit `script/ended`.
+   * No-op if the instance does not exist.
+   */
+  private _stopInstance(instanceId: string): void {
+    const state = this._running.get(instanceId);
+    if (!state) return;
     state.stopped = true;
-    this._running = null;
+    this._running.delete(instanceId);
     // Unblock any pending promises registered via ctx.onStop().
     for (const fn of state.stopResolvers) fn();
     this._core?.events.emitSync<ScriptEndedParams>('script/ended', {
-      id: state.script.id,
+      id:         state.script.id,
+      instanceId: state.instanceId,
     });
+  }
+
+  /** Stop every running instance. */
+  private _stopAll(): void {
+    // Snapshot keys to avoid mutation during iteration
+    for (const instanceId of [...this._running.keys()]) {
+      this._stopInstance(instanceId);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -495,6 +659,163 @@ export class ScriptManager implements EnginePlugin {
     // ── end: close the dialogue session ───────────────────────────────────
     this._commands.set('end', (ctx) => {
       ctx.core.events.emitSync('dialogue/end', {});
+    });
+
+    // ── wait-event: suspend until a named event fires ──────────────────────
+    //
+    // Fields:
+    //   event  (string)  – the event name to wait for
+    //   var    (string)  – optional: store the event payload in this variable
+    //
+    // Example: wait for the player to enter a trigger zone, then proceed
+    //   { cmd: 'wait-event', event: 'zone/entered', var: 'zonePayload' }
+    this._commands.set('wait-event', (ctx) => {
+      const event = ctx.node.event as string | undefined;
+      if (!event) {
+        console.warn('[ScriptManager] wait-event: missing "event" field.');
+        return;
+      }
+      const varName = ctx.node.var as string | undefined;
+      return new Promise<void>((resolve) => {
+        const off = ctx.core.events.once(
+          this.namespace,
+          event,
+          (payload: unknown) => {
+            if (varName) ctx.vars[varName] = payload;
+            resolve();
+          },
+        );
+        ctx.onStop(() => { off(); resolve(); });
+      });
+    });
+
+    // ── call: run a sub-script inline and await its completion ────────────
+    //
+    // Fields:
+    //   id    (string)           – ID of the script to call
+    //   vars  (object, optional) – extra variables merged into the var store
+    //
+    // The called script shares the calling instance's variable store and
+    // responds to the same stop signal.  It does NOT produce its own
+    // script/started or script/ended events (it is inline, not a new instance).
+    //
+    // Example: guard says hello, then returns to patrol
+    //   { cmd: 'call', id: 'npc-greet' }
+    this._commands.set('call', async (ctx) => {
+      const id = ctx.node.id as string | undefined;
+      if (!id) {
+        console.warn('[ScriptManager] call: missing "id" field.');
+        return;
+      }
+      const subScript = this._scripts.get(id);
+      if (!subScript) {
+        console.warn(`[ScriptManager] call: script "${id}" is not defined.`);
+        return;
+      }
+      // Merge any extra vars supplied on the call node
+      const extraVars = ctx.node.vars as Record<string, unknown> | undefined;
+      if (extraVars) Object.assign(ctx.vars, extraVars);
+
+      // Retrieve the live RunState for this instance so we can share it
+      const state = this._running.get(ctx.instanceId);
+      if (!state || state.stopped) return;
+
+      await this._executeNodes(subScript, state);
+    });
+
+    // ── fork: launch a concurrent script instance (fire-and-forget) ───────
+    //
+    // Fields:
+    //   id          (string)           – script definition to run
+    //   instanceId  (string, optional) – instance ID; defaults to script id
+    //   vars        (object, optional) – seed variables for the new instance
+    //   priority    (number, optional) – execution priority; defaults to 0
+    //
+    // Example: start an explosion VFX script without blocking the main flow
+    //   { cmd: 'fork', id: 'explosion-vfx', instanceId: 'vfx-boom' }
+    this._commands.set('fork', (ctx) => {
+      const id = ctx.node.id as string | undefined;
+      if (!id) {
+        console.warn('[ScriptManager] fork: missing "id" field.');
+        return;
+      }
+      const script = this._scripts.get(id);
+      if (!script) {
+        console.warn(`[ScriptManager] fork: script "${id}" is not defined.`);
+        return;
+      }
+      const instanceId = (ctx.node.instanceId as string | undefined) ?? id;
+      const vars       = { ...(ctx.node.vars as Record<string, unknown> | undefined ?? {}) };
+      const priority   = (ctx.node.priority as number | undefined) ?? 0;
+
+      // Priority check for the target instance
+      const existing = this._running.get(instanceId);
+      if (existing && priority < existing.priority) {
+        console.warn(
+          `[ScriptManager] fork: instance "${instanceId}" is already running ` +
+          `at priority ${existing.priority}; fork at priority ${priority} was rejected.`,
+        );
+        return;
+      }
+      if (existing) {
+        this._stopInstance(instanceId);
+      }
+
+      void this._execute(script, instanceId, vars, priority);
+    });
+
+    // ── wait-instance: suspend until a named instance finishes ────────────
+    //
+    // Fields:
+    //   instanceId (string) – the instance to wait for
+    //
+    // Resolves immediately if the instance is not currently running.
+    //
+    // Example: fork an effect then wait for it to complete
+    //   { cmd: 'fork',          id: 'boss-intro-vfx', instanceId: 'vfx' }
+    //   { cmd: 'wait-instance', instanceId: 'vfx' }
+    //   { cmd: 'say',           text: 'Now fight!' }
+    this._commands.set('wait-instance', (ctx) => {
+      const instanceId = ctx.node.instanceId as string | undefined;
+      if (!instanceId) {
+        console.warn('[ScriptManager] wait-instance: missing "instanceId" field.');
+        return;
+      }
+      // Already done (or never started) — resolve immediately
+      if (!this._running.has(instanceId)) return;
+
+      return new Promise<void>((resolve) => {
+        const off = ctx.core.events.on(
+          this.namespace,
+          'script/ended',
+          (p: ScriptEndedParams) => {
+            if (p.instanceId === instanceId) {
+              off();
+              resolve();
+            }
+          },
+        );
+        ctx.onStop(() => { off(); resolve(); });
+      });
+    });
+
+    // ── stop-instance: stop another running instance ───────────────────────
+    //
+    // Fields:
+    //   instanceId (string) – the instance to stop
+    //
+    // Useful for NPC state-machine transitions within a single master script.
+    //
+    // Example: stop the guard's patrol before starting a chase
+    //   { cmd: 'stop-instance', instanceId: 'guard-patrol' }
+    //   { cmd: 'fork',          id: 'npc-chase', instanceId: 'guard-chase' }
+    this._commands.set('stop-instance', (ctx) => {
+      const instanceId = ctx.node.instanceId as string | undefined;
+      if (!instanceId) {
+        console.warn('[ScriptManager] stop-instance: missing "instanceId" field.');
+        return;
+      }
+      this._stopInstance(instanceId);
     });
   }
 
