@@ -108,6 +108,16 @@ export type {
   SaveGlobalLoadOutput,
 } from './types/save.js';
 
+// Scene system
+export { SceneManager } from './plugins/SceneManager.js';
+export type {
+  SceneDescriptor,
+  SceneRegisterParams,
+  SceneLoadParams,
+  SceneCurrentOutput,
+  SceneChangedParams,
+} from './types/scene.js';
+
 // Entity system
 export { EntityManager } from './plugins/EntityManager.js';
 export { SpriteAnimator } from './plugins/SpriteAnimator.js';
