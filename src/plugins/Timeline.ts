@@ -32,7 +32,7 @@ type TimelineEntry = TweenEntry | CallEntry;
 export interface TimelineOptions {
   /** Called when the timeline finishes. Not called if `loop: true`. */
   onComplete?: () => void;
-  /** Whether to repeat the timeline indefinitely. Note: tweens inside the timeline are reset via `Tween.reset()` on each loop iteration, which re-captures `from` values from the target at that moment. */
+  /** Whether to repeat the timeline indefinitely. Tweens inside the timeline are reset via `Tween.reset()` on each loop iteration, which re-captures `from` values from the target at that moment. */
   loop?: boolean;
 }
 
