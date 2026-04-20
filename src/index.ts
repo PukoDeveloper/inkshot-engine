@@ -231,6 +231,12 @@ export type {
   ParticleStopParams,
   ParticleClearParams,
   ParticleCompleteParams,
+  ParticleMoveParams,
+  ParticlePauseParams,
+  ParticleResumeParams,
+  ParticleCountParams,
+  ParticleCountOutput,
+  ParticleUpdateParams,
 } from './types/particle.js';
 
 // Rendering

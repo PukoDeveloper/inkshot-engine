@@ -2,7 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventBus } from '../src/core/EventBus.js';
 import { ParticleManager } from '../src/plugins/ParticleManager.js';
 import type { ParticleDisplay, ParticleLayer } from '../src/plugins/ParticleManager.js';
-import type { ParticleConfig, ParticleEmitOutput, ParticleCompleteParams } from '../src/types/particle.js';
+import type {
+  ParticleConfig,
+  ParticleEmitOutput,
+  ParticleCompleteParams,
+  ParticleCountOutput,
+} from '../src/types/particle.js';
 import type { Core } from '../src/core/Core.js';
 
 // ---------------------------------------------------------------------------
@@ -183,12 +188,26 @@ describe('ParticleManager — continuous emit', () => {
     expect(pm.particleCount).toBeLessThanOrEqual(countAt200);
   });
 
-  it('does NOT emit particle/complete for continuous emitters', () => {
+  it('fires particle/complete for continuous emitters with duration when all particles expire', () => {
     const handler = vi.fn();
     core.events.on('test', 'particle/complete', handler);
 
     pm.emit(makeConfig({ rate: 100, lifetime: 50, duration: 60 }));
-    tick(core, 500); // run well past everything
+    tick(core, 500); // duration expires ~60 ms; all particles (lifetime 50 ms) dead well before 500 ms
+
+    expect(handler).toHaveBeenCalledOnce();
+    const params = handler.mock.calls[0][0] as ParticleCompleteParams;
+    expect(typeof params.id).toBe('string');
+  });
+
+  it('does NOT emit particle/complete for manually stopped continuous emitters', () => {
+    const handler = vi.fn();
+    core.events.on('test', 'particle/complete', handler);
+
+    const id = pm.emit(makeConfig({ rate: 100, lifetime: 50 }));
+    tick(core, 30);
+    pm.stop(id);
+    tick(core, 200); // all particles eventually die, but stop() was manual
 
     expect(handler).not.toHaveBeenCalled();
   });
@@ -468,5 +487,443 @@ describe('ParticleManager — ObjectPool reuse', () => {
     // Second tick: new particles are acquired from the pool — no new allocations.
     tick(core, 50);
     expect(created.length).toBe(firstBatchCount);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Angular velocity (rotation animation)
+// ---------------------------------------------------------------------------
+
+describe('ParticleManager — rotation', () => {
+  it('startRotation sets initial display rotation (in radians)', () => {
+    const { pm, fxLayer } = makeParticleManager();
+    pm.emit(makeConfig({ burst: true, burstCount: 1, speed: 0, startRotation: 90 }));
+
+    const display = fxLayer.added[0]!;
+    // 90 deg = π/2 rad ≈ 1.5708
+    expect(display.rotation).toBeCloseTo(Math.PI / 2, 4);
+  });
+
+  it('angularVelocity rotates particles each tick', () => {
+    const { pm, core, fxLayer } = makeParticleManager();
+    // 360 deg/s → after 500 ms (0.5 s) the particle rotates π rad
+    pm.emit(makeConfig({ burst: true, burstCount: 1, speed: 0, angularVelocity: 360, lifetime: 9999 }));
+
+    const display = fxLayer.added[0]!;
+    const r0 = display.rotation;
+    tick(core, 500);
+    expect(display.rotation - r0).toBeCloseTo(Math.PI, 1);
+  });
+
+  it('rotationVariance produces different initial rotations across particles', () => {
+    const { pm, fxLayer } = makeParticleManager();
+    pm.emit(makeConfig({
+      burst: true, burstCount: 20, speed: 0,
+      startRotation: 0, rotationVariance: 180,
+    }));
+
+    const rotations = fxLayer.added.map((d) => d.rotation);
+    const allSame = rotations.every((r) => r === rotations[0]);
+    expect(allSame).toBe(false);
+  });
+
+  it('angularVelocityVariance produces different spin rates', () => {
+    const { pm, core, fxLayer } = makeParticleManager();
+    pm.emit(makeConfig({
+      burst: true, burstCount: 20, speed: 0,
+      angularVelocity: 0, angularVelocityVariance: 180,
+      lifetime: 9999,
+    }));
+
+    const r0 = fxLayer.added.map((d) => d.rotation);
+    tick(core, 500);
+    const r1 = fxLayer.added.map((d) => d.rotation);
+    const deltas = r1.map((r, i) => Math.abs(r - r0[i]!));
+    const allZero = deltas.every((d) => d === 0);
+    expect(allZero).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Emitter move / follow
+// ---------------------------------------------------------------------------
+
+describe('ParticleManager — move()', () => {
+  it('move() updates spawn position for new particles', () => {
+    const { pm, core, fxLayer } = makeParticleManager();
+    // speed: 0 so particles sit at exactly their spawn position
+    const id = pm.emit(makeConfig({ rate: 100, lifetime: 9999, x: 0, y: 0, speed: 0 }));
+
+    tick(core, 50); // spawn some at (0, 0)
+    const countBefore = fxLayer.added.length;
+
+    pm.move(id, 500, 300);
+    tick(core, 50); // spawn more at (500, 300)
+
+    const newDisplays = fxLayer.added.slice(countBefore);
+    const anyAtNewPos = newDisplays.some((d) => d.x === 500 && d.y === 300);
+    expect(anyAtNewPos).toBe(true);
+  });
+
+  it('move() via particle/move event', () => {
+    const { pm, core } = makeParticleManager();
+    const id = pm.emit(makeConfig({ rate: 10, lifetime: 9999, x: 0, y: 0 }));
+    core.events.emitSync('particle/move', { id, x: 100, y: 200 });
+    expect((pm as unknown as { _emitters: Map<string, { config: ParticleConfig }> })
+      ._emitters.get(id)?.config.x).toBe(100);
+  });
+
+  it('move() is a no-op for an unknown ID', () => {
+    const { pm } = makeParticleManager();
+    expect(() => pm.move('ghost', 1, 2)).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Spawn shapes
+// ---------------------------------------------------------------------------
+
+describe('ParticleManager — spawnShape', () => {
+  it('point shape (default) spawns all particles at origin', () => {
+    const { pm, fxLayer } = makeParticleManager();
+    pm.emit(makeConfig({ burst: true, burstCount: 10, speed: 0, x: 50, y: 50 }));
+    expect(fxLayer.added.every((d) => d.x === 50 && d.y === 50)).toBe(true);
+  });
+
+  it('rect shape spawns particles within the bounding box', () => {
+    const { pm, fxLayer } = makeParticleManager();
+    pm.emit(makeConfig({
+      burst: true, burstCount: 100, speed: 0,
+      x: 0, y: 0,
+      spawnShape: 'rect', spawnWidth: 200, spawnHeight: 100,
+    }));
+    for (const d of fxLayer.added) {
+      expect(d.x).toBeGreaterThanOrEqual(-100);
+      expect(d.x).toBeLessThanOrEqual(100);
+      expect(d.y).toBeGreaterThanOrEqual(-50);
+      expect(d.y).toBeLessThanOrEqual(50);
+    }
+  });
+
+  it('rect shape actually spreads particles across the area', () => {
+    const { pm, fxLayer } = makeParticleManager();
+    pm.emit(makeConfig({
+      burst: true, burstCount: 100, speed: 0,
+      x: 0, y: 0,
+      spawnShape: 'rect', spawnWidth: 200, spawnHeight: 100,
+    }));
+    const xs = fxLayer.added.map((d) => d.x);
+    const allSame = xs.every((x) => x === xs[0]);
+    expect(allSame).toBe(false);
+  });
+
+  it('circle shape spawns particles within the radius', () => {
+    const { pm, fxLayer } = makeParticleManager();
+    const r = 80;
+    pm.emit(makeConfig({
+      burst: true, burstCount: 200, speed: 0,
+      x: 0, y: 0,
+      spawnShape: 'circle', spawnRadius: r,
+    }));
+    for (const d of fxLayer.added) {
+      const dist = Math.sqrt(d.x * d.x + d.y * d.y);
+      expect(dist).toBeLessThanOrEqual(r + 0.001);
+    }
+  });
+
+  it('circle shape actually spreads particles across the disc', () => {
+    const { pm, fxLayer } = makeParticleManager();
+    pm.emit(makeConfig({
+      burst: true, burstCount: 200, speed: 0,
+      x: 0, y: 0,
+      spawnShape: 'circle', spawnRadius: 80,
+    }));
+    const distances = fxLayer.added.map((d) => Math.sqrt(d.x * d.x + d.y * d.y));
+    const allZero = distances.every((d) => d < 0.001);
+    expect(allZero).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// pause() / resume()
+// ---------------------------------------------------------------------------
+
+describe('ParticleManager — pause() / resume()', () => {
+  it('paused emitter does not advance particles or spawn new ones', () => {
+    const { pm, core, fxLayer } = makeParticleManager();
+    pm.emit(makeConfig({ rate: 100, speed: 200, angle: 0, lifetime: 9999 }));
+    tick(core, 50); // get some particles spawned and positioned
+
+    const display = fxLayer.added[0]!;
+    const xBefore = display.x;
+    const countBefore = pm.particleCount;
+
+    pm.pause();
+    tick(core, 200);
+
+    // Position must not change while paused.
+    expect(display.x).toBe(xBefore);
+    // No new particles must have been spawned.
+    expect(pm.particleCount).toBe(countBefore);
+  });
+
+  it('resume() restarts particle advancement', () => {
+    const { pm, core, fxLayer } = makeParticleManager();
+    pm.emit(makeConfig({ rate: 100, speed: 200, angle: 0, lifetime: 9999 }));
+    tick(core, 50);
+
+    const display = fxLayer.added[0]!;
+    pm.pause();
+    tick(core, 200);
+    const xAfterPause = display.x;
+
+    pm.resume();
+    tick(core, 100);
+
+    expect(display.x).toBeGreaterThan(xAfterPause);
+  });
+
+  it('pause/resume target a specific emitter by ID', () => {
+    const { pm, core } = makeParticleManager();
+
+    // Two continuous emitters, speed=0 so particles don't expire by movement.
+    const id1 = pm.emit(makeConfig({ rate: 100, speed: 0, lifetime: 9999 }));
+    pm.emit(makeConfig({ rate: 100, speed: 0, lifetime: 9999 }));
+    tick(core, 10);
+    const beforePause = pm.particleCount;
+
+    // Pause only id1.
+    pm.pause(id1);
+    tick(core, 50); // emitter2 spawns ~5 more; id1 spawns nothing
+    const afterPause = pm.particleCount;
+
+    // Some growth from emitter2 but not as much as two running emitters.
+    expect(afterPause).toBeGreaterThan(beforePause);
+
+    // Resume id1 — both emit again, growth accelerates.
+    pm.resume(id1);
+    tick(core, 50);
+    const delta2 = pm.particleCount - afterPause;
+    const delta1 = afterPause - beforePause;
+    // With two emitters running, rate of growth should at least match (likely exceed) paused period.
+    expect(delta2).toBeGreaterThanOrEqual(delta1);
+  });
+
+  it('particle/pause and particle/resume events work', () => {
+    const { pm, core, fxLayer } = makeParticleManager();
+    pm.emit(makeConfig({ rate: 100, speed: 200, angle: 0, lifetime: 9999 }));
+    tick(core, 50);
+    const display = fxLayer.added[0]!;
+    const xBefore = display.x;
+
+    core.events.emitSync('particle/pause', {});
+    tick(core, 200);
+    expect(display.x).toBe(xBefore);
+
+    core.events.emitSync('particle/resume', {});
+    tick(core, 100);
+    expect(display.x).toBeGreaterThan(xBefore);
+  });
+
+  it('pause() is a no-op for an unknown ID', () => {
+    const { pm } = makeParticleManager();
+    expect(() => pm.pause('ghost')).not.toThrow();
+  });
+
+  it('resume() is a no-op for an unknown ID', () => {
+    const { pm } = makeParticleManager();
+    expect(() => pm.resume('ghost')).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// particle/count
+// ---------------------------------------------------------------------------
+
+describe('ParticleManager — particle/count', () => {
+  it('returns correct emitter and particle counts via EventBus', () => {
+    const { pm, core } = makeParticleManager();
+    pm.emit(makeConfig({ burst: true, burstCount: 5, lifetime: 9999 }));
+    pm.emit(makeConfig({ burst: true, burstCount: 3, lifetime: 9999 }));
+
+    const { output } = core.events.emitSync('particle/count', {}) as {
+      output: ParticleCountOutput;
+    };
+    expect(output.emitterCount).toBe(2);
+    expect(output.particleCount).toBe(8);
+  });
+
+  it('particle/count reflects zero after all are cleared', () => {
+    const { pm, core } = makeParticleManager();
+    pm.emit(makeConfig({ burst: true, burstCount: 4, lifetime: 9999 }));
+    pm.clear();
+
+    const { output } = core.events.emitSync('particle/count', {}) as {
+      output: ParticleCountOutput;
+    };
+    expect(output.emitterCount).toBe(0);
+    expect(output.particleCount).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// particle/update
+// ---------------------------------------------------------------------------
+
+describe('ParticleManager — update()', () => {
+  it('merges partial config without losing other fields', () => {
+    const { pm } = makeParticleManager();
+    const id = pm.emit(makeConfig({ rate: 10, lifetime: 1000, speed: 100 }));
+
+    pm.update(id, { rate: 50 });
+
+    const emitters = (pm as unknown as { _emitters: Map<string, { config: ParticleConfig }> })._emitters;
+    const cfg = emitters.get(id)!.config;
+    expect(cfg.rate).toBe(50);
+    expect(cfg.speed).toBe(100); // unchanged
+    expect(cfg.lifetime).toBe(1000); // unchanged
+  });
+
+  it('particle/update event merges config', () => {
+    const { pm, core } = makeParticleManager();
+    const id = pm.emit(makeConfig({ rate: 10, lifetime: 1000 }));
+
+    core.events.emitSync('particle/update', { id, config: { rate: 99 } });
+
+    const emitters = (pm as unknown as { _emitters: Map<string, { config: ParticleConfig }> })._emitters;
+    expect(emitters.get(id)!.config.rate).toBe(99);
+  });
+
+  it('update() is a no-op for an unknown ID', () => {
+    const { pm } = makeParticleManager();
+    expect(() => pm.update('ghost', { rate: 5 })).not.toThrow();
+  });
+
+  it('updated rate affects subsequent spawning', () => {
+    const { pm, core } = makeParticleManager();
+    const id = pm.emit(makeConfig({ rate: 5, lifetime: 9999 })); // 5/s → 1 per 200 ms
+    tick(core, 100);
+    const before = pm.particleCount;
+
+    pm.update(id, { rate: 500 }); // 500/s → 1 per 2 ms
+    tick(core, 100); // should spawn ~50 more
+    expect(pm.particleCount).toBeGreaterThan(before + 10);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Pre-warm
+// ---------------------------------------------------------------------------
+
+describe('ParticleManager — preWarm', () => {
+  it('continuous emitter with preWarm has particles immediately after emit()', () => {
+    const { pm } = makeParticleManager();
+    pm.emit(makeConfig({ rate: 100, lifetime: 9999, preWarm: 200 }));
+    // ~20 particles should have been spawned during the 200 ms pre-warm
+    expect(pm.particleCount).toBeGreaterThan(5);
+  });
+
+  it('preWarm advances particle positions from the origin', () => {
+    const { pm, fxLayer } = makeParticleManager();
+    // rate=50 → first particle at ~20 ms; preWarm=300 ms gives ~280 ms of travel
+    // at 1000 px/s = 1 px/ms → should be well past 50 px
+    pm.emit(makeConfig({ rate: 50, lifetime: 9999, speed: 1000, angle: 0, spread: 0, preWarm: 300 }));
+
+    expect(fxLayer.added.some((d) => d.x > 50)).toBe(true);
+  });
+
+  it('preWarm = 0 leaves emitter at initial state', () => {
+    const { pm } = makeParticleManager();
+    pm.emit(makeConfig({ rate: 100, lifetime: 9999, preWarm: 0 }));
+    expect(pm.particleCount).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Per-particle gravity / wind variance
+// ---------------------------------------------------------------------------
+
+describe('ParticleManager — gravityVariance / windVariance', () => {
+  it('gravityVariance produces different vertical accelerations per particle', () => {
+    const { pm, core, fxLayer } = makeParticleManager();
+    pm.emit(makeConfig({
+      burst: true, burstCount: 50, speed: 0,
+      gravity: 1000, gravityVariance: 800,
+      lifetime: 9999,
+    }));
+
+    tick(core, 500);
+
+    const ys = fxLayer.added.map((d) => d.y);
+    const allSame = ys.every((y) => Math.abs(y - ys[0]!) < 0.001);
+    expect(allSame).toBe(false);
+  });
+
+  it('windVariance produces different horizontal accelerations per particle', () => {
+    const { pm, core, fxLayer } = makeParticleManager();
+    pm.emit(makeConfig({
+      burst: true, burstCount: 50, speed: 0,
+      wind: 1000, windVariance: 800,
+      lifetime: 9999,
+    }));
+
+    tick(core, 500);
+
+    const xs = fxLayer.added.map((d) => d.x);
+    const allSame = xs.every((x) => Math.abs(x - xs[0]!) < 0.001);
+    expect(allSame).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// repeatBurst
+// ---------------------------------------------------------------------------
+
+describe('ParticleManager — repeatBurst', () => {
+  it('emitter persists after the first burst completes', () => {
+    const { pm, core } = makeParticleManager();
+    pm.emit(makeConfig({ burst: true, burstCount: 3, lifetime: 50, repeatBurst: true }));
+    tick(core, 200); // first burst is dead
+    expect(pm.emitterCount).toBe(1);
+  });
+
+  it('re-emits particles after the repeat interval', () => {
+    const { pm, core } = makeParticleManager();
+    pm.emit(makeConfig({
+      burst: true, burstCount: 5, lifetime: 50,
+      repeatBurst: true, repeatInterval: 100,
+    }));
+    tick(core, 200); // first burst dies (~50 ms), wait 100 ms, second burst fires
+    expect(pm.particleCount).toBeGreaterThan(0);
+  });
+
+  it('does NOT fire particle/complete between repeat cycles', () => {
+    const { pm, core } = makeParticleManager();
+    const handler = vi.fn();
+    core.events.on('test', 'particle/complete', handler);
+
+    pm.emit(makeConfig({
+      burst: true, burstCount: 3, lifetime: 50,
+      repeatBurst: true, repeatInterval: 100,
+    }));
+    tick(core, 600); // multiple cycles should have occurred
+
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('repeat emitter is removed and NOT auto-completed via clear()', () => {
+    const { pm, core } = makeParticleManager();
+    const handler = vi.fn();
+    core.events.on('test', 'particle/complete', handler);
+
+    const id = pm.emit(makeConfig({
+      burst: true, burstCount: 3, lifetime: 50,
+      repeatBurst: true, repeatInterval: 100,
+    }));
+    tick(core, 200);
+    pm.clear(id);
+
+    expect(pm.emitterCount).toBe(0);
+    expect(handler).not.toHaveBeenCalled();
   });
 });

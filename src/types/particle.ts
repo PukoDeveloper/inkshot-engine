@@ -34,6 +34,18 @@ export interface ParticleConfig {
    * `undefined` = run forever until manually stopped.
    */
   duration?: number;
+  /**
+   * If `true` and `burst` is also `true`, the emitter re-emits a new burst
+   * after all particles from the previous burst have expired.
+   * Default: `false`.
+   */
+  repeatBurst?: boolean;
+  /**
+   * Milliseconds to wait between successive burst repeats when `repeatBurst`
+   * is `true`.  Measured from when the last particle of the previous burst
+   * dies.  Default: `1000`.
+   */
+  repeatInterval?: number;
 
   // ── Per-particle lifetime ─────────────────────────────────────────────────
   /** Base particle lifetime in ms. */
@@ -61,8 +73,51 @@ export interface ParticleConfig {
   // ── Forces ────────────────────────────────────────────────────────────────
   /** Downward acceleration applied to every particle in px/s². Default: `0`. */
   gravity?: number;
+  /**
+   * Random variance applied to per-particle gravity.
+   * Each particle's actual gravity = `gravity ± gravityVariance`.  Default: `0`.
+   */
+  gravityVariance?: number;
   /** Rightward acceleration applied to every particle in px/s². Default: `0`. */
   wind?: number;
+  /**
+   * Random variance applied to per-particle wind.
+   * Each particle's actual wind = `wind ± windVariance`.  Default: `0`.
+   */
+  windVariance?: number;
+
+  // ── Rotation ──────────────────────────────────────────────────────────────
+  /** Initial rotation of each particle in degrees. Default: `0`. */
+  startRotation?: number;
+  /**
+   * Random variance applied to `startRotation` in degrees.
+   * Actual rotation = `startRotation ± rotationVariance`.  Default: `0`.
+   */
+  rotationVariance?: number;
+  /** Rotation speed in degrees per second. Default: `0`. */
+  angularVelocity?: number;
+  /**
+   * Random variance applied to `angularVelocity` in degrees/second.
+   * Actual angular velocity = `angularVelocity ± angularVelocityVariance`.
+   * Default: `0`.
+   */
+  angularVelocityVariance?: number;
+
+  // ── Spawn shape ───────────────────────────────────────────────────────────
+  /**
+   * Shape of the spawn area.
+   * - `'point'`  (default) — all particles spawn at `(x, y)`.
+   * - `'rect'`   — uniform random offset within
+   *                `[−spawnWidth/2, spawnWidth/2] × [−spawnHeight/2, spawnHeight/2]`.
+   * - `'circle'` — uniform random offset within a disc of radius `spawnRadius`.
+   */
+  spawnShape?: 'point' | 'rect' | 'circle';
+  /** Width of the rectangular spawn area (used when `spawnShape` is `'rect'`). */
+  spawnWidth?: number;
+  /** Height of the rectangular spawn area (used when `spawnShape` is `'rect'`). */
+  spawnHeight?: number;
+  /** Radius of the circular spawn area (used when `spawnShape` is `'circle'`). */
+  spawnRadius?: number;
 
   // ── Visual ────────────────────────────────────────────────────────────────
   /** Particle alpha at spawn. Default: `1`. */
@@ -80,8 +135,23 @@ export interface ParticleConfig {
    * Default: same as `startColor` (no colour change).
    */
   endColor?: number;
-  /** Visual radius of each particle in pixels. Default: `4`. */
+  /** Visual radius of each particle in pixels (Graphics circle). Default: `4`. */
   radius?: number;
+  /**
+   * ResourceManager key for a texture to use instead of a filled Graphics
+   * circle.  When provided, the default display factory creates a `Sprite`
+   * from this key via `Sprite.from(texture)`.
+   */
+  texture?: string;
+
+  // ── Pre-warm ──────────────────────────────────────────────────────────────
+  /**
+   * Milliseconds to simulate immediately when the emitter is created.
+   * Useful for scene-open effects (e.g. fire, smoke) that should appear
+   * mid-stream rather than starting from zero.
+   * Default: `0` (no pre-warm).
+   */
+  preWarm?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -127,12 +197,66 @@ export interface ParticleClearParams {
 }
 
 /**
- * EventBus notification emitted as `particle/complete` when a **burst**
- * emitter's last particle expires naturally.
+ * EventBus notification emitted as `particle/complete` when an emitter ends
+ * naturally: either a burst emitter whose last particle expires, or a
+ * continuous emitter whose `duration` expires and whose last particle dies.
  *
- * Not fired when an emitter is removed via `particle/clear`.
+ * Not fired when an emitter is removed via `particle/clear` or `particle/stop`.
+ * Not fired between successive cycles of a `repeatBurst` emitter.
  */
 export interface ParticleCompleteParams {
   /** ID of the emitter that finished. */
   id: string;
+}
+
+/** EventBus params for `particle/move` — relocate an active emitter's origin. */
+export interface ParticleMoveParams {
+  /** ID of the emitter to move. */
+  id: string;
+  /** New world x position. */
+  x: number;
+  /** New world y position. */
+  y: number;
+}
+
+/** EventBus params for `particle/pause` — freeze one or all emitters. */
+export interface ParticlePauseParams {
+  /**
+   * ID of the emitter to pause.
+   * If omitted, every active emitter is paused.
+   */
+  id?: string;
+}
+
+/** EventBus params for `particle/resume` — unfreeze one or all paused emitters. */
+export interface ParticleResumeParams {
+  /**
+   * ID of the emitter to resume.
+   * If omitted, every paused emitter is resumed.
+   */
+  id?: string;
+}
+
+/** EventBus params for `particle/count` — query current particle counts. */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface ParticleCountParams {}
+
+/** EventBus output written by the `particle/count` handler. */
+export interface ParticleCountOutput {
+  /** Number of currently registered emitters. */
+  emitterCount: number;
+  /** Total number of live particles across all emitters. */
+  particleCount: number;
+}
+
+/** EventBus params for `particle/update` — hot-patch a running emitter's config. */
+export interface ParticleUpdateParams {
+  /** ID of the emitter to update. */
+  id: string;
+  /**
+   * Partial configuration to merge into the emitter's current settings.
+   * Changes apply to newly spawned particles; existing live particles are
+   * not retroactively updated.
+   */
+  config: Partial<ParticleConfig>;
 }
