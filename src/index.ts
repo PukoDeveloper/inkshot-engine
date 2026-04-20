@@ -73,6 +73,13 @@ export type {
   InputPointerStateOutput,
   InputActionBindParams,
   InputActionTriggeredParams,
+  InputGamepadButtonDownParams,
+  InputGamepadButtonUpParams,
+  InputGamepadAxesParams,
+  InputGamepadAxisBindParams,
+  InputGamepadVibrateParams,
+  InputGamepadConnectedParams,
+  InputGamepadDisconnectedParams,
 } from './types/input.js';
 
 // Game state system
@@ -276,3 +283,16 @@ export type {
   CameraZoomParams,
   CameraStateOutput,
 } from './types/rendering.js';
+
+// Timer / Scheduler system
+export { TimerManager } from './plugins/TimerManager.js';
+export type {
+  TimerOnceParams,
+  TimerIntervalParams,
+  TimerCancelParams,
+  TimerCooldownParams,
+  TimerCooldownOutput,
+  TimerFiredParams,
+  TimerCancelledParams,
+  TimerCancelAllOutput,
+} from './types/timer.js';

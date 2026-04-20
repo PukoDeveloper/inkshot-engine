@@ -39,20 +39,20 @@
 
 ## 🟠 中高優先
 
-### 3. 定時器 / 排程系統 (Timer / Scheduler)
-- [ ] 新增 `TimerManager` plugin（namespace: `timer`）
-- [ ] 支援單次延遲回呼：`timer/once`（delay ms 後執行）
-- [ ] 支援重複間隔回呼：`timer/interval`
-- [ ] 支援冷卻查詢：`timer/cooldown`（是否已過冷卻期）
-- [ ] 所有計時器綁定至 `core/tick`，暫停遊戲時自動暫停
-- [ ] 事件：`timer/cancelled`、`timer/fired`
+### 3. 定時器 / 排程系統 (Timer / Scheduler) ✅
+- [x] 新增 `TimerManager` plugin（namespace: `timer`）
+- [x] 支援單次延遲回呼：`timer/once`（delay ms 後執行）
+- [x] 支援重複間隔回呼：`timer/interval`
+- [x] 支援冷卻查詢：`timer/cooldown`（是否已過冷卻期）
+- [x] 所有計時器綁定至 `core/tick`，暫停遊戲時自動暫停
+- [x] 事件：`timer/cancelled`、`timer/fired`
 
-### 4. 手柄 / 控制器輸入 (Gamepad Support)
-- [ ] 擴充 `InputManager`，加入瀏覽器 Gamepad API 支援
-- [ ] 映射搖桿軸向（Analog Axes）至邏輯 action
-- [ ] 支援按鍵下壓、放開的標準事件：`input/gamepad:button:down`、`input/gamepad:button:up`
-- [ ] 支援震動回饋（Haptic Feedback，若瀏覽器支援）
-- [ ] 可在 `input/action:bind` 中同時綁定鍵盤與手柄按鍵
+### 4. 手柄 / 控制器輸入 (Gamepad Support) ✅
+- [x] 擴充 `InputManager`，加入瀏覽器 Gamepad API 支援
+- [x] 映射搖桿軸向（Analog Axes）至邏輯 action
+- [x] 支援按鍵下壓、放開的標準事件：`input/gamepad:button:down`、`input/gamepad:button:up`
+- [x] 支援震動回饋（Haptic Feedback，若瀏覽器支援）
+- [x] 可在 `input/action:bind` 中同時綁定鍵盤與手柄按鍵
 
 ---
 

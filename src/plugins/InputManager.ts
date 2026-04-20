@@ -12,10 +12,17 @@ import type {
   InputPointerStateOutput,
   InputActionBindParams,
   InputActionTriggeredParams,
+  InputGamepadButtonDownParams,
+  InputGamepadButtonUpParams,
+  InputGamepadAxesParams,
+  InputGamepadAxisBindParams,
+  InputGamepadVibrateParams,
+  InputGamepadConnectedParams,
+  InputGamepadDisconnectedParams,
 } from '../types/input.js';
 
 /**
- * Built-in plugin that handles keyboard and pointer input.
+ * Built-in plugin that handles keyboard, pointer, and gamepad input.
  *
  * `InputManager` implements a **dual-track** input model:
  *
@@ -23,14 +30,19 @@ import type {
  * State-transition events are emitted on the `EventBus` exactly once per
  * transition, keeping per-frame overhead near zero:
  *
- * | Event                  | When emitted                                               |
- * |------------------------|------------------------------------------------------------|
- * | `input/key:down`       | A key transitions released → pressed (auto-repeat filtered)|
- * | `input/key:up`         | A key transitions pressed → released                       |
- * | `input/pointer:down`   | A pointer button transitions released → pressed            |
- * | `input/pointer:up`     | A pointer button transitions pressed → released            |
- * | `input/pointer:move`   | Pointer moved — throttled to **one event per frame**       |
- * | `input/action:triggered` | A bound action key changed state                         |
+ * | Event                       | When emitted                                                |
+ * |-----------------------------|-------------------------------------------------------------|
+ * | `input/key:down`            | A key transitions released → pressed (auto-repeat filtered) |
+ * | `input/key:up`              | A key transitions pressed → released                        |
+ * | `input/pointer:down`        | A pointer button transitions released → pressed             |
+ * | `input/pointer:up`          | A pointer button transitions pressed → released             |
+ * | `input/pointer:move`        | Pointer moved — throttled to **one event per frame**        |
+ * | `input/action:triggered`    | A bound action key or button changed state                  |
+ * | `input/gamepad:button:down` | A gamepad button transitions released → pressed             |
+ * | `input/gamepad:button:up`   | A gamepad button transitions pressed → released             |
+ * | `input/gamepad:axes`        | Per-frame raw analog axes (when any axis > 0.05 deadzone)   |
+ * | `input/gamepad:connected`   | A gamepad was connected (browser `gamepadconnected` event)  |
+ * | `input/gamepad:disconnected`| A gamepad was disconnected (`gamepaddisconnected` event)    |
  *
  * ### Pull (synchronous query)
  * Current state can be queried at any time without subscribing to events:
@@ -41,22 +53,38 @@ import type {
  * | `input/pointer:state`  | `output.position`, `output.buttons`         |
  *
  * Direct accessor methods (`isKeyPressed`, `getPointerPosition`,
- * `isPointerButtonDown`) are also available for code that holds a reference
- * to the plugin instance.
+ * `isPointerButtonDown`, `isGamepadButtonPressed`, `getGamepadAxes`) are also
+ * available for code that holds a reference to the plugin instance.
  *
  * ### Action bindings
- * Logical actions decouple game code from physical keys:
+ * Logical actions decouple game code from physical keys.  Both keyboard codes
+ * and gamepad buttons (`'Gamepad:<index>:<button>'`) can be bound:
  * ```ts
- * core.events.emitSync('input/action:bind', { action: 'jump', codes: ['Space'] });
+ * core.events.emitSync('input/action:bind', {
+ *   action: 'jump',
+ *   codes: ['Space', 'Gamepad:0:0'],
+ * });
  * core.events.on('myGame', 'input/action:triggered', (params) => {
  *   if (params.action === 'jump' && params.state === 'pressed') player.jump();
+ * });
+ * ```
+ *
+ * ### Gamepad axis binding
+ * Map analog axes to logical actions with `input/gamepad:axis:bind`.
+ * Re-registering the same `action` + `axisIndex` + `direction` on the same
+ * gamepad **replaces** the existing binding (no duplicates):
+ * ```ts
+ * core.events.emitSync('input/gamepad:axis:bind', {
+ *   action: 'move-right', axisIndex: 0, direction: 'positive',
  * });
  * ```
  *
  * ### Performance safeguards
  * - `keydown` auto-repeat events are suppressed; `input/key:down` fires once.
  * - `pointermove` DOM events are batched; one `input/pointer:move` per frame.
- * - `window blur` clears all pressed-key state to prevent stuck-key bugs.
+ * - `window blur` clears all pressed-key and gamepad state to prevent stuck inputs.
+ * - Gamepad axes are snapshotted once per frame; `getGamepadAxes()` reads the
+ *   frame-local cache for consistency.
  *
  * ---
  *
@@ -114,6 +142,42 @@ export class InputManager implements EnginePlugin {
   private readonly _codeToActions = new Map<string, string[]>();
 
   // ---------------------------------------------------------------------------
+  // Gamepad state
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Previous-frame button pressed state, keyed by `'<gamepadIndex>:<buttonIndex>'`.
+   * Used to detect transitions (released → pressed, pressed → released).
+   */
+  private readonly _gamepadButtonState = new Map<string, boolean>();
+
+  /**
+   * Axis-to-action bindings registered via `input/gamepad:axis:bind`.
+   * Key: `'<action>:<gamepadIndex>:<axisIndex>:<direction>'`
+   */
+  private readonly _axisBindings: Array<{
+    action: string;
+    gamepadIndex: number;
+    axisIndex: number;
+    deadzone: number;
+    threshold: number;
+    direction: 'positive' | 'negative' | 'both';
+    /** Whether the axis was in the "pressed" state during the previous poll. */
+    wasActive: boolean;
+  }> = [];
+
+  // ---------------------------------------------------------------------------
+  // Per-frame axes snapshot (populated in _pollGamepads)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Most recent axis values per gamepad, snapshotted once per frame.
+   * Keyed by gamepad index; used by `getGamepadAxes()` for consistent
+   * per-frame reads (mirrors `_gamepadButtonState` semantics for buttons).
+   */
+  private readonly _gamepadAxesCache = new Map<number, readonly number[]>();
+
+  // ---------------------------------------------------------------------------
   // EventBus reference (set during init, cleared during destroy)
   // ---------------------------------------------------------------------------
 
@@ -134,6 +198,8 @@ export class InputManager implements EnginePlugin {
     window.addEventListener('pointerup', this._onPointerUp);
     window.addEventListener('pointermove', this._onPointerMove);
     window.addEventListener('blur', this._onBlur);
+    window.addEventListener('gamepadconnected', this._onGamepadConnected);
+    window.addEventListener('gamepaddisconnected', this._onGamepadDisconnected);
 
     // ── Pull: synchronous state queries ───────────────────────────────────
     events.on<InputKeyPressedParams, InputKeyPressedOutput>(
@@ -203,6 +269,58 @@ export class InputManager implements EnginePlugin {
       },
       { phase: 'after' },
     );
+
+    // ── Gamepad polling: runs in the before-phase of core/tick ────────────
+    events.on(
+      this.namespace,
+      'core/tick',
+      () => {
+        this._pollGamepads(events);
+      },
+      { phase: 'before' },
+    );
+
+    // ── Gamepad axis binding ───────────────────────────────────────────────
+    events.on<InputGamepadAxisBindParams>(
+      this.namespace,
+      'input/gamepad:axis:bind',
+      (params) => {
+        const gamepadIndex = params.gamepadIndex ?? 0;
+        const direction = params.direction ?? 'both';
+        // Replace any existing binding for the same (action, gamepadIndex, axisIndex, direction)
+        // tuple to avoid stacking duplicate entries on re-registration.
+        const existingIdx = this._axisBindings.findIndex(
+          (b) =>
+            b.action === params.action &&
+            b.gamepadIndex === gamepadIndex &&
+            b.axisIndex === params.axisIndex &&
+            b.direction === direction,
+        );
+        const entry = {
+          action: params.action,
+          gamepadIndex,
+          axisIndex: params.axisIndex,
+          deadzone: params.deadzone ?? 0.1,
+          threshold: params.threshold ?? 0.5,
+          direction,
+          wasActive: false,
+        };
+        if (existingIdx !== -1) {
+          this._axisBindings[existingIdx] = entry;
+        } else {
+          this._axisBindings.push(entry);
+        }
+      },
+    );
+
+    // ── Gamepad vibration ─────────────────────────────────────────────────
+    events.on<InputGamepadVibrateParams>(
+      this.namespace,
+      'input/gamepad:vibrate',
+      (params) => {
+        this._vibrate(params);
+      },
+    );
   }
 
   destroy(core: Core): void {
@@ -213,6 +331,8 @@ export class InputManager implements EnginePlugin {
     window.removeEventListener('pointerup', this._onPointerUp);
     window.removeEventListener('pointermove', this._onPointerMove);
     window.removeEventListener('blur', this._onBlur);
+    window.removeEventListener('gamepadconnected', this._onGamepadConnected);
+    window.removeEventListener('gamepaddisconnected', this._onGamepadDisconnected);
 
     // Remove all EventBus listeners registered under this namespace.
     core.events.removeNamespace(this.namespace);
@@ -223,6 +343,9 @@ export class InputManager implements EnginePlugin {
     this._actions.clear();
     this._codeToActions.clear();
     this._pendingPointerMove = false;
+    this._gamepadButtonState.clear();
+    this._gamepadAxesCache.clear();
+    this._axisBindings.length = 0;
     this._events = null;
   }
 
@@ -261,6 +384,29 @@ export class InputManager implements EnginePlugin {
    */
   isPointerButtonDown(button: number): boolean {
     return this._pointerButtons.has(button);
+  }
+
+  /**
+   * Returns `true` when the given gamepad button is currently pressed.
+   *
+   * @param gamepadIndex  Zero-based gamepad index.
+   * @param button        Zero-based button index on that gamepad.
+   */
+  isGamepadButtonPressed(gamepadIndex: number, button: number): boolean {
+    return this._gamepadButtonState.get(`${gamepadIndex}:${button}`) === true;
+  }
+
+  /**
+   * Returns the axis values for the specified gamepad as of the **last
+   * completed frame**, or an empty array if the gamepad is not connected.
+   *
+   * The returned values come from the per-frame snapshot taken during
+   * `_pollGamepads`, keeping them consistent with `isGamepadButtonPressed`.
+   *
+   * @param gamepadIndex  Zero-based gamepad index.
+   */
+  getGamepadAxes(gamepadIndex: number): readonly number[] {
+    return this._gamepadAxesCache.get(gamepadIndex) ?? [];
   }
 
   // ---------------------------------------------------------------------------
@@ -316,11 +462,142 @@ export class InputManager implements EnginePlugin {
     // otherwise remain in _pressedKeys forever).
     this._pressedKeys.clear();
     this._pointerButtons.clear();
+    // Also clear gamepad button state so buttons aren't stuck on blur.
+    this._gamepadButtonState.clear();
+    for (const binding of this._axisBindings) {
+      binding.wasActive = false;
+    }
+  };
+
+  private readonly _onGamepadConnected = (event: GamepadEvent): void => {
+    this._events?.emitSync<InputGamepadConnectedParams, Record<string, never>>(
+      'input/gamepad:connected',
+      { gamepadIndex: event.gamepad.index, id: event.gamepad.id },
+    );
+  };
+
+  private readonly _onGamepadDisconnected = (event: GamepadEvent): void => {
+    // Remove cached axis data for the disconnected controller.
+    this._gamepadAxesCache.delete(event.gamepad.index);
+    this._events?.emitSync<InputGamepadDisconnectedParams, Record<string, never>>(
+      'input/gamepad:disconnected',
+      { gamepadIndex: event.gamepad.index, id: event.gamepad.id },
+    );
   };
 
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
+
+  /**
+   * Poll the browser Gamepad API, compare with the previous frame's state,
+   * and emit the appropriate events for any transitions.
+   */
+  private _pollGamepads(events: EventBus): void {
+    if (typeof navigator === 'undefined' || typeof navigator.getGamepads !== 'function') return;
+
+    const gamepads = navigator.getGamepads();
+    if (!gamepads) return;
+
+    for (let gi = 0; gi < gamepads.length; gi++) {
+      const gp = gamepads[gi];
+      if (!gp) continue;
+
+      // ── Button down / up events ──────────────────────────────────────────
+      for (let bi = 0; bi < gp.buttons.length; bi++) {
+        const key = `${gi}:${bi}`;
+        const wasPressed = this._gamepadButtonState.get(key) ?? false;
+        const isPressed = gp.buttons[bi]!.pressed;
+
+        if (isPressed && !wasPressed) {
+          this._gamepadButtonState.set(key, true);
+          events.emitSync<InputGamepadButtonDownParams, Record<string, never>>(
+            'input/gamepad:button:down',
+            { gamepadIndex: gi, button: bi, value: gp.buttons[bi]!.value },
+          );
+          // Trigger any action bindings that use 'Gamepad:<gi>:<bi>'
+          this._triggerActions(events, `Gamepad:${gi}:${bi}`, 'pressed');
+        } else if (!isPressed && wasPressed) {
+          this._gamepadButtonState.set(key, false);
+          events.emitSync<InputGamepadButtonUpParams, Record<string, never>>(
+            'input/gamepad:button:up',
+            { gamepadIndex: gi, button: bi },
+          );
+          this._triggerActions(events, `Gamepad:${gi}:${bi}`, 'released');
+        }
+      }
+
+      // ── Snapshot axes into the per-frame cache ───────────────────────────
+      const axes = Array.from(gp.axes) as number[];
+      this._gamepadAxesCache.set(gi, axes);
+
+      // ── Axes event (emit if any axis exceeds a minimal deadzone) ─────────
+      const AXES_EMIT_DEADZONE = 0.05;
+      if (axes.some((v) => Math.abs(v) > AXES_EMIT_DEADZONE)) {
+        events.emitSync<InputGamepadAxesParams, Record<string, never>>(
+          'input/gamepad:axes',
+          { gamepadIndex: gi, axes },
+        );
+      }
+
+      // ── Axis-to-action bindings ──────────────────────────────────────────
+      for (const binding of this._axisBindings) {
+        if (binding.gamepadIndex !== gi) continue;
+        const rawValue = gp.axes[binding.axisIndex] ?? 0;
+        const absValue = Math.abs(rawValue);
+
+        // Determine whether the axis is currently "active" (past threshold in
+        // the specified direction, outside deadzone).
+        let isActive = false;
+        if (absValue > binding.deadzone && absValue >= binding.threshold) {
+          if (binding.direction === 'both') {
+            isActive = true;
+          } else if (binding.direction === 'positive' && rawValue > 0) {
+            isActive = true;
+          } else if (binding.direction === 'negative' && rawValue < 0) {
+            isActive = true;
+          }
+        }
+
+        if (isActive && !binding.wasActive) {
+          binding.wasActive = true;
+          events.emitSync<InputActionTriggeredParams, Record<string, never>>(
+            'input/action:triggered',
+            { action: binding.action, state: 'pressed' },
+          );
+        } else if (!isActive && binding.wasActive) {
+          binding.wasActive = false;
+          events.emitSync<InputActionTriggeredParams, Record<string, never>>(
+            'input/action:triggered',
+            { action: binding.action, state: 'released' },
+          );
+        }
+      }
+    }
+  }
+
+  /**
+   * Request haptic feedback on a gamepad via the Vibration Actuator API.
+   * Silently does nothing if the browser or controller does not support it.
+   */
+  private _vibrate(params: InputGamepadVibrateParams): void {
+    if (typeof navigator === 'undefined' || typeof navigator.getGamepads !== 'function') return;
+    const gamepads = navigator.getGamepads();
+    if (!gamepads) return;
+    const gi = params.gamepadIndex ?? 0;
+    const gp = gamepads[gi];
+    if (!gp) return;
+
+    // vibrationActuator is a non-standard extension; cast to access it safely.
+    const actuator = (gp as unknown as { vibrationActuator?: { playEffect?: (type: string, params: object) => void } }).vibrationActuator;
+    if (!actuator?.playEffect) return;
+
+    actuator.playEffect('dual-rumble', {
+      duration: params.duration,
+      strongMagnitude: params.strongMagnitude ?? 1,
+      weakMagnitude: params.weakMagnitude ?? 1,
+    });
+  }
 
   /**
    * Register or replace the key codes bound to a logical action.
