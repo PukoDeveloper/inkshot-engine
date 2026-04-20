@@ -6,15 +6,15 @@
 
 ## 🔴 高優先
 
-### 1. 粒子系統 (Particle System)
-- [ ] 新增 `ParticleManager` plugin（namespace: `particle`）
-- [ ] 支援發射器（Emitter）設定：發射速率、方向、散射角、存活時間
-- [ ] 支援粒子屬性隨時間變化：位置、縮放、旋轉、透明度、顏色
-- [ ] 支援重力與外力（wind、gravity）
-- [ ] 支援 Burst（一次性噴發）與持續發射兩種模式
-- [ ] 透過 EventBus 控制：`particle/emit`、`particle/stop`、`particle/clear`
-- [ ] 與 `ObjectPool` 整合，避免 GC 壓力
-- [ ] 事件：`particle/complete`（Burst 結束時發出）
+### 1. 粒子系統 (Particle System) ✅
+- [x] 新增 `ParticleManager` plugin（namespace: `particle`）
+- [x] 支援發射器（Emitter）設定：發射速率、方向、散射角、存活時間
+- [x] 支援粒子屬性隨時間變化：位置、縮放、旋轉、透明度、顏色
+- [x] 支援重力與外力（wind、gravity）
+- [x] 支援 Burst（一次性噴發）與持續發射兩種模式
+- [x] 透過 EventBus 控制：`particle/emit`、`particle/stop`、`particle/clear`
+- [x] 與 `ObjectPool` 整合，避免 GC 壓力
+- [x] 事件：`particle/complete`（Burst 結束時發出）
 
 ### 2. Tilemap 渲染器 (Tilemap Renderer) ✅
 - [x] 新增 `TilemapManager` plugin（namespace: `tilemap`）
