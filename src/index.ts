@@ -88,6 +88,8 @@ export { EventBus } from './core/EventBus.js';
 
 // Save system
 export { SaveManager } from './plugins/SaveManager.js';
+export { LocalStorageSaveAdapter } from './plugins/LocalStorageSaveAdapter.js';
+export type { StorageLike, LocalStorageSaveAdapterOptions } from './plugins/LocalStorageSaveAdapter.js';
 export type {
   SlotMeta,
   SlotData,
@@ -110,6 +112,8 @@ export type {
 
 // Scene system
 export { SceneManager } from './plugins/SceneManager.js';
+export { LoadingScreen } from './plugins/LoadingScreen.js';
+export type { LoadingScreenOptions } from './plugins/LoadingScreen.js';
 export type {
   SceneDescriptor,
   SceneRegisterParams,
