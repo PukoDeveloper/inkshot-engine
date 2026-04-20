@@ -792,21 +792,98 @@ core.events.emitSync('collision/tilemap:set', {
     [0, 0, 0, 0],   // row 0 — open
     [0, 0, 0, 0],   // row 1 — open
     [1, 1, 1, 1],   // row 2 — solid floor
+    [2, 2, 2, 2],   // row 3 — one-way platform
   ],
-  solidValues: [1], // tile values treated as solid
+  tileShapes: {
+    1: 'solid',     // full block on all sides
+    2: 'top-only',  // one-way platform
+  },
 });
 ```
 
-Internally the manager builds an O(1) `Set<"row,col">` lookup so per-frame tile checking adds negligible overhead regardless of map size.
+Internally the manager builds an O(1) `Map<"row,col", string>` lookup so per-frame tile checking adds negligible overhead regardless of map size.
 
-### 10.7 Pixel Mode vs Grid Mode
+### 10.7 Tile Shapes
+
+The `tileShapes` record maps tile values to a `TileCollisionShape` string (or any custom string handled by a registered resolver):
+
+| Shape | Behaviour |
+|---|---|
+| `'solid'` | Full impassable block on all four sides. |
+| `'empty'` | Explicitly passable — overrides any inherited non-zero tile value. |
+| `'top-only'` | One-way platform.  Blocks downward movement **only** when the entity's bottom edge was above the tile top before the move (prevents tunnelling). |
+| `'slope-ne'` ◣ | Floor slope rising left-to-right.  Blocks downward movement; surface height is computed from the entity's horizontal centre. |
+| `'slope-nw'` ◢ | Floor slope falling left-to-right.  Same as above, mirror geometry. |
+| `'slope-se'` ◤ | Ceiling slope descending left-to-right.  Blocks upward movement. |
+| `'slope-sw'` ◥ | Ceiling slope ascending left-to-right.  Blocks upward movement. |
+
+Any tile value absent from the `tileShapes` record (or mapped to `'empty'`) is treated as passable.
+
+### 10.8 Custom Shape Resolvers
+
+For shapes not covered by the built-in set, pass `customShapeResolvers` to the `CollisionManager` constructor:
+
+```ts
+import { CollisionManager } from 'inkshot-engine';
+import type { TileShapeResolver } from 'inkshot-engine';
+
+const iceResolver: TileShapeResolver = (shape, ctx) => {
+  if (shape !== 'ice') return null; // pass to next resolver
+
+  // Ice: behaves like a solid floor but only on the Y axis.
+  if (ctx.axis === 'y' && ctx.dy > 0) {
+    return {
+      blocked: true,
+      resolved: ctx.tileY - (ctx.entityAABB.bottom - ctx.entityY),
+    };
+  }
+  return { blocked: false, resolved: ctx.entityY };
+};
+
+const { core } = await createEngine({
+  plugins: [
+    new EntityManager(),
+    new CollisionManager({ customShapeResolvers: [iceResolver] }),
+  ],
+});
+
+core.events.emitSync('collision/tilemap:set', {
+  tileSize: 16,
+  layers: myTileData,
+  tileShapes: {
+    1: 'solid',
+    2: 'top-only',
+    3: 'slope-ne',
+    4: 'ice',       // handled by iceResolver above
+  },
+});
+```
+
+The `TileShapeContext` supplied to each resolver contains:
+
+| Field | Type | Description |
+|---|---|---|
+| `tileX` | `number` | World-space X of the tile's left edge |
+| `tileY` | `number` | World-space Y of the tile's top edge |
+| `tileSize` | `number` | Tile size in pixels |
+| `entityAABB` | `{ left, top, right, bottom }` | Entity bounding box after the partial move |
+| `entityShape` | `ColliderShape` | Entity's collider shape (for offset data) |
+| `entityX` | `number` | Entity world X after the move |
+| `entityY` | `number` | Entity world Y after the move |
+| `dx` | `number` | Horizontal displacement (0 when resolving Y) |
+| `dy` | `number` | Vertical displacement (0 when resolving X) |
+| `axis` | `'x' \| 'y'` | Which axis is being resolved |
+
+Resolvers are tried in registration order.  The first non-`null` result wins.  If all resolvers return `null`, the tile is treated as passable.
+
+### 10.9 Pixel Mode vs Grid Mode
 
 | `movementMode` | Behaviour |
 |---|---|
 | `'pixel'` (default) | Free sub-pixel movement; collision resolution snaps to tile boundaries only when blocked. |
 | `'grid'` | Same resolution, but the entity is additionally snapped to the nearest tile corner after each `collision/move`. Useful for strict tile-locked movement (e.g. puzzle RPGs). |
 
-### 10.8 Ranged Weapons
+### 10.10 Ranged Weapons
 
 Two composable patterns — no changes to `CollisionManager` needed for either:
 
@@ -814,7 +891,7 @@ Two composable patterns — no changes to `CollisionManager` needed for either:
 
 **Physical projectiles (arrows, fireballs):** spawn a projectile entity tagged `['projectile']` with a `circle` collider on the `HITBOX` layer.  `CollisionManager` automatically emits `collision/hit` on the first frame it overlaps a `HURTBOX` entity.
 
-### 10.9 Usage
+### 10.11 Usage
 
 ```ts
 import { createEngine, EntityManager, CollisionManager, CollisionLayer } from 'inkshot-engine';
@@ -823,6 +900,7 @@ const { core } = await createEngine({
   plugins: [
     new EntityManager(),
     new CollisionManager(),  // must come after EntityManager
+    // To add custom tile shapes: new CollisionManager({ customShapeResolvers: [...] })
   ],
 });
 
@@ -830,7 +908,12 @@ const { core } = await createEngine({
 core.events.emitSync('collision/tilemap:set', {
   tileSize: 16,
   layers: myTileData,
-  solidValues: [1, 2],
+  tileShapes: {
+    1: 'solid',
+    2: 'solid',
+    3: 'top-only',  // one-way platform
+    4: 'slope-ne',  // ◣ ramp
+  },
 });
 
 // ── Attach colliders ────────────────────────────────────────────────────
@@ -883,7 +966,7 @@ core.events.on('triggers', 'collision/overlap', ({ entityAId, entityBId, entered
 });
 ```
 
-### 10.10 Recommended Plugin Order
+### 10.12 Recommended Plugin Order
 
 `CollisionManager` must be registered **after** `EntityManager` because it uses
 `entity/query` to read entity positions at runtime:
