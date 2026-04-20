@@ -618,6 +618,7 @@ createEngine({
     new GameStateManager(),
     new EntityManager(),
     new SceneManager(),          // scenes depend on all of the above
+    new TweenManager(),          // animation — can go anywhere after Core
   ],
 });
 ```
@@ -698,6 +699,8 @@ Built-in plugins in `src/plugins/`:
 | `ResourceManager.ts` | `assets` | Multi-mode asset loading with cache-first guarantee |
 | `LocalizationManager.ts` | `i18n` | JSON locale loading, key lookup, variable substitution, and token interpolation |
 | `SceneManager.ts` | `scene` | Scene registration, lifecycle management, and transition orchestration |
+| `TweenManager.ts` | `tween` | Property-based animation driver; hosts `Tween` and `Timeline` objects |
+| `Timeline.ts` | _(n/a)_ | Fluent builder for sequenced/parallel tween animations (used via `TweenManager`) |
 
 Rules:
 
@@ -707,7 +710,209 @@ Rules:
 
 ---
 
-## 11. TypeScript Style
+## 11. Tween & Timeline System (TweenManager)
+
+The `TweenManager` is a built-in `EnginePlugin` (namespace `tween`) that drives **property-based animations** on arbitrary JavaScript objects.  It subscribes to `core/tick` and advances every registered animation each frame.
+
+### 11.1 Architecture
+
+```
+core/tick
+    │
+    ▼
+TweenManager._onTick(dt)
+    │
+    ├── for each Tween   → Tween.advance(dt)  → interpolate target properties
+    └── for each Timeline → Timeline.advance(dt)
+            └── for each TweenEntry → Tween.advance(dt)
+```
+
+- **`Tween`** — animates one or more numeric properties of a target object over time.  `from` values are captured from the target at the moment the tween first begins animating (after any configured delay), so the target can move freely until the tween kicks in.
+- **`Timeline`** — sequences and groups `Tween` objects on a shared time axis using a fluent builder API.  Supports absolute, relative, and parallel entry placement.
+
+Both implement the `Advanceable` interface (`advance(dt: number): boolean`) so they can be used interchangeably by `TweenManager`.
+
+### 11.2 Tween Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `duration` | `number` | — | Length of one forward pass in milliseconds (required) |
+| `ease` | `EasingFn` | `Easing.linear` | Easing function; use any key from `Easing` or supply `(t) => number` |
+| `delay` | `number` | `0` | Delay before the first play starts (ms) |
+| `loop` | `boolean` | `false` | Repeat indefinitely; `onComplete` never fires |
+| `yoyo` | `boolean` | `false` | Reverse direction after each forward pass |
+| `repeat` | `number` | `0` | Extra plays after the first (`-1` = infinite, same as `loop: true`) |
+| `repeatDelay` | `number` | `0` | Gap in ms between each repeat cycle |
+| `onStart` | `() => void` | — | Called once when animation first begins (after any initial delay) |
+| `onUpdate` | `(t: number) => void` | — | Called every tick with the eased progress `[0, 1]` |
+| `onComplete` | `() => void` | — | Called when the tween finishes (not called for `loop: true`) |
+
+### 11.3 Tween State API
+
+```ts
+tween.isPlaying    // true when running (not paused, killed, or done)
+tween.isPaused     // true after pause()
+tween.isKilled     // true after kill()
+tween.isCompleted  // true after natural completion
+tween.progress     // normalised [0, 1] position within the current pass
+
+tween.pause()      // suspend animation
+tween.resume()     // continue from where it left off
+tween.kill()       // permanently stop (properties stay at current values)
+tween.reset()      // rewind to initial state; re-captures from-values on next play
+tween.seek(ms)     // jump playhead to timeMs [0, duration]; captures from-values if not started
+tween.seekProgress(v) // jump to a normalised position [0, 1]
+```
+
+### 11.4 Timeline Builder API
+
+| Method | Description |
+|--------|-------------|
+| `.to(target, props, opts)` | Animate from the target's live values to `props` |
+| `.from(target, fromProps, opts)` | Animate from `fromProps` to the target's current values |
+| `.fromTo(target, fromProps, toProps, opts)` | Explicit start and end values |
+| `.set(target, props, opts)` | Instantly set properties (zero-duration snap) |
+| `.call(fn, opts)` | Fire a callback at a specific time; does not advance the cursor |
+| `.delay(ms)` | Advance the cursor without adding an entry |
+
+All methods accept an optional `at` field:
+
+| `at` value | Meaning |
+|------------|---------|
+| _(omitted)_ | Immediately after the previous entry ends |
+| `number` | Absolute time in milliseconds |
+| `'<'` | Same start time as the previous entry (parallel) |
+| `'+=N'` | Cursor + `N` ms (insert gap) |
+| `'-=N'` | Cursor − `N` ms (overlap) |
+
+### 11.5 Timeline Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `onComplete` | `() => void` | — | Called when the timeline finishes (not called when `loop: true` or `repeat: -1`) |
+| `loop` | `boolean` | `false` | Repeat indefinitely |
+| `repeat` | `number` | `0` | Extra plays after the first (`-1` = infinite) |
+| `repeatDelay` | `number` | `0` | Gap in ms between each repeat cycle |
+
+### 11.6 Timeline State API
+
+```ts
+tl.isPlaying     // true when running
+tl.isPaused      // true after pause()
+tl.isKilled      // true after kill()
+tl.isCompleted   // true after natural completion
+tl.progress      // normalised [0, 1] position within the current cycle
+tl.elapsed       // raw playhead in ms
+tl.duration      // total timeline duration in ms
+tl.playbackRate  // speed multiplier (1 = normal, 2 = double speed)
+
+tl.pause()
+tl.resume()
+tl.kill()
+tl.reset()              // rewind and replay from the beginning
+tl.seek(ms)             // jump playhead; tweens fast-forward silently, callbacks do NOT fire
+tl.seekProgress(v)      // normalised seek [0, 1]
+```
+
+### 11.7 EventBus Contract
+
+| Event | Direction | Description |
+|-------|-----------|-------------|
+| `tween/to` | ✗ `emitSync` | Create and register a new tween; returns `{ id }` |
+| `tween/kill` | ✗ `emitSync` | Stop tweens by `id`, `target`, or `{ all: true }` |
+| `tween/finished` | — emitted | Fired by `TweenManager` when a tween/timeline completes naturally; payload: `{ id?, target? }` |
+
+### 11.8 Usage Examples
+
+```ts
+import { createEngine, TweenManager, Tween, Timeline, Easing } from 'inkshot-engine';
+
+const { core } = await createEngine({ plugins: [new TweenManager()] });
+
+const sprite = { x: 0, y: 0, alpha: 1, scaleX: 1, scaleY: 1 };
+
+// ── One-shot tween ────────────────────────────────────────────────────────
+const tween = new Tween(sprite, { x: 400, alpha: 0 }, {
+  duration: 600,
+  ease: Easing.easeOutQuad,
+  delay: 100,
+  onComplete: () => console.log('entrance done'),
+});
+tweenManager.add(tween);
+
+// ── Yoyo + finite repeat ──────────────────────────────────────────────────
+tweenManager.add(new Tween(sprite, { scaleX: 1.2, scaleY: 1.2 }, {
+  duration: 300,
+  ease: Easing.easeInOutSine,
+  yoyo: true,
+  repeat: 3,          // 4 plays total (forward + back × 4)
+  repeatDelay: 50,
+}));
+
+// ── Timeline sequence ─────────────────────────────────────────────────────
+const tl = new Timeline({ onComplete: () => core.events.emitSync('scene/load', { key: 'level-1' }) });
+
+tl
+  .fromTo(sprite, { alpha: 0 }, { alpha: 1 }, { duration: 300 })        // fade in
+  .to(sprite, { x: 200 }, { duration: 500, ease: Easing.easeOutCubic }) // slide right
+  .to(sprite, { y: 100 }, { duration: 300, at: '<' })                   // simultaneously
+  .call(() => playSound('whoosh'), { at: '+=100' })                     // 100 ms after last tween
+  .delay(200)                                                             // pause
+  .set(sprite, { alpha: 0.5 }, { at: 900 });                            // snap at absolute 900 ms
+
+tweenManager.add(tl);
+
+// ── EventBus API ──────────────────────────────────────────────────────────
+core.events.emitSync('tween/to', {
+  target: sprite,
+  props:  { x: 800 },
+  duration: 400,
+  ease: 'easeOutBack',
+  repeat: 2,
+  id: 'slide-out',
+});
+
+// React to completion
+core.events.on('myGame', 'tween/finished', ({ id, target }) => {
+  if (id === 'slide-out') cleanUp(target);
+});
+
+// Scrub to midpoint during a cutscene skip
+tl.seek(tl.duration / 2);
+
+// Fast-forward for a speed-up power-up
+tl.playbackRate = 3;
+```
+
+### 11.9 Integration with SceneManager
+
+A common pattern is to kill all running tweens when transitioning scenes:
+
+```ts
+core.events.on('transitions', 'scene/load', () => {
+  tweenManager.killAll();
+}, { phase: 'before' });
+```
+
+Or animate the camera / hero exit using a `Timeline` triggered from `SceneDescriptor.exit()`:
+
+```ts
+const level1: SceneDescriptor = {
+  key: 'level-1',
+  async exit(core) {
+    await new Promise<void>((resolve) => {
+      const tl = new Timeline({ onComplete: resolve });
+      tl.to(hero, { alpha: 0 }, { duration: 400, ease: Easing.easeInQuad });
+      tweenManager.add(tl);
+    });
+    await core.events.emit('assets/unload', { bundle: 'level-1' });
+  },
+};
+```
+
+---
+
+## 12. TypeScript Style
 
 - **Strict mode** is enabled.  All code must pass `tsc --strict` without error.
 - Prefer `interface` over `type` for object shapes; use `type` for unions, aliases, and mapped types.
@@ -718,7 +923,7 @@ Rules:
 
 ---
 
-## 12. Coding Style
+## 13. Coding Style
 
 - 2-space indentation, single quotes, trailing commas (enforced by the project's formatter).
 - Prefer `async/await` over raw Promises.
@@ -733,7 +938,7 @@ Rules:
 
 ---
 
-## 13. Lifecycle Summary
+## 14. Lifecycle Summary
 
 ```
 createEngine(options)

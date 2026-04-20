@@ -20,6 +20,7 @@ Everything communicates through a shared **EventBus** — no tight coupling, no 
    - [SaveManager (`save`)](#savemanager-save)
    - [GameStateManager (`game`)](#gamestatemanager-game)
    - [SceneManager (`scene`)](#scenemanager-scene)
+   - [TweenManager (`tween`)](#tweenmanager-tween)
 5. [Renderer & Layers](#renderer--layers)
 6. [Writing Your Own Plugin](#writing-your-own-plugin)
 7. [Engine Lifecycle](#engine-lifecycle)
@@ -501,6 +502,198 @@ Transition effects (fade-out / fade-in) can be added by subscribing to the `befo
 
 ---
 
+### TweenManager (`tween`)
+
+Drives property-based animations (tweens) and sequenced animation timelines, all tied to the engine's `core/tick` event.
+
+#### Easing functions
+
+Over 20 easing functions are available via the `Easing` object:
+
+```ts
+import { Easing } from 'inkshot-engine';
+// linear, easeInQuad, easeOutQuad, easeInOutQuad,
+// easeInCubic, easeOutCubic, easeInOutCubic,
+// easeInQuart, easeOutQuart, easeInOutQuart,
+// easeInSine, easeOutSine, easeInOutSine,
+// easeInExpo, easeOutExpo,
+// easeInBack, easeOutBack,
+// easeInElastic, easeOutElastic,
+// easeInBounce, easeOutBounce
+```
+
+Or supply your own: `ease: (t) => t * t`.
+
+#### Direct API — `Tween`
+
+```ts
+import { createEngine, TweenManager, Tween, Easing } from 'inkshot-engine';
+
+const { core } = await createEngine({ plugins: [new TweenManager()] });
+
+const sprite = { x: 0, y: 0, alpha: 1 };
+
+// Basic one-shot tween
+const tween = new Tween(sprite, { x: 400, alpha: 0 }, {
+  duration: 600,
+  ease: Easing.easeOutQuad,
+  delay: 200,           // ms before the animation begins
+  onStart:    ()  => console.log('started'),
+  onUpdate:   (t) => console.log('progress', t),
+  onComplete: ()  => console.log('done'),
+});
+tweenManager.add(tween);
+
+// Repeat N times (repeat: 2 = play 3× total)
+const bouncer = new Tween(sprite, { y: -50 }, {
+  duration: 300,
+  repeat: 2,
+  repeatDelay: 100,   // ms gap between each repeat
+  yoyo: true,         // reverse on alternate passes
+});
+tweenManager.add(bouncer);
+
+// Infinite loop
+const pulsate = new Tween(sprite, { alpha: 0 }, {
+  duration: 800,
+  loop: true,
+  yoyo: true,
+});
+tweenManager.add(pulsate);
+
+// Control
+tween.pause();
+tween.resume();
+tween.kill();          // stop and leave properties at current values
+tween.reset();         // rewind to beginning, replay from scratch
+
+// Scrubbing
+tween.seek(300);              // jump to 300 ms within the current pass
+tween.seekProgress(0.5);      // jump to 50 %
+console.log(tween.progress);  // current progress [0, 1]
+```
+
+#### Direct API — `Timeline`
+
+A `Timeline` sequences and groups multiple tweens on a shared time axis.
+
+```ts
+import { Timeline, Easing } from 'inkshot-engine';
+
+const tl = new Timeline({
+  onComplete: () => console.log('sequence done'),
+  repeat: 1,        // play 2× total
+  repeatDelay: 500, // 500 ms between cycles
+});
+
+tl
+  // animate x from current value to 400 over 500 ms
+  .to(sprite, { x: 400 }, { duration: 500, ease: Easing.easeOutQuad })
+  // immediately after: animate y
+  .to(sprite, { y: 200 }, { duration: 300 })
+  // in parallel with the y tween (same start time)
+  .to(other,  { alpha: 0 }, { duration: 300, at: '<' })
+  // fire a callback at the 400 ms mark (absolute)
+  .call(() => console.log('at 400 ms'), { at: 400 })
+  // insert 200 ms of silence after the last tween
+  .delay(200)
+  // animate from explicit start → end values
+  .fromTo(sprite, { x: 0 }, { x: 800 }, { duration: 400 });
+
+tweenManager.add(tl);
+
+// Control
+tl.pause();
+tl.resume();
+tl.kill();
+tl.reset();                  // rewind and replay from beginning
+
+// Scrubbing
+tl.seek(350);                // jump playhead to 350 ms
+tl.seekProgress(0.75);       // jump to 75 %
+console.log(tl.progress);    // current progress within cycle [0, 1]
+console.log(tl.elapsed);     // raw playhead in ms
+console.log(tl.duration);    // total timeline duration in ms
+
+// Playback speed
+tl.playbackRate = 2;         // run at double speed
+tl.playbackRate = 0.5;       // slow motion
+```
+
+##### Timeline entry positioning (`at`)
+
+| `at` value | Meaning |
+|------------|---------|
+| _(omitted)_ | Immediately after the previous entry ends (default) |
+| `number` | Absolute time in milliseconds |
+| `'<'` | Same start time as the previous entry (parallel) |
+| `'+=N'` | Cursor + `N` ms (gap) |
+| `'-=N'` | Cursor − `N` ms (overlap) |
+
+##### Builder methods
+
+| Method | Description |
+|--------|-------------|
+| `.to(target, props, options)` | Animate properties to their destination from the target's live values |
+| `.from(target, fromProps, options)` | Animate from given values to the target's current values |
+| `.fromTo(target, fromProps, toProps, options)` | Explicit start and end values |
+| `.set(target, props, options)` | Instantly set properties (zero-duration snap) |
+| `.call(fn, options)` | Fire a callback at a specific time |
+| `.delay(ms)` | Advance the cursor without adding an entry |
+
+#### EventBus API
+
+```ts
+// Create a tween via the bus
+const { output } = core.events.emitSync('tween/to', {
+  target: sprite,
+  props: { x: 400, alpha: 0 },
+  duration: 600,
+  ease: 'easeOutQuad',   // string key of any Easing function
+  delay: 100,
+  loop: false,
+  yoyo: false,
+  repeat: 2,
+  repeatDelay: 100,
+  id: 'entrance',        // optional stable ID for later cancellation
+});
+console.log(output.id);  // 'entrance'
+
+// Kill by ID
+core.events.emitSync('tween/kill', { id: 'entrance' });
+
+// Kill all tweens on a specific target
+core.events.emitSync('tween/kill', { target: sprite });
+
+// Kill everything
+core.events.emitSync('tween/kill', { all: true });
+```
+
+#### EventBus Contract
+
+| Event | Direction | Description |
+|-------|-----------|-------------|
+| `tween/to` | ✗ `emitSync` | Create and start a tween; returns `{ id }` |
+| `tween/kill` | ✗ `emitSync` | Stop one or more tweens by ID, target, or all |
+| `tween/finished` | — emitted | Fired when a tween or timeline completes naturally (not killed); payload: `{ id?, target? }` |
+
+#### Listening for completion
+
+```ts
+// React when any tween finishes
+core.events.on('myGame', 'tween/finished', ({ id, target }) => {
+  console.log(`Tween "${id}" finished on`, target);
+});
+
+// Or use the onComplete callback (Tween / Timeline constructor)
+const tween = new Tween(sprite, { alpha: 0 }, {
+  duration: 400,
+  onComplete: () => sprite.visible = false,
+});
+```
+
+---
+
 ## Renderer & Layers
 
 The `Renderer` manages named render layers on the Pixi stage.  Display objects should always be placed inside a layer rather than added to the root stage.
@@ -605,6 +798,10 @@ import type {
   InputActionTriggeredParams,
   // Save
   SaveSlotSaveOutput,
+  // Tween
+  TweenToParams, TweenToOutput, TweenKillParams, TweenFinishedParams,
+  EasingFn, TweenOptions, Advanceable,
+  TimelineOptions,
   // Events
   EventHandler, ListenerOptions,
 } from 'inkshot-engine';
@@ -615,6 +812,10 @@ Use them to type your event handlers:
 ```ts
 core.events.on<I18nTParams, I18nTOutput>('ui', 'i18n/t', (params, output) => {
   output.value = params.key.toUpperCase(); // override translation for debug
+});
+
+core.events.on<TweenFinishedParams>('fx', 'tween/finished', ({ id, target }) => {
+  console.log(`Tween "${id ?? 'anonymous'}" finished on`, target);
 });
 ```
 
