@@ -113,7 +113,8 @@ Within a phase, listeners with a **higher** `priority` number run first (default
 
 ```ts
 interface EnginePlugin {
-  readonly namespace: string;          // e.g. 'audio', 'saves', 'myGame/combat'
+  readonly namespace: string;               // e.g. 'audio', 'saves', 'myGame/combat'
+  readonly dependencies?: readonly string[]; // namespaces that must init first
   init(core: Core): void | Promise<void>;
   destroy?(core: Core): void | Promise<void>;
 }
@@ -127,7 +128,7 @@ A well-behaved plugin:
 2. **Communicates only through the event bus** — it does not call methods on other plugins directly.
 3. **Releases all resources in `destroy()`** — unsubscribe from events, cancel timers, free assets.
 4. **Declares a unique `namespace`** that matches the prefix used for its own events.
-5. **Does not assume load order** beyond what is guaranteed by the `plugins` array ordering in `EngineOptions`.
+5. **Declares its prerequisites in `dependencies`** so `createEngine` can guarantee correct init order regardless of how the caller orders the `plugins` array.
 
 ### 3.3 Plugin Sources
 
@@ -135,6 +136,42 @@ Plugins may be supplied as:
 
 - **Objects** (TypeScript class instances / plain objects) — recommended for first-party plugins.
 - **URL strings** — the factory will dynamically `import()` the module and expect its `default` export to be an `EnginePlugin`.  Useful for lazy-loading or third-party plugins served from a CDN.
+
+### 3.4 Dependency Declaration & Init Order
+
+`createEngine` performs a **topological sort** (stable Kahn's algorithm) on all registered plugins before calling any `init()`.  This means the order in which plugins appear in the `plugins` array does **not** need to match the dependency order — only the `dependencies` field matters.
+
+```ts
+class CollisionManager implements EnginePlugin {
+  readonly namespace = 'collision';
+  // CollisionManager uses entity/query at runtime → EntityManager must be ready first
+  readonly dependencies = ['entity'] as const;
+
+  init(core: Core) { ... }
+}
+
+// The caller can supply plugins in any order:
+createEngine({
+  plugins: [
+    new CollisionManager(), // listed before EntityManager — still init'd after it
+    new SceneManager(),
+    new EntityManager(),
+  ],
+});
+```
+
+**Rules enforced at startup:**
+
+| Situation | Result |
+|---|---|
+| Dependency not in the `plugins` list | `createEngine` throws immediately |
+| Circular dependency (A → B → A) | `createEngine` throws immediately |
+| Duplicate `namespace` values | `createEngine` throws immediately |
+| No `dependencies` field | Plugin is treated as having no prerequisites |
+
+When no ordering constraint exists between two plugins, their relative order from the original `plugins` array is preserved (stable sort).
+
+`destroy()` is always called in **reverse init order**, so teardown mirrors startup automatically.
 
 ---
 
@@ -607,19 +644,21 @@ Engine starts
 
 ### 9.2 Recommended Plugin Initialisation Order
 
-```
+Because each built-in plugin declares its `dependencies`, `createEngine` automatically sorts them into the correct sequence.  The order in the `plugins` array no longer needs to be manually maintained:
+
+```ts
 createEngine({
   plugins: [
-    new ResourceManager(),       // must be first — others depend on assets/preload
+    new ResourceManager(),
     new AudioManager(),
     new LocalizationManager(),
     new InputManager(),
     new SaveManager(),
     new GameStateManager(),
     new EntityManager(),
-    new CollisionManager(),      // must come after EntityManager
-    new SceneManager(),          // scenes depend on all of the above
-    new TweenManager(),          // animation — can go anywhere after Core
+    new CollisionManager(),   // declares dependencies: ['entity'] — sorted automatically
+    new SceneManager(),
+    new TweenManager(),
   ],
 });
 ```

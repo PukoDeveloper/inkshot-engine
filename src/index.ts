@@ -170,8 +170,9 @@ export type {
 } from './types/entity.js';
 
 // Engine factory (primary public entry point)
-export { createEngine } from './createEngine.js';
+export { createEngine, sortPluginsByDependency } from './createEngine.js';
 export type { EngineOptions, EngineInstance } from './createEngine.js';
+
 
 // Tween system
 export { TweenManager, Tween, Easing } from './plugins/TweenManager.js';

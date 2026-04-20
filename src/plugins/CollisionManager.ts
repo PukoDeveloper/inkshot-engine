@@ -290,7 +290,8 @@ function rayVsAABB(
  */
 export class CollisionManager implements EnginePlugin {
   readonly namespace = 'collision';
-
+  /** Must be initialised after EntityManager so `entity/query` is available. */
+  readonly dependencies = ['entity'] as const;
   private _core: Core | null = null;
 
   /** Colliders keyed by entity ID. */

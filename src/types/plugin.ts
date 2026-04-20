@@ -23,6 +23,27 @@ export interface EnginePlugin {
   readonly namespace: string;
 
   /**
+   * Namespaces of other plugins that **must be initialised before** this one.
+   *
+   * `createEngine` performs a topological sort on the full plugin list using
+   * these declarations, so the order in which plugins are passed to
+   * `EngineOptions.plugins` does not affect the initialisation sequence.
+   *
+   * If a declared dependency is not present in the plugin list, `createEngine`
+   * throws immediately.  Circular dependencies are also detected and throw.
+   *
+   * @example
+   * ```ts
+   * class MyPlugin implements EnginePlugin {
+   *   readonly namespace = 'myGame/combat';
+   *   readonly dependencies = ['entity', 'collision'] as const;
+   *   init(core: Core) { ... }
+   * }
+   * ```
+   */
+  readonly dependencies?: readonly string[];
+
+  /**
    * Called once before the game loop starts.
    * Use this to subscribe to events and initialize subsystems.
    */
