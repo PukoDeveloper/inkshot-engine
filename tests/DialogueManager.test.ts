@@ -3,11 +3,12 @@ import { EventBus } from '../src/core/EventBus.js';
 import { DialogueManager } from '../src/plugins/DialogueManager.js';
 import type { Core } from '../src/core/Core.js';
 import type {
-  DialogueTree,
-  DialogueStartedParams,
   DialogueNodeParams,
   DialogueTextTickParams,
   DialogueChoicesParams,
+  DialogueAdvancedParams,
+  DialogueChoiceMadeParams,
+  DialogueStartedParams,
   DialogueEndedParams,
   DialogueStateGetOutput,
 } from '../src/types/dialogue.js';
@@ -20,23 +21,6 @@ function createCoreStub(): Core {
   const events = new EventBus();
   return { events } as unknown as Core;
 }
-
-const SIMPLE_TREE: DialogueTree = {
-  entry: 'n1',
-  nodes: {
-    n1: { id: 'n1', type: 'text', speaker: 'Alice', text: 'Hello world!', next: 'n2' },
-    n2: { id: 'n2', type: 'end' },
-  },
-};
-
-const TWO_LINE_TREE: DialogueTree = {
-  entry: 'l1',
-  nodes: {
-    l1: { id: 'l1', type: 'text', text: 'Line one.', next: 'l2' },
-    l2: { id: 'l2', type: 'text', text: 'Line two.', next: 'done' },
-    done: { id: 'done', type: 'end' },
-  },
-};
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -57,76 +41,74 @@ describe('DialogueManager', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Registration
+  // dialogue/show-text
   // -------------------------------------------------------------------------
 
-  describe('dialogue/register', () => {
-    it('stores a tree and increments treeCount', () => {
-      expect(dm.treeCount).toBe(0);
-      core.events.emitSync('dialogue/register', { treeId: 'intro', tree: SIMPLE_TREE });
-      expect(dm.treeCount).toBe(1);
-    });
-
-    it('replaces an existing tree with a warning', () => {
-      core.events.emitSync('dialogue/register', { treeId: 'intro', tree: SIMPLE_TREE });
-      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-      core.events.emitSync('dialogue/register', { treeId: 'intro', tree: SIMPLE_TREE });
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining('"intro"'));
-      expect(dm.treeCount).toBe(1); // still 1, not 2
-      warn.mockRestore();
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // dialogue/start
-  // -------------------------------------------------------------------------
-
-  describe('dialogue/start', () => {
-    beforeEach(() => {
-      core.events.emitSync('dialogue/register', { treeId: 'intro', tree: SIMPLE_TREE });
-    });
-
-    it('sets isActive to true', () => {
+  describe('dialogue/show-text', () => {
+    it('opens a session and sets isActive', () => {
       expect(dm.isActive).toBe(false);
-      core.events.emitSync('dialogue/start', { treeId: 'intro' });
+      core.events.emitSync('dialogue/show-text', { text: 'Hello!', speaker: 'Alice' });
       expect(dm.isActive).toBe(true);
     });
 
-    it('emits dialogue/started', () => {
+    it('emits dialogue/started on first call', () => {
       const handler = vi.fn();
       core.events.on('test', 'dialogue/started', handler);
-      core.events.emitSync('dialogue/start', { treeId: 'intro' });
+      core.events.emitSync('dialogue/show-text', { text: 'Hi' });
       expect(handler).toHaveBeenCalledOnce();
-      expect(handler.mock.calls[0]![0]).toMatchObject<Partial<DialogueStartedParams>>({
-        treeId: 'intro',
-      });
     });
 
-    it('emits dialogue/node with speaker info', () => {
+    it('does NOT re-emit dialogue/started when session is already active', () => {
+      core.events.emitSync('dialogue/show-text', { text: 'First' });
+      const handler = vi.fn();
+      core.events.on('test', 'dialogue/started', handler);
+      core.events.emitSync('dialogue/show-text', { text: 'Second' });
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it('emits dialogue/node with speaker and portrait', () => {
       const handler = vi.fn();
       core.events.on('test', 'dialogue/node', handler);
-      core.events.emitSync('dialogue/start', { treeId: 'intro' });
+      core.events.emitSync('dialogue/show-text', {
+        text: 'Hi',
+        speaker: 'Bob',
+        portrait: 'bob.png',
+      });
       expect(handler).toHaveBeenCalledOnce();
       const p = handler.mock.calls[0]![0] as DialogueNodeParams;
-      expect(p.nodeId).toBe('n1');
-      expect(p.nodeType).toBe('text');
-      expect(p.speaker).toBe('Alice');
+      expect(p.speaker).toBe('Bob');
+      expect(p.portrait).toBe('bob.png');
     });
 
-    it('warns and does nothing for an unknown treeId', () => {
-      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-      core.events.emitSync('dialogue/start', { treeId: 'missing' });
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining('"missing"'));
-      expect(dm.isActive).toBe(false);
-      warn.mockRestore();
+    it('starts the typewriter (textDone = false)', () => {
+      core.events.emitSync('dialogue/show-text', { text: 'Hi there' });
+      const { output } = core.events.emitSync<Record<string, never>, DialogueStateGetOutput>(
+        'dialogue/state:get', {},
+      );
+      expect(output.textDone).toBe(false);
     });
 
-    it('ends the previous session before starting a new one', () => {
-      const endedHandler = vi.fn();
-      core.events.on('test', 'dialogue/ended', endedHandler);
-      core.events.emitSync('dialogue/start', { treeId: 'intro' });
-      core.events.emitSync('dialogue/start', { treeId: 'intro' });
-      expect(endedHandler).toHaveBeenCalledOnce();
+    it('resolves text via i18n/t when i18nKey is provided', () => {
+      core.events.on('i18n', 'i18n/t', (p: { key: string }, out: { value: string }) => {
+        if (p.key === 'hello') out.value = 'Bonjour!';
+      });
+      core.events.emitSync('dialogue/show-text', { i18nKey: 'hello' });
+      // skip typewriter
+      core.events.emitSync('dialogue/advance', {});
+      const { output } = core.events.emitSync<Record<string, never>, DialogueStateGetOutput>(
+        'dialogue/state:get', {},
+      );
+      expect(output.text).toBe('Bonjour!');
+    });
+
+    it('resolves speaker via speakerI18nKey', () => {
+      core.events.on('i18n', 'i18n/t', (p: { key: string }, out: { value: string }) => {
+        if (p.key === 'npc.alice') out.value = 'Alice';
+      });
+      const handler = vi.fn();
+      core.events.on('test', 'dialogue/node', handler);
+      core.events.emitSync('dialogue/show-text', { text: 'Hi', speakerI18nKey: 'npc.alice' });
+      expect((handler.mock.calls[0]![0] as DialogueNodeParams).speaker).toBe('Alice');
     });
   });
 
@@ -136,16 +118,14 @@ describe('DialogueManager', () => {
 
   describe('typewriter animation', () => {
     beforeEach(() => {
-      core.events.emitSync('dialogue/register', { treeId: 't', tree: SIMPLE_TREE });
-      core.events.emitSync('dialogue/start', { treeId: 't' });
+      core.events.emitSync('dialogue/show-text', { text: 'Hello world!' }); // 12 chars
     });
 
     it('emits dialogue/text:tick on core/update', () => {
       const ticks: DialogueTextTickParams[] = [];
       core.events.on('test', 'dialogue/text:tick', (p: DialogueTextTickParams) => ticks.push(p));
 
-      // 100 chars/s → 10ms per char; text is "Hello world!" (12 chars)
-      // Send 50ms → ~5 chars revealed
+      // 100 chars/s → 10 ms/char; 50 ms → ~5 chars
       core.events.emitSync('core/update', { dt: 50, tick: 1 });
       expect(ticks.length).toBeGreaterThan(0);
       const last = ticks[ticks.length - 1]!;
@@ -157,8 +137,6 @@ describe('DialogueManager', () => {
     it('marks done:true once all characters are revealed', () => {
       const ticks: DialogueTextTickParams[] = [];
       core.events.on('test', 'dialogue/text:tick', (p: DialogueTextTickParams) => ticks.push(p));
-
-      // 1000ms should be more than enough for "Hello world!" at 100 cps
       core.events.emitSync('core/update', { dt: 1000, tick: 1 });
       const last = ticks[ticks.length - 1]!;
       expect(last.done).toBe(true);
@@ -166,11 +144,9 @@ describe('DialogueManager', () => {
     });
 
     it('does not emit text:tick once text is fully revealed', () => {
-      // Finish the text
       core.events.emitSync('core/update', { dt: 1000, tick: 1 });
       const ticks: DialogueTextTickParams[] = [];
       core.events.on('test', 'dialogue/text:tick', (p: DialogueTextTickParams) => ticks.push(p));
-      // Additional updates should produce no more ticks
       core.events.emitSync('core/update', { dt: 1000, tick: 2 });
       expect(ticks).toHaveLength(0);
     });
@@ -182,8 +158,7 @@ describe('DialogueManager', () => {
 
   describe('dialogue/advance', () => {
     beforeEach(() => {
-      core.events.emitSync('dialogue/register', { treeId: 'two', tree: TWO_LINE_TREE });
-      core.events.emitSync('dialogue/start', { treeId: 'two' });
+      core.events.emitSync('dialogue/show-text', { text: 'Line one.' });
     });
 
     it('completes typewriter when text is not done', () => {
@@ -193,34 +168,21 @@ describe('DialogueManager', () => {
       const last = ticks[ticks.length - 1]!;
       expect(last.done).toBe(true);
       expect(last.text).toBe('Line one.');
-      expect(dm.isActive).toBe(true);
     });
 
-    it('advances to next node when text is already done', () => {
-      // Finish typewriter first
-      core.events.emitSync('core/update', { dt: 1000, tick: 1 });
-
-      const nodeHandler = vi.fn();
-      core.events.on('test', 'dialogue/node', nodeHandler);
-
+    it('emits dialogue/advanced when text is already done', () => {
+      core.events.emitSync('core/update', { dt: 1000, tick: 1 }); // finish typewriter
+      const handler = vi.fn();
+      core.events.on('test', 'dialogue/advanced', handler);
       core.events.emitSync('dialogue/advance', {});
-      expect(nodeHandler).toHaveBeenCalledOnce();
-      const p = nodeHandler.mock.calls[0]![0] as DialogueNodeParams;
-      expect(p.nodeId).toBe('l2');
+      expect(handler).toHaveBeenCalledOnce();
     });
 
-    it('ends dialogue when advancing past the last text node', () => {
-      const endedHandler = vi.fn();
-      core.events.on('test', 'dialogue/ended', endedHandler);
-
-      // l1 → done → advance to l2 → done → advance to end
-      core.events.emitSync('core/update', { dt: 1000, tick: 1 });
-      core.events.emitSync('dialogue/advance', {}); // now on l2
-      core.events.emitSync('core/update', { dt: 1000, tick: 2 });
-      core.events.emitSync('dialogue/advance', {}); // end
-
-      expect(endedHandler).toHaveBeenCalledOnce();
-      expect(dm.isActive).toBe(false);
+    it('does NOT emit dialogue/advanced while typewriter is running', () => {
+      const handler = vi.fn();
+      core.events.on('test', 'dialogue/advanced', handler);
+      core.events.emitSync('dialogue/advance', {}); // skips typewriter
+      expect(handler).not.toHaveBeenCalled();
     });
 
     it('is a no-op when no session is active', () => {
@@ -232,58 +194,65 @@ describe('DialogueManager', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Choice nodes
+  // dialogue/show-choices
   // -------------------------------------------------------------------------
 
-  describe('choice nodes', () => {
-    const CHOICE_TREE: DialogueTree = {
-      entry: 'start',
-      nodes: {
-        start: {
-          id: 'start',
-          type: 'choice',
-          text: 'Pick one:',
-          choices: [
-            { text: 'Option A', next: 'branchA' },
-            { text: 'Option B', next: 'branchB' },
-          ],
-        },
-        branchA: { id: 'branchA', type: 'text', text: 'You chose A!', next: 'fin' },
-        branchB: { id: 'branchB', type: 'text', text: 'You chose B!', next: 'fin' },
-        fin:     { id: 'fin',     type: 'end' },
-      },
-    };
-
-    beforeEach(() => {
-      core.events.emitSync('dialogue/register', { treeId: 'choice', tree: CHOICE_TREE });
-      core.events.emitSync('dialogue/start', { treeId: 'choice' });
+  describe('dialogue/show-choices', () => {
+    it('opens a session if not already active', () => {
+      expect(dm.isActive).toBe(false);
+      core.events.emitSync('dialogue/show-choices', {
+        choices: [{ text: 'Yes', index: 0 }, { text: 'No', index: 1 }],
+      });
+      expect(dm.isActive).toBe(true);
     });
 
-    it('emits dialogue/choices with all visible options', () => {
+    it('emits dialogue/choices with the provided list', () => {
       const handler = vi.fn();
       core.events.on('test', 'dialogue/choices', handler);
-      // Restart to capture the event
-      core.events.emitSync('dialogue/start', { treeId: 'choice' });
+      core.events.emitSync('dialogue/show-choices', {
+        choices: [
+          { text: 'Option A', index: 0 },
+          { text: 'Option B', index: 1 },
+        ],
+      });
       const p = handler.mock.calls[0]![0] as DialogueChoicesParams;
       expect(p.choices).toHaveLength(2);
       expect(p.choices[0]!.text).toBe('Option A');
       expect(p.choices[1]!.text).toBe('Option B');
     });
 
-    it('selects choice 0 and transitions to branchA', () => {
-      const nodeHandler = vi.fn();
-      core.events.on('test', 'dialogue/node', nodeHandler);
-      core.events.emitSync('dialogue/choice', { index: 0 });
-      const p = nodeHandler.mock.calls[0]![0] as DialogueNodeParams;
-      expect(p.nodeId).toBe('branchA');
+    it('reports choices in state:get', () => {
+      core.events.emitSync('dialogue/show-choices', {
+        choices: [{ text: 'A', index: 0 }],
+      });
+      const { output } = core.events.emitSync<Record<string, never>, DialogueStateGetOutput>(
+        'dialogue/state:get', {},
+      );
+      expect(output.choices).toHaveLength(1);
+      expect(output.choices[0]!.text).toBe('A');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // dialogue/choice
+  // -------------------------------------------------------------------------
+
+  describe('dialogue/choice', () => {
+    beforeEach(() => {
+      core.events.emitSync('dialogue/show-choices', {
+        choices: [
+          { text: 'Option A', index: 0 },
+          { text: 'Option B', index: 1 },
+        ],
+      });
     });
 
-    it('selects choice 1 and transitions to branchB', () => {
-      const nodeHandler = vi.fn();
-      core.events.on('test', 'dialogue/node', nodeHandler);
+    it('emits dialogue/choice:made with the selected index', () => {
+      const handler = vi.fn();
+      core.events.on('test', 'dialogue/choice:made', handler);
       core.events.emitSync('dialogue/choice', { index: 1 });
-      const p = nodeHandler.mock.calls[0]![0] as DialogueNodeParams;
-      expect(p.nodeId).toBe('branchB');
+      expect(handler).toHaveBeenCalledOnce();
+      expect((handler.mock.calls[0]![0] as DialogueChoiceMadeParams).index).toBe(1);
     });
 
     it('warns for out-of-range choice index', () => {
@@ -292,293 +261,27 @@ describe('DialogueManager', () => {
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('out of range'));
       warn.mockRestore();
     });
-  });
 
-  // -------------------------------------------------------------------------
-  // Condition-gated choices
-  // -------------------------------------------------------------------------
-
-  describe('condition-gated choices', () => {
-    const GATED_TREE: DialogueTree = {
-      entry: 'q',
-      nodes: {
-        q: {
-          id: 'q',
-          type: 'choice',
-          choices: [
-            { text: 'Always visible', next: 'end' },
-            {
-              text: 'Only when playing',
-              condition: { type: 'game-state', state: 'playing' },
-              next: 'end',
-            },
-          ],
-        },
-        end: { id: 'end', type: 'end' },
-      },
-    };
-
-    it('hides choices whose condition is false', () => {
-      // No game/state:get handler → output.state undefined → not 'playing'
-      core.events.emitSync('dialogue/register', { treeId: 'gated', tree: GATED_TREE });
-      const handler = vi.fn();
-      core.events.on('test', 'dialogue/choices', handler);
-      core.events.emitSync('dialogue/start', { treeId: 'gated' });
-      const p = handler.mock.calls[0]![0] as DialogueChoicesParams;
-      expect(p.choices).toHaveLength(1);
-      expect(p.choices[0]!.text).toBe('Always visible');
-    });
-
-    it('shows choices whose condition is true', () => {
-      // Register a game-state handler that returns 'playing'
-      core.events.on('gateTest', 'game/state:get', (_p: unknown, output: { state: string }) => {
-        output.state = 'playing';
-      });
-      core.events.emitSync('dialogue/register', { treeId: 'gated2', tree: GATED_TREE });
-      const handler = vi.fn();
-      core.events.on('test', 'dialogue/choices', handler);
-      core.events.emitSync('dialogue/start', { treeId: 'gated2' });
-      const p = handler.mock.calls[0]![0] as DialogueChoicesParams;
-      expect(p.choices).toHaveLength(2);
+    it('is a no-op when no session is active', () => {
+      core.events.emitSync('dialogue/end', {});
+      expect(() => core.events.emitSync('dialogue/choice', { index: 0 })).not.toThrow();
     });
   });
 
   // -------------------------------------------------------------------------
-  // Condition nodes
+  // dialogue/end
   // -------------------------------------------------------------------------
 
-  describe('condition nodes', () => {
-    const COND_TREE: DialogueTree = {
-      entry: 'gate',
-      nodes: {
-        gate: {
-          id: 'gate',
-          type: 'condition',
-          condition: { type: 'game-state', state: 'playing' },
-          then: 'yes',
-          else: 'no',
-        },
-        yes: { id: 'yes', type: 'text', text: 'Playing!', next: 'fin' },
-        no:  { id: 'no',  type: 'text', text: 'Not playing.', next: 'fin' },
-        fin: { id: 'fin', type: 'end' },
-      },
-    };
-
-    it('jumps to "then" when condition is true', () => {
-      core.events.on('testCond', 'game/state:get', (_p: unknown, output: { state: string }) => {
-        output.state = 'playing';
-      });
-      core.events.emitSync('dialogue/register', { treeId: 'cond', tree: COND_TREE });
-      const nodeHandler = vi.fn();
-      core.events.on('test', 'dialogue/node', nodeHandler);
-      core.events.emitSync('dialogue/start', { treeId: 'cond' });
-      expect(nodeHandler.mock.calls[0]![0]).toMatchObject({ nodeId: 'yes' });
-    });
-
-    it('jumps to "else" when condition is false', () => {
-      // No game-state handler → falsy
-      core.events.emitSync('dialogue/register', { treeId: 'condF', tree: COND_TREE });
-      const nodeHandler = vi.fn();
-      core.events.on('test', 'dialogue/node', nodeHandler);
-      core.events.emitSync('dialogue/start', { treeId: 'condF' });
-      expect(nodeHandler.mock.calls[0]![0]).toMatchObject({ nodeId: 'no' });
-    });
-
-    it('ends dialogue when condition is false and else is absent', () => {
-      const NO_ELSE_TREE: DialogueTree = {
-        entry: 'gate',
-        nodes: {
-          gate: {
-            id: 'gate',
-            type: 'condition',
-            condition: { type: 'game-state', state: 'playing' },
-            then: 'fin',
-            // no else
-          },
-          fin: { id: 'fin', type: 'end' },
-        },
-      };
-      core.events.emitSync('dialogue/register', { treeId: 'noElse', tree: NO_ELSE_TREE });
-      const endedHandler = vi.fn();
-      core.events.on('test', 'dialogue/ended', endedHandler);
-      core.events.emitSync('dialogue/start', { treeId: 'noElse' });
-      expect(endedHandler).toHaveBeenCalledOnce();
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // Condition evaluation: not / and / or
-  // -------------------------------------------------------------------------
-
-  describe('condition evaluation', () => {
-    function makeCondTree(condition: object): DialogueTree {
-      return {
-        entry: 'gate',
-        nodes: {
-          gate: {
-            id: 'gate',
-            type: 'condition',
-            condition: condition as never,
-            then: 'yes',
-            else: 'no',
-          },
-          yes: { id: 'yes', type: 'end' },
-          no:  { id: 'no',  type: 'end' },
-        },
-      };
-    }
-
-    it('not condition: negates a true condition', () => {
-      core.events.on('notTest', 'game/state:get', (_p: unknown, o: { state: string }) => {
-        o.state = 'playing';
-      });
-      const tree = makeCondTree({ type: 'not', condition: { type: 'game-state', state: 'playing' } });
-      // condition → NOT(true) = false → jumps to 'no' (an end node → session ends immediately)
-      core.events.emitSync('dialogue/register', { treeId: 'not1', tree });
-      const ended = vi.fn();
-      core.events.on('testNot', 'dialogue/ended', ended);
-      core.events.emitSync('dialogue/start', { treeId: 'not1' });
-      // 'no' is an end node so session ends
-      expect(ended).toHaveBeenCalledOnce();
-    });
-
-    it('and condition: true only when all sub-conditions pass', () => {
-      core.events.on('andTest', 'game/state:get', (_p: unknown, o: { state: string }) => {
-        o.state = 'playing';
-      });
-      const tree = makeCondTree({
-        type: 'and',
-        conditions: [
-          { type: 'game-state', state: 'playing' },
-          { type: 'game-state', state: 'playing' },
-        ],
-      });
-      core.events.emitSync('dialogue/register', { treeId: 'and1', tree });
-      const nodeH = vi.fn();
-      // 'yes' is end → no node event; but we can check if ended fired
-      const ended = vi.fn();
-      core.events.on('testAnd', 'dialogue/ended', ended);
-      core.events.on('testAndN', 'dialogue/node', nodeH);
-      core.events.emitSync('dialogue/start', { treeId: 'and1' });
-      expect(ended).toHaveBeenCalledOnce(); // went to 'yes' which is 'end'
-    });
-
-    it('or condition: true when at least one sub-condition passes', () => {
-      // game state returns 'paused', so first sub fails, second sub passes
-      core.events.on('orTest', 'game/state:get', (_p: unknown, o: { state: string }) => {
-        o.state = 'paused';
-      });
-      const tree = makeCondTree({
-        type: 'or',
-        conditions: [
-          { type: 'game-state', state: 'playing' }, // false
-          { type: 'game-state', state: 'paused' },  // true
-        ],
-      });
-      core.events.emitSync('dialogue/register', { treeId: 'or1', tree });
-      const ended = vi.fn();
-      core.events.on('testOr', 'dialogue/ended', ended);
-      core.events.emitSync('dialogue/start', { treeId: 'or1' });
-      // OR is true → goes to 'yes' (end node)
-      expect(ended).toHaveBeenCalledOnce();
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // Save-flag condition
-  // -------------------------------------------------------------------------
-
-  describe('save-flag condition', () => {
-    it('passes when key exists in global save data', () => {
-      core.events.on('sfTest', 'save/global:get', (_p: unknown, o: { data: { data: Record<string, unknown> } }) => {
-        o.data = { data: { unlockedArea: true }, updatedAt: 0 };
-      });
-      const tree: DialogueTree = {
-        entry: 'gate',
-        nodes: {
-          gate: {
-            id: 'gate',
-            type: 'condition',
-            condition: { type: 'save-flag', key: 'unlockedArea' },
-            then: 'yes',
-            else: 'no',
-          },
-          yes: { id: 'yes', type: 'text', text: 'Unlocked!', next: 'fin' },
-          no:  { id: 'no',  type: 'text', text: 'Locked.',   next: 'fin' },
-          fin: { id: 'fin', type: 'end' },
-        },
-      };
-      core.events.emitSync('dialogue/register', { treeId: 'sf1', tree });
-      const nodeH = vi.fn();
-      core.events.on('testSF', 'dialogue/node', nodeH);
-      core.events.emitSync('dialogue/start', { treeId: 'sf1' });
-      expect(nodeH.mock.calls[0]![0]).toMatchObject({ nodeId: 'yes' });
-    });
-
-    it('passes when value matches', () => {
-      core.events.on('sfVal', 'save/global:get', (_p: unknown, o: { data: { data: Record<string, unknown> } }) => {
-        o.data = { data: { score: 42 }, updatedAt: 0 };
-      });
-      const tree: DialogueTree = {
-        entry: 'gate',
-        nodes: {
-          gate: {
-            id: 'gate',
-            type: 'condition',
-            condition: { type: 'save-flag', key: 'score', value: 42 },
-            then: 'yes',
-            else: 'no',
-          },
-          yes: { id: 'yes', type: 'text', text: 'Match!', next: 'fin' },
-          no:  { id: 'no',  type: 'text', text: 'No.',    next: 'fin' },
-          fin: { id: 'fin', type: 'end' },
-        },
-      };
-      core.events.emitSync('dialogue/register', { treeId: 'sfV2', tree });
-      const nodeH = vi.fn();
-      core.events.on('testSFV', 'dialogue/node', nodeH);
-      core.events.emitSync('dialogue/start', { treeId: 'sfV2' });
-      expect(nodeH.mock.calls[0]![0]).toMatchObject({ nodeId: 'yes' });
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // Jump node
-  // -------------------------------------------------------------------------
-
-  describe('jump nodes', () => {
-    it('transparently jumps to the target node', () => {
-      const JUMP_TREE: DialogueTree = {
-        entry: 'j1',
-        nodes: {
-          j1: { id: 'j1', type: 'jump', target: 'j2' },
-          j2: { id: 'j2', type: 'text', text: 'After jump', next: 'fin' },
-          fin: { id: 'fin', type: 'end' },
-        },
-      };
-      core.events.emitSync('dialogue/register', { treeId: 'jump', tree: JUMP_TREE });
-      const nodeH = vi.fn();
-      core.events.on('testJump', 'dialogue/node', nodeH);
-      core.events.emitSync('dialogue/start', { treeId: 'jump' });
-      expect(nodeH.mock.calls[0]![0]).toMatchObject({ nodeId: 'j2' });
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // Force end
-  // -------------------------------------------------------------------------
-
-  describe('dialogue/end (force)', () => {
-    it('ends the active session', () => {
-      core.events.emitSync('dialogue/register', { treeId: 'fe', tree: SIMPLE_TREE });
-      core.events.emitSync('dialogue/start', { treeId: 'fe' });
+  describe('dialogue/end', () => {
+    it('ends the active session and emits dialogue/ended', () => {
+      core.events.emitSync('dialogue/show-text', { text: 'Hi' });
       expect(dm.isActive).toBe(true);
 
-      const endedHandler = vi.fn();
-      core.events.on('test', 'dialogue/ended', endedHandler);
+      const handler = vi.fn();
+      core.events.on('test', 'dialogue/ended', handler);
       core.events.emitSync('dialogue/end', {});
       expect(dm.isActive).toBe(false);
-      expect(endedHandler).toHaveBeenCalledOnce();
+      expect(handler).toHaveBeenCalledOnce();
     });
 
     it('is a no-op when no session is active', () => {
@@ -593,38 +296,28 @@ describe('DialogueManager', () => {
   describe('dialogue/state:get', () => {
     it('returns inactive state when no session is running', () => {
       const { output } = core.events.emitSync<Record<string, never>, DialogueStateGetOutput>(
-        'dialogue/state:get',
-        {},
+        'dialogue/state:get', {},
       );
       expect(output.active).toBe(false);
-      expect(output.treeId).toBeNull();
-      expect(output.nodeId).toBeNull();
       expect(output.choices).toHaveLength(0);
       expect(output.text).toBe('');
       expect(output.textDone).toBe(true);
     });
 
-    it('returns active state during a session', () => {
-      core.events.emitSync('dialogue/register', { treeId: 'st', tree: SIMPLE_TREE });
-      core.events.emitSync('dialogue/start', { treeId: 'st' });
+    it('returns active state during a text line', () => {
+      core.events.emitSync('dialogue/show-text', { text: 'Hello!' });
       const { output } = core.events.emitSync<Record<string, never>, DialogueStateGetOutput>(
-        'dialogue/state:get',
-        {},
+        'dialogue/state:get', {},
       );
       expect(output.active).toBe(true);
-      expect(output.treeId).toBe('st');
-      expect(output.nodeId).toBe('n1');
       expect(output.textDone).toBe(false);
     });
 
     it('reports partial text from typewriter', () => {
-      core.events.emitSync('dialogue/register', { treeId: 'st2', tree: SIMPLE_TREE });
-      core.events.emitSync('dialogue/start', { treeId: 'st2' });
-      // Advance 50ms at 100 cps → ~5 chars
-      core.events.emitSync('core/update', { dt: 50, tick: 1 });
+      core.events.emitSync('dialogue/show-text', { text: 'Hello world!' });
+      core.events.emitSync('core/update', { dt: 50, tick: 1 }); // ~5 chars
       const { output } = core.events.emitSync<Record<string, never>, DialogueStateGetOutput>(
-        'dialogue/state:get',
-        {},
+        'dialogue/state:get', {},
       );
       expect(output.text.length).toBeGreaterThan(0);
       expect(output.text.length).toBeLessThan('Hello world!'.length);
@@ -632,65 +325,58 @@ describe('DialogueManager', () => {
   });
 
   // -------------------------------------------------------------------------
-  // i18n integration
+  // Speed override
   // -------------------------------------------------------------------------
 
-  describe('i18n integration', () => {
-    it('resolves text via i18n/t when i18nKey is provided', () => {
-      core.events.on('i18nTest', 'i18n/t', (p: { key: string }, output: { value: string }) => {
-        if (p.key === 'greeting') output.value = 'Bonjour!';
+  describe('speed override', () => {
+    it('uses custom speed when provided in show-text', () => {
+      core.events.emitSync('dialogue/show-text', {
+        text: 'Fast text',
+        speed: 1000, // 1 char/ms — effectively instant
       });
-
-      const I18N_TREE: DialogueTree = {
-        entry: 'n1',
-        nodes: {
-          n1: { id: 'n1', type: 'text', i18nKey: 'greeting', next: 'n2' },
-          n2: { id: 'n2', type: 'end' },
-        },
-      };
-      core.events.emitSync('dialogue/register', { treeId: 'i18n', tree: I18N_TREE });
-      core.events.emitSync('dialogue/start', { treeId: 'i18n' });
-
-      const { output } = core.events.emitSync<Record<string, never>, DialogueStateGetOutput>(
-        'dialogue/state:get',
-        {},
-      );
-      // Immediately skip typewriter
-      core.events.emitSync('dialogue/advance', {});
-      const { output: out2 } = core.events.emitSync<Record<string, never>, DialogueStateGetOutput>(
-        'dialogue/state:get',
-        {},
-      );
-      expect(out2.text).toBe('Bonjour!');
-      void output;
+      const ticks: DialogueTextTickParams[] = [];
+      core.events.on('test', 'dialogue/text:tick', (p: DialogueTextTickParams) => ticks.push(p));
+      core.events.emitSync('core/update', { dt: 10, tick: 1 });
+      const last = ticks[ticks.length - 1]!;
+      expect(last.done).toBe(true);
     });
   });
 
   // -------------------------------------------------------------------------
-  // Missing node warning
+  // Session auto-open on show-choices
   // -------------------------------------------------------------------------
 
-  describe('missing node', () => {
-    it('warns and ends dialogue when a node id is not found', () => {
-      const BROKEN_TREE: DialogueTree = {
-        entry: 'n1',
-        nodes: {
-          n1: { id: 'n1', type: 'text', text: 'Hi', next: 'nonexistent' },
-        },
-      };
-      core.events.emitSync('dialogue/register', { treeId: 'broken', tree: BROKEN_TREE });
-      core.events.emitSync('dialogue/start', { treeId: 'broken' });
-
-      // Finish typewriter + advance
-      core.events.emitSync('core/update', { dt: 1000, tick: 1 });
-
-      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-      const ended = vi.fn();
-      core.events.on('testBroken', 'dialogue/ended', ended);
-      core.events.emitSync('dialogue/advance', {});
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining('"nonexistent"'));
-      expect(ended).toHaveBeenCalledOnce();
-      warn.mockRestore();
+  describe('session lifecycle', () => {
+    it('emits dialogue/started when show-choices opens a new session', () => {
+      const handler = vi.fn();
+      core.events.on('test', 'dialogue/started', handler);
+      core.events.emitSync('dialogue/show-choices', {
+        choices: [{ text: 'Hi', index: 0 }],
+      });
+      expect(handler).toHaveBeenCalledOnce();
     });
+
+    it('does not re-open session when switching from text to choices', () => {
+      core.events.emitSync('dialogue/show-text', { text: 'Choose:' });
+      const handler = vi.fn();
+      core.events.on('test', 'dialogue/started', handler);
+      core.events.emitSync('dialogue/show-choices', {
+        choices: [{ text: 'A', index: 0 }],
+      });
+      expect(handler).not.toHaveBeenCalled();
+      expect(dm.isActive).toBe(true);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Type exports (compile-time only — these assertions just verify imports)
+  // -------------------------------------------------------------------------
+
+  it('exports expected types (compilation check)', () => {
+    const _started: DialogueStartedParams = {};
+    const _ended: DialogueEndedParams = {};
+    const _advanced: DialogueAdvancedParams = {};
+    void _started; void _ended; void _advanced;
+    expect(true).toBe(true);
   });
 });

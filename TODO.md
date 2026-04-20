@@ -102,13 +102,13 @@
 - [ ] EventBus 事件日誌（記錄最近 N 個事件）
 - [ ] 快速鍵切換 debug overlay 顯示 / 隱藏
 
-### 9. 對話 / 劇情腳本系統 (Dialogue / Cutscene System) ✅
+### 9. 對話框顯示系統 (Dialogue Box Display) ✅
 - [x] 新增 `DialogueManager` plugin（namespace: `dialogue`）
-- [x] 支援對話樹 JSON 格式（節點 ID、文字、選項、跳轉條件）
-- [x] 支援條件分支（根據 `save/global:get` 或 `game/state:get`）
-- [x] 與 `i18n/t` 整合，對話文字自動多語系化
-- [x] 事件：`dialogue/start`、`dialogue/advance`、`dialogue/end`、`dialogue/choice`
-- [x] 支援打字機效果（字元逐一顯示）
+- [x] 純呈現層：不含對話樹、條件判斷或節點跳轉（由未來腳本系統控制流程）
+- [x] 命令事件：`dialogue/show-text`（啟動打字機）、`dialogue/show-choices`（顯示選項）、`dialogue/advance`、`dialogue/choice`、`dialogue/end`
+- [x] 回饋事件：`dialogue/advanced`（文字顯示完畢後玩家推進，供腳本系統接收）、`dialogue/choice:made`（玩家選擇，供腳本系統接收）
+- [x] 支援打字機效果（字元逐一顯示，可用 `dialogue/advance` 跳過）
+- [x] 與 `i18n/t` 整合，`dialogue/show-text` 支援 `i18nKey`
 - [x] 內建 `dialoguebox` UIWidget：訂閱對話事件、顯示說話者名稱、對話文字、選項按鈕、繼續提示符
 
 ---

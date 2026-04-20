@@ -346,22 +346,8 @@ export type {
 // Dialogue system
 export { DialogueManager } from './plugins/DialogueManager.js';
 export type {
-  DialogueCondition,
-  DialogueConditionGameState,
-  DialogueConditionSaveFlag,
-  DialogueConditionNot,
-  DialogueConditionAnd,
-  DialogueConditionOr,
-  DialogueChoice,
-  DialogueTextNode,
-  DialogueChoiceNode,
-  DialogueConditionNode,
-  DialogueJumpNode,
-  DialogueEndNode,
-  DialogueNode,
-  DialogueTree,
-  DialogueRegisterParams,
-  DialogueStartParams,
+  DialogueShowTextParams,
+  DialogueShowChoicesParams,
   DialogueAdvanceParams,
   DialogueChoiceParams,
   DialogueEndCommandParams,
@@ -370,5 +356,7 @@ export type {
   DialogueNodeParams,
   DialogueTextTickParams,
   DialogueChoicesParams,
+  DialogueAdvancedParams,
+  DialogueChoiceMadeParams,
   DialogueEndedParams,
 } from './types/dialogue.js';
