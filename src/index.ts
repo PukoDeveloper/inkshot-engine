@@ -122,6 +122,35 @@ export type {
   SceneChangedParams,
 } from './types/scene.js';
 
+// Collision system
+export { CollisionManager } from './plugins/CollisionManager.js';
+export { CollisionLayer } from './types/collision.js';
+export type {
+  ColliderShape,
+  RectShape,
+  CircleShape,
+  PointShape,
+  Collider,
+  TileCollisionMapData,
+  ColliderAddParams,
+  ColliderRemoveParams,
+  TilemapSetParams,
+  CollisionMoveParams,
+  CollisionMoveOutput,
+  CollisionQueryParams,
+  CollisionQueryOutput,
+  CollisionRaycastParams,
+  CollisionRaycastOutput,
+  GridSnapParams,
+  GridSnapOutput,
+  WorldToTileParams,
+  WorldToTileOutput,
+  TileToWorldParams,
+  TileToWorldOutput,
+  CollisionHitParams,
+  CollisionOverlapParams,
+} from './types/collision.js';
+
 // Entity system
 export { EntityManager } from './plugins/EntityManager.js';
 export { SpriteAnimator } from './plugins/SpriteAnimator.js';
