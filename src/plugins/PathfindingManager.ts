@@ -1,6 +1,6 @@
 import type { Core } from '../core/Core.js';
 import type { EnginePlugin } from '../types/plugin.js';
-import type { TilemapSetParams } from '../types/collision.js';
+import type { PhysicsTilemapSetParams } from '../types/physics.js';
 import type { TilemapSetTileParams } from '../types/tilemap.js';
 import type { EntityQueryParams, EntityQueryOutput } from '../types/entity.js';
 import type {
@@ -105,7 +105,7 @@ export interface PathfindingManagerOptions {
  * Built-in plugin providing A* pathfinding on top of the tile collision map.
  *
  * ### Design
- * - **Static obstacles** — on `collision/tilemap:set` (or directly when a
+ * - **Static obstacles** — on `physics/tilemap:set` (or directly when a
  *   tilemap is loaded via `TilemapManager`) the manager rebuilds an internal
  *   cost grid.  Tiles whose collision shape is `'solid'` (or any non-`'empty'`
  *   shape) default to {@link IMPASSABLE}; all other cells default to cost `1`.
@@ -116,7 +116,7 @@ export interface PathfindingManagerOptions {
  *   results are **not** cached.
  * - **Path cache** — static searches (no dynamic obstacles) are keyed by
  *   `"fromRow,fromCol→toRow,toCol"`.  The cache is automatically invalidated
- *   whenever `collision/tilemap:set` fires.  Manual invalidation is available
+ *   whenever `physics/tilemap:set` fires.  Manual invalidation is available
  *   via `pathfinding/cache:clear`.
  * - **A\* heuristic** — Chebyshev distance (correct for 8-directional grids),
  *   or Manhattan distance when configured to 4-directional movement.
@@ -129,7 +129,7 @@ export interface PathfindingManagerOptions {
  * | `pathfinding/cache:clear`  | ✗ sync | Manually clear the path cache                |
  *
  * **Automatic invalidation** — the cost grid and path cache are updated
- * automatically on `collision/tilemap:set` (full reload) and on
+ * automatically on `physics/tilemap:set` (full reload) and on
  * `tilemap/set-tile` (single-cell O(1) update).
  *
  * ### Usage
@@ -138,13 +138,13 @@ export interface PathfindingManagerOptions {
  *
  * const { core } = await createEngine({
  *   plugins: [
- *     new CollisionManager(),
+ *     new KinematicPhysicsAdapter(),
  *     new EntityManager(),
  *     new PathfindingManager(),
  *   ],
  * });
  *
- * // After a tilemap is loaded and collision/tilemap:set has fired…
+ * // After a tilemap is loaded and physics/tilemap:set has fired…
  * const { output } = core.events.emitSync<PathfindingFindParams, PathfindingFindOutput>(
  *   'pathfinding/find',
  *   { from: { x: 32, y: 32 }, to: { x: 160, y: 96 } },
@@ -171,7 +171,7 @@ export class PathfindingManager implements EnginePlugin {
   private readonly _options: Required<PathfindingManagerOptions>;
 
   /**
-   * Cost grid built from the most recent `collision/tilemap:set` data.
+   * Cost grid built from the most recent `physics/tilemap:set` data.
    * `_grid[row][col]` is the movement cost for that cell (`IMPASSABLE` = blocked).
    */
   private _grid: number[][] = [];
@@ -207,13 +207,13 @@ export class PathfindingManager implements EnginePlugin {
     const { events } = core;
 
     // Rebuild cost grid whenever the tile collision map changes.
-    events.on<TilemapSetParams>(this.namespace, 'collision/tilemap:set', (params) => {
+    events.on<PhysicsTilemapSetParams>(this.namespace, 'physics/tilemap:set', (params) => {
       this._buildGrid(params);
       this._cache.clear();
     });
 
     // O(1) update when a single tile is changed at runtime (e.g. door opening).
-    // For collider layers this fires before the subsequent `collision/tilemap:set`
+    // For collider layers this fires before the subsequent `physics/tilemap:set`
     // (which rebuilds the full grid); for non-collider layers with weight overrides
     // this is the only update that fires.
     events.on<TilemapSetTileParams>(this.namespace, 'tilemap/set-tile', (params) => {
@@ -292,7 +292,7 @@ export class PathfindingManager implements EnginePlugin {
   // Private: grid construction
   // ---------------------------------------------------------------------------
 
-  private _buildGrid(params: TilemapSetParams): void {
+  private _buildGrid(params: PhysicsTilemapSetParams): void {
     const { tileSize, layers, tileShapes } = params;
     this._tileSize = tileSize;
     this._tileShapes = tileShapes as Record<number, string>;

@@ -83,7 +83,7 @@ function loadTilemap(
   events: ReturnType<typeof createCoreStub>['core']['events'],
   map = TILEMAP_5X5,
 ) {
-  events.emitSync('collision/tilemap:set', map);
+  events.emitSync('physics/tilemap:set', map);
 }
 
 /** World-pixel centre of tile (row, col) in a 16 px grid. */

@@ -1,40 +1,40 @@
 import type { Core } from '../core/Core.js';
 import type { EnginePlugin } from '../types/plugin.js';
 import type { Entity, EntityQueryOutput } from '../types/entity.js';
-import { CollisionLayer } from '../types/collision.js';
+import { CollisionLayer } from '../types/physics.js';
 import type {
   ColliderShape,
   Collider,
   TileCollisionMapData,
   TileShapeContext,
   TileShapeResolver,
-  ColliderAddParams,
-  ColliderRemoveParams,
-  TilemapSetParams,
-  CollisionMoveParams,
-  CollisionMoveOutput,
-  CollisionQueryParams,
-  CollisionQueryOutput,
-  CollisionRaycastParams,
-  CollisionRaycastOutput,
-  GridSnapParams,
-  GridSnapOutput,
-  WorldToTileParams,
-  WorldToTileOutput,
-  TileToWorldParams,
-  TileToWorldOutput,
-  CollisionHitParams,
-  CollisionOverlapParams,
-} from '../types/collision.js';
+  PhysicsBodyAddParams,
+  PhysicsBodyRemoveParams,
+  PhysicsTilemapSetParams,
+  PhysicsMoveParams,
+  PhysicsMoveOutput,
+  PhysicsQueryParams,
+  PhysicsQueryOutput,
+  PhysicsRaycastParams,
+  PhysicsRaycastOutput,
+  PhysicsGridSnapParams,
+  PhysicsGridSnapOutput,
+  PhysicsWorldToTileParams,
+  PhysicsWorldToTileOutput,
+  PhysicsTileToWorldParams,
+  PhysicsTileToWorldOutput,
+  PhysicsHitParams,
+  PhysicsOverlapParams,
+} from '../types/physics.js';
 
 // ---------------------------------------------------------------------------
-// CollisionManager options
+// KinematicPhysicsAdapter options
 // ---------------------------------------------------------------------------
 
 /**
- * Options accepted by the {@link CollisionManager} constructor.
+ * Options accepted by the {@link KinematicPhysicsAdapter} constructor.
  */
-export interface CollisionManagerOptions {
+export interface KinematicPhysicsAdapterOptions {
   /**
    * Custom shape resolvers evaluated after all built-in shapes.
    *
@@ -44,7 +44,7 @@ export interface CollisionManagerOptions {
    *
    * @example
    * ```ts
-   * new CollisionManager({
+   * new KinematicPhysicsAdapter({
    *   customShapeResolvers: [
    *     (shape, ctx) => {
    *       if (shape !== 'ice') return null;
@@ -244,11 +244,16 @@ function rayVsAABB(
 }
 
 // ---------------------------------------------------------------------------
-// CollisionManager
+// KinematicPhysicsAdapter
 // ---------------------------------------------------------------------------
 
 /**
- * Built-in plugin providing a comprehensive 2D collision system for Inkshot Engine.
+ * Built-in **kinematic** physics backend for Inkshot Engine.
+ *
+ * Implements the unified {@link PhysicsAdapter} contract so it can be swapped
+ * for a rigid-body backend (Matter.js, Rapier, …) without changing any game
+ * code.  All physics events live under the `physics` namespace — the same
+ * namespace every alternative backend must use.
  *
  * ### Design
  * All positions are in **pixel space** — the same coordinate system used by
@@ -280,30 +285,30 @@ function rayVsAABB(
  * | `SENSOR`  |   8 | Overlap detection without physical blocking       |
  *
  * ### EventBus API
- * | Event                        | Async? | Description                                     |
- * |------------------------------|--------|-------------------------------------------------|
- * | `collision/collider:add`     | ✗ sync | Attach a collider to an entity                  |
- * | `collision/collider:remove`  | ✗ sync | Detach a collider from an entity                |
- * | `collision/tilemap:set`      | ✗ sync | Register/replace the active tile collision map  |
- * | `collision/move`             | ✗ sync | Move with BODY-layer collision resolution       |
- * | `collision/query`            | ✗ sync | Spatial overlap query                           |
- * | `collision/raycast`          | ✗ sync | Cast a ray; return the first hit                |
- * | `collision/grid:snap`        | ✗ sync | Snap a pixel position to the tile grid          |
- * | `collision/grid:worldToTile` | ✗ sync | Convert pixel coords → tile row/col             |
- * | `collision/grid:tileToWorld` | ✗ sync | Convert tile row/col → pixel corner coords      |
- * | `collision/hit`              | emitted | First-frame hitbox ↔ hurtbox contact           |
- * | `collision/overlap`          | emitted | Sensor overlap begin / end                      |
+ * | Event                      | Async? | Description                                     |
+ * |----------------------------|--------|-------------------------------------------------|
+ * | `physics/body:add`         | ✗ sync | Attach a collider to an entity                  |
+ * | `physics/body:remove`      | ✗ sync | Detach a collider from an entity                |
+ * | `physics/tilemap:set`      | ✗ sync | Register/replace the active tile collision map  |
+ * | `physics/move`             | ✗ sync | Move with BODY-layer collision resolution       |
+ * | `physics/query`            | ✗ sync | Spatial overlap query                           |
+ * | `physics/raycast`          | ✗ sync | Cast a ray; return the first hit                |
+ * | `physics/grid:snap`        | ✗ sync | Snap a pixel position to the tile grid          |
+ * | `physics/grid:worldToTile` | ✗ sync | Convert pixel coords → tile row/col             |
+ * | `physics/grid:tileToWorld` | ✗ sync | Convert tile row/col → pixel corner coords      |
+ * | `physics/hit`              | emitted | First-frame hitbox ↔ hurtbox contact           |
+ * | `physics/overlap`          | emitted | Sensor overlap begin / end                      |
  *
  * ### Usage
  * ```ts
- * import { createEngine, CollisionManager, CollisionLayer } from 'inkshot-engine';
+ * import { createEngine, KinematicPhysicsAdapter, CollisionLayer } from 'inkshot-engine';
  *
  * const { core } = await createEngine({
- *   plugins: [new CollisionManager()],
+ *   plugins: [new KinematicPhysicsAdapter()],
  * });
  *
  * // Attach a BODY + HURTBOX collider to the player
- * core.events.emitSync('collision/collider:add', {
+ * core.events.emitSync('physics/body:add', {
  *   entityId: player.id,
  *   shape: { type: 'rect', width: 16, height: 24, offsetX: -8, offsetY: -12 },
  *   layer: CollisionLayer.BODY | CollisionLayer.HURTBOX,
@@ -311,7 +316,7 @@ function rayVsAABB(
  *
  * // Move with collision resolution each fixed update
  * core.events.on('myGame', 'core/update', () => {
- *   const { output } = core.events.emitSync('collision/move', {
+ *   const { output } = core.events.emitSync('physics/move', {
  *     entityId: player.id,
  *     dx: velocityX * dt,
  *     dy: velocityY * dt,
@@ -320,20 +325,20 @@ function rayVsAABB(
  * });
  *
  * // React to combat hits
- * core.events.on('combat', 'collision/hit', ({ attackerId, victimId }) => {
+ * core.events.on('combat', 'physics/hit', ({ attackerId, victimId }) => {
  *   applyDamage(attackerId, victimId);
  * });
  * ```
  */
-export class CollisionManager implements EnginePlugin {
-  readonly namespace = 'collision';
+export class KinematicPhysicsAdapter implements EnginePlugin {
+  readonly namespace = 'physics' as const;
   /** Must be initialised after EntityManager so `entity/query` is available. */
   readonly dependencies = ['entity'] as const;
   private _core: Core | null = null;
 
-  private readonly _options: CollisionManagerOptions;
+  private readonly _options: KinematicPhysicsAdapterOptions;
 
-  constructor(options: CollisionManagerOptions = {}) {
+  constructor(options: KinematicPhysicsAdapterOptions = {}) {
     this._options = options;
   }
 
@@ -366,21 +371,21 @@ export class CollisionManager implements EnginePlugin {
     this._core = core;
     const { events } = core;
 
-    events.on<ColliderAddParams>(this.namespace, 'collision/collider:add', (params) => {
+    events.on<PhysicsBodyAddParams>(this.namespace, 'physics/body:add', (params) => {
       this._addCollider(params);
     });
 
-    events.on<ColliderRemoveParams>(this.namespace, 'collision/collider:remove', (params) => {
+    events.on<PhysicsBodyRemoveParams>(this.namespace, 'physics/body:remove', (params) => {
       this._removeCollider(params.entityId);
     });
 
-    events.on<TilemapSetParams>(this.namespace, 'collision/tilemap:set', (params) => {
+    events.on<PhysicsTilemapSetParams>(this.namespace, 'physics/tilemap:set', (params) => {
       this._setTilemap(params);
     });
 
-    events.on<CollisionMoveParams, CollisionMoveOutput>(
+    events.on<PhysicsMoveParams, PhysicsMoveOutput>(
       this.namespace,
-      'collision/move',
+      'physics/move',
       (params, output) => {
         const result = this._move(params.entityId, params.dx, params.dy);
         output.x = result.x;
@@ -390,17 +395,17 @@ export class CollisionManager implements EnginePlugin {
       },
     );
 
-    events.on<CollisionQueryParams, CollisionQueryOutput>(
+    events.on<PhysicsQueryParams, PhysicsQueryOutput>(
       this.namespace,
-      'collision/query',
+      'physics/query',
       (params, output) => {
         output.entities = this._query(params);
       },
     );
 
-    events.on<CollisionRaycastParams, CollisionRaycastOutput>(
+    events.on<PhysicsRaycastParams, PhysicsRaycastOutput>(
       this.namespace,
-      'collision/raycast',
+      'physics/raycast',
       (params, output) => {
         const result = this._raycast(params);
         output.hit = result.hit;
@@ -411,9 +416,9 @@ export class CollisionManager implements EnginePlugin {
       },
     );
 
-    events.on<GridSnapParams, GridSnapOutput>(
+    events.on<PhysicsGridSnapParams, PhysicsGridSnapOutput>(
       this.namespace,
-      'collision/grid:snap',
+      'physics/grid:snap',
       (params, output) => {
         const s = this._gridSnap(params.x, params.y);
         output.x = s.x;
@@ -421,9 +426,9 @@ export class CollisionManager implements EnginePlugin {
       },
     );
 
-    events.on<WorldToTileParams, WorldToTileOutput>(
+    events.on<PhysicsWorldToTileParams, PhysicsWorldToTileOutput>(
       this.namespace,
-      'collision/grid:worldToTile',
+      'physics/grid:worldToTile',
       (params, output) => {
         const t = this._worldToTile(params.x, params.y);
         output.col = t.col;
@@ -431,9 +436,9 @@ export class CollisionManager implements EnginePlugin {
       },
     );
 
-    events.on<TileToWorldParams, TileToWorldOutput>(
+    events.on<PhysicsTileToWorldParams, PhysicsTileToWorldOutput>(
       this.namespace,
-      'collision/grid:tileToWorld',
+      'physics/grid:tileToWorld',
       (params, output) => {
         const w = this._tileToWorld(params.col, params.row);
         output.x = w.x;
@@ -464,7 +469,7 @@ export class CollisionManager implements EnginePlugin {
   // Private: collider registration
   // ---------------------------------------------------------------------------
 
-  private _addCollider(params: ColliderAddParams): void {
+  private _addCollider(params: PhysicsBodyAddParams): void {
     this._colliders.set(params.entityId, {
       shape: params.shape,
       layer: params.layer,
@@ -492,7 +497,7 @@ export class CollisionManager implements EnginePlugin {
   // Private: tilemap
   // ---------------------------------------------------------------------------
 
-  private _setTilemap(params: TilemapSetParams): void {
+  private _setTilemap(params: PhysicsTilemapSetParams): void {
     this._tilemap = {
       tileSize: params.tileSize,
       layers: params.layers,
@@ -525,7 +530,7 @@ export class CollisionManager implements EnginePlugin {
    * tiles and other BODY entities.  Axes are resolved independently
    * (X first, then Y) to prevent corner-cutting.
    */
-  private _move(entityId: string, dx: number, dy: number): CollisionMoveOutput {
+  private _move(entityId: string, dx: number, dy: number): PhysicsMoveOutput {
     const collider = this._colliders.get(entityId);
     const entityMap = this._getAllEntities();
     const entity = entityMap.get(entityId);
@@ -873,7 +878,7 @@ export class CollisionManager implements EnginePlugin {
   // Private: spatial query
   // ---------------------------------------------------------------------------
 
-  private _query(params: CollisionQueryParams): string[] {
+  private _query(params: PhysicsQueryParams): string[] {
     const results: string[] = [];
     const entityMap = this._getAllEntities();
 
@@ -899,7 +904,7 @@ export class CollisionManager implements EnginePlugin {
   // Private: raycast
   // ---------------------------------------------------------------------------
 
-  private _raycast(params: CollisionRaycastParams): CollisionRaycastOutput {
+  private _raycast(params: PhysicsRaycastParams): PhysicsRaycastOutput {
     const { origin, direction, maxDistance = 10_000, layerMask } = params;
 
     // Normalise direction.
@@ -1074,8 +1079,8 @@ export class CollisionManager implements EnginePlugin {
 
         // Emit only on the first frame of contact.
         if (!this._prevHitPairs.has(key)) {
-          this._core!.events.emitSync<CollisionHitParams, Record<string, never>>(
-            'collision/hit',
+          this._core!.events.emitSync<PhysicsHitParams, Record<string, never>>(
+            'physics/hit',
             { attackerId: atk.id, victimId: vic.id },
           );
         }
@@ -1111,8 +1116,8 @@ export class CollisionManager implements EnginePlugin {
     for (const key of currentPairs) {
       if (!this._prevSensorPairs.has(key)) {
         const sep = key.indexOf('|');
-        this._core!.events.emitSync<CollisionOverlapParams, Record<string, never>>(
-          'collision/overlap',
+        this._core!.events.emitSync<PhysicsOverlapParams, Record<string, never>>(
+          'physics/overlap',
           { entityAId: key.slice(0, sep), entityBId: key.slice(sep + 1), entered: true },
         );
       }
@@ -1122,8 +1127,8 @@ export class CollisionManager implements EnginePlugin {
     for (const key of this._prevSensorPairs) {
       if (!currentPairs.has(key)) {
         const sep = key.indexOf('|');
-        this._core!.events.emitSync<CollisionOverlapParams, Record<string, never>>(
-          'collision/overlap',
+        this._core!.events.emitSync<PhysicsOverlapParams, Record<string, never>>(
+          'physics/overlap',
           { entityAId: key.slice(0, sep), entityBId: key.slice(sep + 1), entered: false },
         );
       }

@@ -515,9 +515,9 @@ describe('TilemapManager', () => {
   // ── Collision sync ────────────────────────────────────────────────────────
 
   describe('collision sync', () => {
-    it('emits collision/tilemap:set for layers with collider:true', async () => {
+    it('emits physics/tilemap:set for layers with collider:true', async () => {
       const collisionHandler = vi.fn();
-      core.events.on('test', 'collision/tilemap:set', collisionHandler);
+      core.events.on('test', 'physics/tilemap:set', collisionHandler);
 
       const data = makeMapData({
         layers: [
@@ -536,9 +536,9 @@ describe('TilemapManager', () => {
       );
     });
 
-    it('does not emit collision/tilemap:set for non-collider layers', async () => {
+    it('does not emit physics/tilemap:set for non-collider layers', async () => {
       const collisionHandler = vi.fn();
-      core.events.on('test', 'collision/tilemap:set', collisionHandler);
+      core.events.on('test', 'physics/tilemap:set', collisionHandler);
 
       await loadMap(core, makeMapData()); // no collider flag
       expect(collisionHandler).not.toHaveBeenCalled();
