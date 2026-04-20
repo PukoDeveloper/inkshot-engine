@@ -32,7 +32,7 @@ type TimelineEntry = TweenEntry | CallEntry;
 export interface TimelineOptions {
   /** Called when the timeline finishes. Not called if `loop: true`. */
   onComplete?: () => void;
-  /** Whether to repeat the timeline indefinitely. */
+  /** Whether to repeat the timeline indefinitely. Note: tweens inside the timeline are reset via `Tween.reset()` on each loop iteration, which re-captures `from` values from the target at that moment. */
   loop?: boolean;
 }
 
@@ -332,7 +332,6 @@ export class Timeline implements Advanceable {
     if (this._completed) return true;
     if (this._paused) return false;
 
-    const prevElapsed = this._elapsed;
     this._elapsed += dt;
 
     // ── Drive tweens ──────────────────────────────────────────────────────
@@ -345,11 +344,7 @@ export class Timeline implements Advanceable {
       }
 
       // ── Fire callbacks at the correct moment ──────────────────────────
-      if (
-        !entry.called &&
-        prevElapsed < entry.at &&
-        this._elapsed >= entry.at
-      ) {
+      if (!entry.called && this._elapsed >= entry.at) {
         entry.called = true;
         entry.fn();
       }
@@ -397,19 +392,16 @@ export class Timeline implements Advanceable {
 
   /** Reset tweens and call-entry flags so the timeline can loop. */
   private _resetEntries(): void {
-    // Recreate tweens from scratch is complex without storing constructor args.
-    // For now, kill existing tweens (they will be recreated by the builder if
-    // the user reuses the Timeline object) and mark calls as uncalled.
-    // A practical workaround for users who need looping is to set
-    // `loop: true` on individual tweens inside the timeline.
     for (const entry of this._entries) {
       if (entry.type === 'call') {
         entry.called = false;
+      } else {
+        // Reset the tween so it replays from the start on next loop.
+        // 'from' values are re-captured from the target at the moment the
+        // tween next starts (after its delay), so chained tweens on the same
+        // target naturally pick up where the previous tween left off.
+        entry.tween.reset();
       }
-      // Tween reset: reconstructing is expensive and the Tween API doesn't
-      // support reset, so we simply do not re-run them on loop.
-      // Users who need full loops should wrap the Timeline construction
-      // in the TweenManager's onComplete callback.
     }
   }
 }

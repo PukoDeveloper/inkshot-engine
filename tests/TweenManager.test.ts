@@ -246,6 +246,46 @@ describe('Tween — callbacks', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Tween — reset
+// ---------------------------------------------------------------------------
+
+describe('Tween — reset', () => {
+  it('replays from the beginning after reset', () => {
+    const obj = makeObj({ x: 0 });
+    const tween = new Tween(obj, { x: 100 }, { duration: 100 });
+
+    tween.advance(100); // complete
+    expect(tween.isCompleted).toBe(true);
+
+    tween.reset();
+    expect(tween.isCompleted).toBe(false);
+    expect(tween.isKilled).toBe(false);
+
+    // Move target to a new position before replay
+    obj.x = 50;
+    tween.advance(50); // 50% from new from=50 to to=100
+    expect(obj.x).toBeCloseTo(75);
+  });
+
+  it('re-starts delay after reset', () => {
+    const obj = makeObj({ x: 0 });
+    const tween = new Tween(obj, { x: 100 }, { duration: 100, delay: 50 });
+
+    tween.advance(200); // complete → obj.x = 100
+    expect(obj.x).toBe(100);
+
+    tween.reset();
+    obj.x = 0; // reset target so we can observe the animation from scratch
+
+    tween.advance(30); // still in re-started delay
+    expect(obj.x).toBeCloseTo(0);
+
+    tween.advance(30); // past delay, 10 ms of animation → from=0, to=100
+    expect(obj.x).toBeCloseTo(10);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Tween — loop
 // ---------------------------------------------------------------------------
 

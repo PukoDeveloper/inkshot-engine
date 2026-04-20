@@ -237,6 +237,25 @@ export class Tween<T extends object = object> {
   // ---------------------------------------------------------------------------
 
   /**
+   * Reset the tween to its initial (pre-start) state so it can be replayed.
+   *
+   * All accumulated elapsed time, the `backward` flag, and the `from`
+   * snapshot are cleared.  The delay restarts from its original value.
+   * The target properties are **not** touched.
+   */
+  reset(): this {
+    this._props = null;
+    this._elapsed = 0;
+    this._backward = false;
+    this._started = false;
+    this._paused = false;
+    this._killed = false;
+    this._completed = false;
+    this._delayRemaining = this._opts.delay;
+    return this;
+  }
+
+  /**
    * Advance the tween by `dt` milliseconds.
    *
    * Excess time past a phase boundary (e.g. the end of a forward yoyo pass)

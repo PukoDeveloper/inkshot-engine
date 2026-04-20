@@ -254,8 +254,10 @@ describe('Timeline — fromTo()', () => {
 
     tl.fromTo(obj, { x: 0 }, { x: 100 }, { duration: 100 });
 
-    tl.advance(0); // trigger start (duration=0 carry-over)
-    // After first advance (any dt), onStart fires and x is set to 0
+    // advance(0) triggers onStart which sets x to fromProps (0) before from-capture.
+    tl.advance(0);
+    expect(obj.x).toBeCloseTo(0); // onStart has fired; target is at fromProps
+
     tl.advance(10);
     // from=0, to=100, progress=10/100=0.1 → x ≈ 10
     expect(obj.x).toBeCloseTo(10);
@@ -279,7 +281,50 @@ describe('Timeline — from()', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Timeline — pause / resume / kill
+// Timeline — loop
+// ---------------------------------------------------------------------------
+
+describe('Timeline — loop', () => {
+  it('repeats after completion when loop: true', () => {
+    const obj = makeObj({ x: 0 });
+    const tl = new Timeline({ loop: true });
+    tl.to(obj, { x: 100 }, { duration: 100 });
+
+    tl.advance(100); // end of first cycle → loops (tweens reset, x snapped to 100)
+    expect(tl.isCompleted).toBe(false);
+
+    // Second cycle: tween resets and re-captures from=100 to to=100
+    // (since the tween's target.x is at 100 after first cycle and _toProps.x=100).
+    // Advance 50 ms into the second cycle
+    tl.advance(50);
+    expect(tl.isCompleted).toBe(false);
+  });
+
+  it('does not call onComplete when looping', () => {
+    const obj = makeObj();
+    const onComplete = vi.fn();
+    const tl = new Timeline({ loop: true, onComplete });
+    tl.to(obj, { x: 100 }, { duration: 100 });
+
+    tl.advance(500);
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it('resets call entries so callbacks fire again on each loop', () => {
+    const fn = vi.fn();
+    const tl = new Timeline({ loop: true });
+    tl.call(fn, { at: 0 });
+    tl.delay(50); // give the timeline a positive duration
+
+    tl.advance(50); // first cycle → call fires once
+    expect(fn).toHaveBeenCalledTimes(1);
+
+    tl.advance(50); // second cycle → call should fire again
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 
 describe('Timeline — pause / resume / kill', () => {
