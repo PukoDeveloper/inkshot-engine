@@ -78,6 +78,8 @@ export type {
   InputGamepadAxesParams,
   InputGamepadAxisBindParams,
   InputGamepadVibrateParams,
+  InputGamepadConnectedParams,
+  InputGamepadDisconnectedParams,
 } from './types/input.js';
 
 // Game state system
@@ -292,4 +294,5 @@ export type {
   TimerCooldownOutput,
   TimerFiredParams,
   TimerCancelledParams,
+  TimerCancelAllOutput,
 } from './types/timer.js';

@@ -8,6 +8,7 @@ import type {
   TimerCooldownOutput,
   TimerFiredParams,
   TimerCancelledParams,
+  TimerCancelAllOutput,
 } from '../types/timer.js';
 
 // ---------------------------------------------------------------------------
@@ -44,19 +45,28 @@ interface CooldownEntry {
  *
  * ### Events handled
  *
- * | Event             | Description                                          |
- * |-------------------|------------------------------------------------------|
- * | `timer/once`      | Schedule a one-shot callback after `delay` ms        |
- * | `timer/interval`  | Schedule a repeating callback every `interval` ms    |
- * | `timer/cancel`    | Cancel an active timer or cooldown by id             |
- * | `timer/cooldown`  | Start / reset a cooldown, or query its readiness     |
+ * | Event              | Description                                                  |
+ * |--------------------|--------------------------------------------------------------|
+ * | `timer/once`       | Schedule a one-shot callback after `delay` ms                |
+ * | `timer/interval`   | Schedule a repeating callback every `interval` ms            |
+ * | `timer/cancel`     | Cancel an active timer or cooldown by id                     |
+ * | `timer/cancel-all` | Cancel every active timer and cooldown at once               |
+ * | `timer/cooldown`   | Start / reset a cooldown, or query its readiness             |
  *
  * ### Events emitted
  *
- * | Event              | When                                                |
- * |--------------------|-----------------------------------------------------|
- * | `timer/fired`      | When a once or interval timer fires                 |
- * | `timer/cancelled`  | When `timer/cancel` removes an active timer         |
+ * | Event              | When                                                         |
+ * |--------------------|--------------------------------------------------------------|
+ * | `timer/fired`      | When a once or interval timer fires                          |
+ * | `timer/cancelled`  | When `timer/cancel` or `timer/cancel-all` removes a timer    |
+ *
+ * ### Direct accessors (Pull API)
+ *
+ * | Method                    | Returns                                              |
+ * |---------------------------|------------------------------------------------------|
+ * | `isTimerActive(id)`       | `true` while a once/interval timer is still waiting  |
+ * | `getTimeRemaining(id)`    | ms until the next fire (0 if not active)             |
+ * | `getCooldownProgress(id)` | Completion ratio `0`–`1` for a cooldown              |
  *
  * ---
  *
@@ -84,6 +94,9 @@ interface CooldownEntry {
  * // Later: check if attack is ready
  * const { output } = core.events.emitSync('timer/cooldown', { id: 'attack' });
  * if (output.ready) performAttack();
+ *
+ * // Cancel everything on scene transition
+ * core.events.emitSync('timer/cancel-all', {});
  * ```
  */
 export class TimerManager implements EnginePlugin {
@@ -140,6 +153,27 @@ export class TimerManager implements EnginePlugin {
       }
     });
 
+    // ── timer/cancel-all ──────────────────────────────────────────────────
+    events.on<Record<string, never>, TimerCancelAllOutput>(
+      this.namespace,
+      'timer/cancel-all',
+      (_params, output) => {
+        let count = 0;
+        for (const id of [...this._timers.keys(), ...this._cooldowns.keys()]) {
+          const hadTimer = this._timers.delete(id);
+          const hadCooldown = this._cooldowns.delete(id);
+          if (hadTimer || hadCooldown) {
+            count += 1;
+            events.emitSync<TimerCancelledParams, Record<string, never>>(
+              'timer/cancelled',
+              { id },
+            );
+          }
+        }
+        output.cancelledCount = count;
+      },
+    );
+
     // ── timer/cooldown ────────────────────────────────────────────────────
     events.on<TimerCooldownParams, TimerCooldownOutput>(
       this.namespace,
@@ -189,7 +223,12 @@ export class TimerManager implements EnginePlugin {
             }
           } else {
             // Interval: handle burst (multiple fires) when dt > interval.
-            while (entry.remaining <= 0) {
+            // Cap at MAX_BURST_FIRES to avoid a single runaway tick when the
+            // page was backgrounded (tab hidden) and resumes with a huge dt.
+            const MAX_BURST_FIRES = 10;
+            let burstCount = 0;
+            while (entry.remaining <= 0 && burstCount < MAX_BURST_FIRES) {
+              burstCount += 1;
               entry.count += 1;
               const done =
                 entry.maxCount !== undefined && entry.count >= entry.maxCount;
@@ -230,5 +269,63 @@ export class TimerManager implements EnginePlugin {
     this._timers.clear();
     this._cooldowns.clear();
     this._paused = false;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Direct accessor API (Pull — use when you hold a plugin reference)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Returns `true` when a once or interval timer with the given `id` is
+   * currently active (i.e. registered and waiting to fire).
+   *
+   * @example
+   * ```ts
+   * if (timerManager.isTimerActive('respawn')) {
+   *   showRespawnCountdown();
+   * }
+   * ```
+   */
+  isTimerActive(id: string): boolean {
+    return this._timers.has(id);
+  }
+
+  /**
+   * Returns the number of milliseconds remaining until the next fire of the
+   * timer with the given `id`, or `0` if no such timer is active.
+   *
+   * For a `once` timer this is the time until it fires.
+   * For an `interval` timer this is the time until the **next** fire.
+   *
+   * @example
+   * ```ts
+   * const ms = timerManager.getTimeRemaining('respawn');
+   * ui.updateCountdown(Math.ceil(ms / 1000));
+   * ```
+   */
+  getTimeRemaining(id: string): number {
+    const entry = this._timers.get(id);
+    if (!entry) return 0;
+    // `remaining` can go slightly negative between the last tick and fire; clamp.
+    return Math.max(0, entry.remaining);
+  }
+
+  /**
+   * Returns the completion progress of a cooldown as a value between `0`
+   * (just started) and `1` (fully elapsed / ready).
+   *
+   * Returns `1` when no cooldown with the given `id` is registered, matching
+   * the "ready" semantics of the `timer/cooldown` query event.
+   *
+   * @example
+   * ```ts
+   * const progress = timerManager.getCooldownProgress('attack');
+   * attackCooldownBar.setFill(progress); // 0 → 1
+   * ```
+   */
+  getCooldownProgress(id: string): number {
+    const cd = this._cooldowns.get(id);
+    if (!cd) return 1;
+    return cd.duration > 0 ? Math.min(cd.elapsed / cd.duration, 1) : 1;
   }
 }

@@ -11,6 +11,8 @@ import type {
   InputGamepadVibrateParams,
   InputActionTriggeredParams,
   InputActionBindParams,
+  InputGamepadConnectedParams,
+  InputGamepadDisconnectedParams,
 } from '../src/types/input.js';
 
 // ---------------------------------------------------------------------------
@@ -207,6 +209,7 @@ describe('InputManager — Gamepad support', () => {
   describe('getGamepadAxes()', () => {
     it('returns current axis values for a connected gamepad', () => {
       mockGamepads(makeGamepad(0, [], [0.5, -0.3]));
+      tick(core); // populate the per-frame cache
       const axes = input.getGamepadAxes(0);
       expect(axes[0]).toBeCloseTo(0.5);
       expect(axes[1]).toBeCloseTo(-0.3);
@@ -479,6 +482,116 @@ describe('InputManager — Gamepad support', () => {
       tick(core);
 
       expect(handler).not.toHaveBeenCalled();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Gamepad connected / disconnected
+  // -------------------------------------------------------------------------
+
+  describe('input/gamepad:connected and input/gamepad:disconnected', () => {
+    it('emits input/gamepad:connected when a gamepad is plugged in', () => {
+      const handler = vi.fn();
+      core.events.on('test', 'input/gamepad:connected', handler);
+
+      const gp = makeGamepad(0);
+      window.dispatchEvent(Object.assign(new Event('gamepadconnected'), { gamepad: gp }));
+
+      expect(handler).toHaveBeenCalledOnce();
+      const params = handler.mock.calls[0][0] as InputGamepadConnectedParams;
+      expect(params.gamepadIndex).toBe(0);
+      expect(params.id).toBe(gp.id);
+    });
+
+    it('emits input/gamepad:disconnected when a gamepad is unplugged', () => {
+      const handler = vi.fn();
+      core.events.on('test', 'input/gamepad:disconnected', handler);
+
+      const gp = makeGamepad(1);
+      window.dispatchEvent(Object.assign(new Event('gamepaddisconnected'), { gamepad: gp }));
+
+      expect(handler).toHaveBeenCalledOnce();
+      const params = handler.mock.calls[0][0] as InputGamepadDisconnectedParams;
+      expect(params.gamepadIndex).toBe(1);
+      expect(params.id).toBe(gp.id);
+    });
+
+    it('does not emit after destroy', () => {
+      const handler = vi.fn();
+      core.events.on('test', 'input/gamepad:connected', handler);
+
+      input.destroy(core);
+
+      const gp = makeGamepad(0);
+      window.dispatchEvent(Object.assign(new Event('gamepadconnected'), { gamepad: gp }));
+
+      expect(handler).not.toHaveBeenCalled();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // input/gamepad:axis:bind — replace semantics (no duplicate stacking)
+  // -------------------------------------------------------------------------
+
+  describe('input/gamepad:axis:bind replace semantics', () => {
+    it('re-registering the same binding does not cause double action events', () => {
+      const handler = vi.fn();
+      core.events.on('test', 'input/action:triggered', handler);
+
+      const bind = {
+        action: 'run',
+        axisIndex: 0,
+        direction: 'positive' as const,
+        threshold: 0.5,
+      };
+
+      // Register the same binding twice
+      core.events.emitSync<InputGamepadAxisBindParams>('input/gamepad:axis:bind', bind);
+      core.events.emitSync<InputGamepadAxisBindParams>('input/gamepad:axis:bind', bind);
+
+      mockGamepads(makeGamepad(0, [], [0.9]));
+      tick(core);
+
+      const pressedCalls = handler.mock.calls.filter(
+        (c) => c[0].action === 'run' && c[0].state === 'pressed',
+      );
+      // Should only fire once, not twice
+      expect(pressedCalls).toHaveLength(1);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // getGamepadAxes() reads per-frame cache
+  // -------------------------------------------------------------------------
+
+  describe('getGamepadAxes() per-frame cache', () => {
+    it('returns axes from the last polled frame, not a live navigator call', () => {
+      // Frame 1: axes [0.5, -0.3]
+      mockGamepads(makeGamepad(0, [], [0.5, -0.3]));
+      tick(core);
+
+      // Change navigator mock but DO NOT tick — cache should still hold frame-1 data
+      mockGamepads(makeGamepad(0, [], [0.9, 0.9]));
+
+      const axes = input.getGamepadAxes(0);
+      expect(axes[0]).toBeCloseTo(0.5);
+      expect(axes[1]).toBeCloseTo(-0.3);
+    });
+
+    it('returns empty array for a gamepad not yet polled', () => {
+      expect(input.getGamepadAxes(5)).toHaveLength(0);
+    });
+
+    it('returns empty array after the gamepad disconnects', () => {
+      mockGamepads(makeGamepad(0, [], [0.5]));
+      tick(core);
+      expect(input.getGamepadAxes(0)).toHaveLength(1);
+
+      // Simulate disconnect
+      const gp = makeGamepad(0);
+      window.dispatchEvent(Object.assign(new Event('gamepaddisconnected'), { gamepad: gp }));
+
+      expect(input.getGamepadAxes(0)).toHaveLength(0);
     });
   });
 });

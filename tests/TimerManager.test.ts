@@ -10,6 +10,7 @@ import type {
   TimerCooldownOutput,
   TimerFiredParams,
   TimerCancelledParams,
+  TimerCancelAllOutput,
 } from '../src/types/timer.js';
 
 // ---------------------------------------------------------------------------
@@ -419,6 +420,165 @@ describe('TimerManager', () => {
 
       tick(core, 200);
       expect(handler).not.toHaveBeenCalled();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // timer/cancel-all
+  // -------------------------------------------------------------------------
+
+  describe('timer/cancel-all', () => {
+    it('cancels all active timers and emits timer/cancelled for each', () => {
+      const cancelledHandler = vi.fn();
+      const firedHandler = vi.fn();
+      core.events.on('test', 'timer/cancelled', cancelledHandler);
+      core.events.on('test', 'timer/fired', firedHandler);
+
+      core.events.emitSync<TimerOnceParams>('timer/once', { id: 'a', delay: 500 });
+      core.events.emitSync<TimerIntervalParams>('timer/interval', { id: 'b', interval: 200 });
+
+      const { output } = core.events.emitSync<Record<string, never>, TimerCancelAllOutput>(
+        'timer/cancel-all',
+        {},
+      );
+
+      expect(output.cancelledCount).toBe(2);
+      expect(cancelledHandler).toHaveBeenCalledTimes(2);
+      const ids = cancelledHandler.mock.calls.map((c) => (c[0] as TimerCancelledParams).id);
+      expect(ids).toContain('a');
+      expect(ids).toContain('b');
+
+      tick(core, 1000);
+      expect(firedHandler).not.toHaveBeenCalled();
+    });
+
+    it('cancels cooldowns too', () => {
+      const cancelledHandler = vi.fn();
+      core.events.on('test', 'timer/cancelled', cancelledHandler);
+
+      core.events.emitSync<TimerCooldownParams>('timer/cooldown', { id: 'cd', duration: 1000 });
+
+      const { output } = core.events.emitSync<Record<string, never>, TimerCancelAllOutput>(
+        'timer/cancel-all',
+        {},
+      );
+
+      expect(output.cancelledCount).toBe(1);
+      expect(cancelledHandler).toHaveBeenCalledOnce();
+
+      const { output: query } = core.events.emitSync<TimerCooldownParams, TimerCooldownOutput>(
+        'timer/cooldown',
+        { id: 'cd' },
+      );
+      expect(query.ready).toBe(true);
+    });
+
+    it('returns cancelledCount = 0 when nothing is active', () => {
+      const { output } = core.events.emitSync<Record<string, never>, TimerCancelAllOutput>(
+        'timer/cancel-all',
+        {},
+      );
+      expect(output.cancelledCount).toBe(0);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Interval burst safety cap
+  // -------------------------------------------------------------------------
+
+  describe('interval burst safety cap', () => {
+    it('fires at most MAX_BURST_FIRES (10) times in a single oversized tick', () => {
+      const handler = vi.fn();
+      core.events.on('test', 'timer/fired', handler);
+
+      core.events.emitSync<TimerIntervalParams>('timer/interval', {
+        id: 'burst',
+        interval: 100,
+      });
+
+      // A 10 000 ms tick would be 100 fires without a cap.
+      tick(core, 10_000);
+
+      expect(handler).toHaveBeenCalledTimes(10);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Direct accessor methods
+  // -------------------------------------------------------------------------
+
+  describe('isTimerActive()', () => {
+    it('returns true while a once timer is pending', () => {
+      core.events.emitSync<TimerOnceParams>('timer/once', { id: 'p', delay: 500 });
+      expect(timer.isTimerActive('p')).toBe(true);
+    });
+
+    it('returns false after a once timer fires', () => {
+      core.events.emitSync<TimerOnceParams>('timer/once', { id: 'p', delay: 100 });
+      tick(core, 200);
+      expect(timer.isTimerActive('p')).toBe(false);
+    });
+
+    it('returns true while an interval timer is running', () => {
+      core.events.emitSync<TimerIntervalParams>('timer/interval', { id: 'iv', interval: 100 });
+      tick(core, 50);
+      expect(timer.isTimerActive('iv')).toBe(true);
+    });
+
+    it('returns false after an interval timer is cancelled', () => {
+      core.events.emitSync<TimerIntervalParams>('timer/interval', { id: 'iv', interval: 100 });
+      core.events.emitSync<TimerCancelParams>('timer/cancel', { id: 'iv' });
+      expect(timer.isTimerActive('iv')).toBe(false);
+    });
+
+    it('returns false for an unknown id', () => {
+      expect(timer.isTimerActive('ghost')).toBe(false);
+    });
+  });
+
+  describe('getTimeRemaining()', () => {
+    it('returns the full delay before any tick', () => {
+      core.events.emitSync<TimerOnceParams>('timer/once', { id: 'r', delay: 500 });
+      expect(timer.getTimeRemaining('r')).toBe(500);
+    });
+
+    it('decreases after a tick', () => {
+      core.events.emitSync<TimerOnceParams>('timer/once', { id: 'r', delay: 500 });
+      tick(core, 200);
+      expect(timer.getTimeRemaining('r')).toBeCloseTo(300);
+    });
+
+    it('returns 0 for an unknown id', () => {
+      expect(timer.getTimeRemaining('ghost')).toBe(0);
+    });
+
+    it('returns 0 after the timer has fired', () => {
+      core.events.emitSync<TimerOnceParams>('timer/once', { id: 'r', delay: 100 });
+      tick(core, 200);
+      expect(timer.getTimeRemaining('r')).toBe(0);
+    });
+  });
+
+  describe('getCooldownProgress()', () => {
+    it('returns 0 immediately after cooldown starts', () => {
+      core.events.emitSync<TimerCooldownParams>('timer/cooldown', { id: 'cd', duration: 1000 });
+      expect(timer.getCooldownProgress('cd')).toBeCloseTo(0);
+    });
+
+    it('returns 0.5 when half the duration has elapsed', () => {
+      core.events.emitSync<TimerCooldownParams>('timer/cooldown', { id: 'cd', duration: 1000 });
+      tick(core, 500);
+      expect(timer.getCooldownProgress('cd')).toBeCloseTo(0.5);
+    });
+
+    it('returns 1 when the cooldown is complete', () => {
+      core.events.emitSync<TimerCooldownParams>('timer/cooldown', { id: 'cd', duration: 500 });
+      tick(core, 600);
+      expect(timer.getCooldownProgress('cd')).toBe(1);
+    });
+
+    it('returns 1 for an unknown id', () => {
+      expect(timer.getCooldownProgress('ghost')).toBe(1);
     });
   });
 });

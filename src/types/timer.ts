@@ -162,3 +162,28 @@ export interface TimerCancelledParams {
   /** The identifier of the timer that was cancelled. */
   readonly id: string;
 }
+
+// ---------------------------------------------------------------------------
+// timer/cancel-all
+// ---------------------------------------------------------------------------
+
+/**
+ * Output for `timer/cancel-all`.
+ *
+ * Cancels **every** active timer and cooldown in one call.
+ * `timer/cancelled` is emitted once for each removed entry.
+ *
+ * @example
+ * ```ts
+ * // On scene transition — wipe all outstanding timers
+ * const { output } = core.events.emitSync<Record<string, never>, TimerCancelAllOutput>(
+ *   'timer/cancel-all',
+ *   {},
+ * );
+ * console.log(`Cancelled ${output.cancelledCount} timers / cooldowns.`);
+ * ```
+ */
+export interface TimerCancelAllOutput {
+  /** Number of timers and cooldowns that were actually cancelled. */
+  cancelledCount: number;
+}

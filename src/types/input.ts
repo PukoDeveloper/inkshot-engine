@@ -345,3 +345,37 @@ export interface InputGamepadVibrateParams {
   /** High-frequency (weak) motor magnitude in the range `0`–`1`. Defaults to `1`. */
   readonly weakMagnitude?: number;
 }
+
+// ---------------------------------------------------------------------------
+// input/gamepad:connected
+// ---------------------------------------------------------------------------
+
+/**
+ * Parameters for `input/gamepad:connected`.
+ *
+ * Emitted when the browser fires a `gamepadconnected` DOM event — i.e. when a
+ * controller is plugged in or becomes active for the first time.
+ */
+export interface InputGamepadConnectedParams {
+  /** Zero-based index of the newly connected gamepad. */
+  readonly gamepadIndex: number;
+  /** Human-readable name of the gamepad, sourced from `Gamepad.id`. */
+  readonly id: string;
+}
+
+// ---------------------------------------------------------------------------
+// input/gamepad:disconnected
+// ---------------------------------------------------------------------------
+
+/**
+ * Parameters for `input/gamepad:disconnected`.
+ *
+ * Emitted when the browser fires a `gamepaddisconnected` DOM event — i.e.
+ * when a controller is unplugged or loses connectivity.
+ */
+export interface InputGamepadDisconnectedParams {
+  /** Zero-based index of the disconnected gamepad. */
+  readonly gamepadIndex: number;
+  /** Human-readable name of the gamepad, sourced from `Gamepad.id`. */
+  readonly id: string;
+}
