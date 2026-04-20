@@ -343,6 +343,24 @@ export type {
   UIDialogueBoxProps,
 } from './types/ui.js';
 
+// Script system
+export { ScriptManager } from './plugins/ScriptManager.js';
+export type {
+  ScriptNode,
+  ScriptDef,
+  ScriptContext,
+  ScriptCommandHandler,
+  ScriptDefineParams,
+  ScriptRunParams,
+  ScriptStopParams,
+  ScriptRegisterCommandParams,
+  ScriptStateGetOutput,
+  ScriptStartedParams,
+  ScriptEndedParams,
+  ScriptStepParams,
+  ScriptErrorParams,
+} from './types/script.js';
+
 // Dialogue system
 export { DialogueManager } from './plugins/DialogueManager.js';
 export {
