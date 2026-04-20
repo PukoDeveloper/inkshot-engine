@@ -340,4 +340,35 @@ export type {
   UIStackPanelProps,
   UIScrollViewWidget,
   UIStackPanelWidget,
+  UIDialogueBoxProps,
 } from './types/ui.js';
+
+// Dialogue system
+export { DialogueManager } from './plugins/DialogueManager.js';
+export type {
+  DialogueCondition,
+  DialogueConditionGameState,
+  DialogueConditionSaveFlag,
+  DialogueConditionNot,
+  DialogueConditionAnd,
+  DialogueConditionOr,
+  DialogueChoice,
+  DialogueTextNode,
+  DialogueChoiceNode,
+  DialogueConditionNode,
+  DialogueJumpNode,
+  DialogueEndNode,
+  DialogueNode,
+  DialogueTree,
+  DialogueRegisterParams,
+  DialogueStartParams,
+  DialogueAdvanceParams,
+  DialogueChoiceParams,
+  DialogueEndCommandParams,
+  DialogueStateGetOutput,
+  DialogueStartedParams,
+  DialogueNodeParams,
+  DialogueTextTickParams,
+  DialogueChoicesParams,
+  DialogueEndedParams,
+} from './types/dialogue.js';
