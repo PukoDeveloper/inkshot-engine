@@ -73,7 +73,7 @@ vi.mock('pixi.js', async () => {
     }
   }
 
-  return { Container, Graphics, Text, __esModule: true };
+  return { Container, Graphics, Text, HTMLText: Text, __esModule: true };
 });
 
 // ---------------------------------------------------------------------------
@@ -131,8 +131,8 @@ describe('UIManager', () => {
   // -------------------------------------------------------------------------
 
   describe('init', () => {
-    it('registers all eight built-in widget types', () => {
-      for (const type of ['label', 'button', 'panel', 'progressbar', 'slider', 'scrollview', 'dialog', 'stack']) {
+    it('registers all nine built-in widget types', () => {
+      for (const type of ['label', 'button', 'panel', 'progressbar', 'slider', 'scrollview', 'dialog', 'stack', 'dialoguebox']) {
         expect(ui.hasFactory(type)).toBe(true);
       }
     });
@@ -266,6 +266,7 @@ describe('UIManager', () => {
         { type: 'scrollview',  extra: { width: 300, height: 200 } },
         { type: 'dialog',      extra: { title: 'Confirm?' } },
         { type: 'stack',       extra: {} },
+        { type: 'dialoguebox', extra: { width: 400, height: 120 } },
       ];
 
       for (const { type, extra } of types) {

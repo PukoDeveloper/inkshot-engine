@@ -3,6 +3,18 @@
 // ---------------------------------------------------------------------------
 
 /**
+ * A single run of styled text produced by the typewriter.
+ *
+ * Adjacent characters with the same colour are merged into one segment.
+ * When `color` is absent the widget's default text colour is used.
+ */
+export interface DialogueTextSegment {
+  readonly text: string;
+  /** Pixi hex colour override (e.g. `0xff4444`), or `undefined` for default. */
+  readonly color?: number;
+}
+
+/**
  * Parameters for `dialogue/show-text`.
  *
  * Instructs the dialogue box to display a line of text with an optional
@@ -99,8 +111,15 @@ export interface DialogueNodeParams {
  * Also emitted once with `done: true` when the full text is visible.
  */
 export interface DialogueTextTickParams {
+  /** Plain (tag-stripped) text revealed so far. */
   readonly text: string;
   readonly done: boolean;
+  /**
+   * The revealed text split into styled runs.
+   * Use these to render inline colours in the dialogue box.
+   * Each segment's `color` is a Pixi hex value; absent means "use default".
+   */
+  readonly segments: ReadonlyArray<DialogueTextSegment>;
 }
 
 /** Emitted when `dialogue/show-choices` is processed. */

@@ -345,7 +345,19 @@ export type {
 
 // Dialogue system
 export { DialogueManager } from './plugins/DialogueManager.js';
+export {
+  parseDialogueMarkup,
+  buildTextSegments,
+  getSpeedAtIndex,
+} from './plugins/DialogueMarkupParser.js';
 export type {
+  ParsedMarkup,
+  ColorSpan,
+  SpeedSpan,
+  PauseMark,
+} from './plugins/DialogueMarkupParser.js';
+export type {
+  DialogueTextSegment,
   DialogueShowTextParams,
   DialogueShowChoicesParams,
   DialogueAdvanceParams,

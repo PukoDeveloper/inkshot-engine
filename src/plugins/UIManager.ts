@@ -1,4 +1,4 @@
-import { Container, Graphics, Text } from 'pixi.js';
+import { Container, Graphics, HTMLText, Text } from 'pixi.js';
 import type { Core } from '../core/Core.js';
 import type { EnginePlugin } from '../types/plugin.js';
 import type {
@@ -36,6 +36,7 @@ import type {
   DialogueTextTickParams,
   DialogueChoicesParams,
   DialogueEndedParams,
+  DialogueTextSegment,
 } from '../types/dialogue.js';
 
 // ---------------------------------------------------------------------------
@@ -699,6 +700,42 @@ function createStackPanel(id: string, props: UIStackPanelProps, _core: Core): UI
 }
 
 // ---------------------------------------------------------------------------
+// Built-in widget: DialogueBox — markup helpers
+// ---------------------------------------------------------------------------
+
+/** Escape characters that are special in HTML. */
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/**
+ * Convert dialogue text segments into an HTML string suitable for
+ * {@link https://pixijs.com/guides/components/text PixiJS HTMLText}.
+ *
+ * Segments without a `color` are rendered as plain (escaped) text; coloured
+ * segments are wrapped in `<span style="color:#rrggbb;">…</span>`.
+ */
+function segmentsToHtml(segments: ReadonlyArray<DialogueTextSegment>): string {
+  if (segments.length === 0) return '';
+  if (segments.length === 1 && segments[0]!.color === undefined) {
+    return escapeHtml(segments[0]!.text);
+  }
+  return segments
+    .map(seg => {
+      const escaped = escapeHtml(seg.text);
+      if (seg.color !== undefined) {
+        const hex = `#${seg.color.toString(16).padStart(6, '0')}`;
+        return `<span style="color:${hex};">${escaped}</span>`;
+      }
+      return escaped;
+    })
+    .join('');
+}
+
+// ---------------------------------------------------------------------------
 // Built-in widget: DialogueBox
 // ---------------------------------------------------------------------------
 
@@ -745,8 +782,8 @@ function createDialogueBox(id: string, props: UIDialogueBoxProps, core: Core): U
   nameNode.y = padV;
   root.addChild(nameNode);
 
-  // Body text
-  const bodyNode = new Text({
+  // Body text — HTMLText supports inline colour via <span style="color:…">
+  const bodyNode = new HTMLText({
     text: '',
     style: {
       fontSize: 13,
@@ -855,7 +892,7 @@ function createDialogueBox(id: string, props: UIDialogueBoxProps, core: Core): U
   });
 
   core.events.on<DialogueTextTickParams>(ns, 'dialogue/text:tick', (params) => {
-    bodyNode.text = params.text;
+    bodyNode.text = segmentsToHtml(params.segments);
     if (params.done) {
       continueIndicator.visible = true;
     }

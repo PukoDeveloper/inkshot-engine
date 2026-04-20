@@ -16,22 +16,34 @@ import type {
   DialogueEndedParams,
 } from '../types/dialogue.js';
 import type { CoreUpdateParams } from '../types/rendering.js';
+import {
+  parseDialogueMarkup,
+  buildTextSegments,
+  getSpeedAtIndex,
+  type ParsedMarkup,
+} from './DialogueMarkupParser.js';
 
 // ---------------------------------------------------------------------------
 // Internal types
 // ---------------------------------------------------------------------------
 
 interface ActiveSession {
-  /** Fully-resolved text for the current text node. */
+  /** Plain (tag-stripped) text for the current line. */
   targetText: string;
+  /** Parsed markup metadata (colour spans, speed spans, pauses). */
+  parsed: ParsedMarkup;
   /** Number of characters currently revealed by the typewriter. */
   charIndex: number;
-  /** Characters per second for the typewriter animation. */
+  /** Default characters per second (overridden per-character by speed spans). */
   charsPerSecond: number;
   /** Accumulated time (ms) not yet consumed by the typewriter. */
   accumMs: number;
   /** Whether the current text is fully revealed. */
   textDone: boolean;
+  /** Remaining pause duration (ms) before the typewriter resumes. */
+  pauseRemainingMs: number;
+  /** Index into `parsed.pauses` – avoids re-scanning already-consumed pauses. */
+  nextPauseIdx: number;
   /** Visible choices (provided externally by the script system). */
   choices: Array<{ text: string; index: number }>;
   /** Speaker name. */
@@ -129,18 +141,22 @@ export class DialogueManager implements EnginePlugin {
         this._openSession();
       }
 
-      const text = this._resolveText(params.i18nKey, params.i18nArgs, params.text, '');
+      const rawText = this._resolveText(params.i18nKey, params.i18nArgs, params.text, '');
+      const parsed  = parseDialogueMarkup(rawText);
       const speaker = this._resolveText(params.speakerI18nKey, undefined, params.speaker, '');
 
       const s = this._session!;
-      s.targetText    = text;
-      s.charIndex     = 0;
-      s.accumMs       = 0;
-      s.textDone      = false;
-      s.charsPerSecond = params.speed ?? this.defaultCharsPerSecond;
-      s.choices       = [];
-      s.speaker       = speaker;
-      s.portrait      = params.portrait;
+      s.targetText      = parsed.plain;
+      s.parsed          = parsed;
+      s.charIndex       = 0;
+      s.accumMs         = 0;
+      s.textDone        = false;
+      s.charsPerSecond  = params.speed ?? this.defaultCharsPerSecond;
+      s.pauseRemainingMs = 0;
+      s.nextPauseIdx    = 0;
+      s.choices         = [];
+      s.speaker         = speaker;
+      s.portrait        = params.portrait;
 
       events.emitSync<DialogueNodeParams>('dialogue/node', { speaker, portrait: params.portrait });
     });
@@ -151,13 +167,16 @@ export class DialogueManager implements EnginePlugin {
       }
 
       const s = this._session!;
-      s.choices = [...params.choices];
-      s.targetText = params.prompt ?? '';
-      s.charIndex  = s.targetText.length;
-      s.textDone   = true;
-      s.accumMs    = 0;
-      s.speaker    = '';
-      s.portrait   = undefined;
+      s.choices          = [...params.choices];
+      s.targetText       = params.prompt ?? '';
+      s.parsed           = parseDialogueMarkup(s.targetText);
+      s.charIndex        = s.targetText.length;
+      s.textDone         = true;
+      s.accumMs          = 0;
+      s.pauseRemainingMs = 0;
+      s.nextPauseIdx     = 0;
+      s.speaker          = '';
+      s.portrait         = undefined;
 
       events.emitSync<DialogueChoicesParams>('dialogue/choices', {
         choices: s.choices,
@@ -168,11 +187,15 @@ export class DialogueManager implements EnginePlugin {
       if (!this._session) return;
       if (!this._session.textDone) {
         // Skip typewriter — reveal full text immediately
-        this._session.charIndex = this._session.targetText.length;
-        this._session.textDone  = true;
+        const s = this._session;
+        s.charIndex        = s.targetText.length;
+        s.textDone         = true;
+        s.pauseRemainingMs = 0;
+        const segments = buildTextSegments(s.targetText, s.charIndex, s.parsed.colorSpans);
         events.emitSync<DialogueTextTickParams>('dialogue/text:tick', {
-          text: this._session.targetText,
+          text: s.targetText,
           done: true,
+          segments,
         });
         return;
       }
@@ -219,18 +242,62 @@ export class DialogueManager implements EnginePlugin {
       const s = this._session;
       if (!s || s.textDone) return;
 
-      s.accumMs += params.dt;
-      const msPerChar = 1000 / s.charsPerSecond;
-      const newChars  = Math.floor(s.accumMs / msPerChar);
-      if (newChars <= 0) return;
+      const prevCharIndex = s.charIndex;
+      let remainingMs = params.dt + s.accumMs;
+      s.accumMs = 0;
 
-      s.accumMs  -= newChars * msPerChar;
-      s.charIndex = Math.min(s.charIndex + newChars, s.targetText.length);
-      s.textDone  = s.charIndex >= s.targetText.length;
+      while (remainingMs > 0 && !s.textDone) {
+        // Drain any active pause before advancing
+        if (s.pauseRemainingMs > 0) {
+          const drain = Math.min(remainingMs, s.pauseRemainingMs);
+          s.pauseRemainingMs -= drain;
+          remainingMs -= drain;
+          continue;
+        }
 
+        // Already at end?
+        if (s.charIndex >= s.targetText.length) {
+          s.textDone = true;
+          break;
+        }
+
+        // Time cost of the next character (may be overridden by a speed span)
+        const speed    = getSpeedAtIndex(s.charIndex, s.parsed.speedSpans, s.charsPerSecond);
+        const msPerChar = 1000 / speed;
+
+        if (remainingMs < msPerChar) {
+          s.accumMs = remainingMs;
+          break;
+        }
+
+        remainingMs -= msPerChar;
+        s.charIndex++;
+
+        // Consume any pause that fires exactly at this charIndex
+        while (
+          s.nextPauseIdx < s.parsed.pauses.length &&
+          s.parsed.pauses[s.nextPauseIdx]!.afterIndex <= s.charIndex
+        ) {
+          const p = s.parsed.pauses[s.nextPauseIdx]!;
+          if (p.afterIndex === s.charIndex) {
+            s.pauseRemainingMs = p.ms;
+          }
+          s.nextPauseIdx++;
+        }
+
+        if (s.charIndex >= s.targetText.length) {
+          s.textDone = true;
+        }
+      }
+
+      // Only emit a tick when the visible text actually changed
+      if (s.charIndex === prevCharIndex && !s.textDone) return;
+
+      const segments = buildTextSegments(s.targetText, s.charIndex, s.parsed.colorSpans);
       events.emitSync<DialogueTextTickParams>('dialogue/text:tick', {
         text: s.targetText.slice(0, s.charIndex),
         done: s.textDone,
+        segments,
       });
     });
   }
@@ -276,14 +343,17 @@ export class DialogueManager implements EnginePlugin {
   /** Open a new session and emit `dialogue/started`. */
   private _openSession(): void {
     this._session = {
-      targetText:    '',
-      charIndex:     0,
-      charsPerSecond: this.defaultCharsPerSecond,
-      accumMs:       0,
-      textDone:      true,
-      choices:       [],
-      speaker:       '',
-      portrait:      undefined,
+      targetText:       '',
+      parsed:           { plain: '', colorSpans: [], speedSpans: [], pauses: [] },
+      charIndex:        0,
+      charsPerSecond:   this.defaultCharsPerSecond,
+      accumMs:          0,
+      textDone:         true,
+      pauseRemainingMs: 0,
+      nextPauseIdx:     0,
+      choices:          [],
+      speaker:          '',
+      portrait:         undefined,
     };
     this._core.events.emitSync<DialogueStartedParams>('dialogue/started', {});
   }

@@ -379,4 +379,154 @@ describe('DialogueManager', () => {
     void _started; void _ended; void _advanced;
     expect(true).toBe(true);
   });
+
+  // -------------------------------------------------------------------------
+  // Markup: segments in dialogue/text:tick
+  // -------------------------------------------------------------------------
+
+  describe('markup — segments', () => {
+    it('emits a single plain segment when there is no markup', () => {
+      core.events.emitSync('dialogue/show-text', { text: 'Hello', speed: 1000 });
+      const ticks: DialogueTextTickParams[] = [];
+      core.events.on('test', 'dialogue/text:tick', (p: DialogueTextTickParams) => ticks.push(p));
+      core.events.emitSync('core/update', { dt: 100, tick: 1 });
+      const last = ticks[ticks.length - 1]!;
+      expect(last.text).toBe('Hello');
+      expect(last.segments).toHaveLength(1);
+      expect(last.segments[0]).toMatchObject({ text: 'Hello' });
+    });
+
+    it('emits a coloured segment for a [c=…] tag', () => {
+      core.events.emitSync('dialogue/show-text', { text: '[c=#ff0000]Red![/c]', speed: 1000 });
+      const ticks: DialogueTextTickParams[] = [];
+      core.events.on('test', 'dialogue/text:tick', (p: DialogueTextTickParams) => ticks.push(p));
+      core.events.emitSync('core/update', { dt: 100, tick: 1 }); // reveal all
+      const last = ticks[ticks.length - 1]!;
+      expect(last.text).toBe('Red!');
+      expect(last.done).toBe(true);
+      expect(last.segments).toHaveLength(1);
+      expect(last.segments[0]).toMatchObject({ text: 'Red!', color: 0xff0000 });
+    });
+
+    it('splits segments at the colour boundary during partial reveal', () => {
+      // "AB[c=#f00]CD[/c]" → plain="ABCD"
+      core.events.emitSync('dialogue/show-text', { text: 'AB[c=#ff0000]CD[/c]', speed: 1000 });
+      const ticks: DialogueTextTickParams[] = [];
+      core.events.on('test', 'dialogue/text:tick', (p: DialogueTextTickParams) => ticks.push(p));
+      // 1000 cps = 1ms/char → 3 chars in 3.5ms
+      core.events.emitSync('core/update', { dt: 3.5, tick: 1 });
+      const last = ticks[ticks.length - 1]!;
+      expect(last.text).toBe('ABC');
+      expect(last.segments).toHaveLength(2);
+      expect(last.segments[0]).toMatchObject({ text: 'AB' });
+      expect(last.segments[1]).toMatchObject({ text: 'C', color: 0xff0000 });
+    });
+
+    it('includes segments when advance skips the typewriter', () => {
+      core.events.emitSync('dialogue/show-text', { text: '[c=#00ff00]Green[/c]', speed: 1 });
+      const ticks: DialogueTextTickParams[] = [];
+      core.events.on('test', 'dialogue/text:tick', (p: DialogueTextTickParams) => ticks.push(p));
+      core.events.emitSync('dialogue/advance', {});
+      const last = ticks[ticks.length - 1]!;
+      expect(last.done).toBe(true);
+      expect(last.segments[0]).toMatchObject({ text: 'Green', color: 0x00ff00 });
+    });
+
+    it('strips markup so plain text contains no tag characters', () => {
+      core.events.emitSync('dialogue/show-text', { text: '[c=#ff0000]R[/c]', speed: 1000 });
+      const ticks: DialogueTextTickParams[] = [];
+      core.events.on('test', 'dialogue/text:tick', (p: DialogueTextTickParams) => ticks.push(p));
+      core.events.emitSync('core/update', { dt: 100, tick: 1 });
+      const last = ticks[ticks.length - 1]!;
+      expect(last.text).not.toContain('[');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Markup: speed override via [speed=…] tag
+  // -------------------------------------------------------------------------
+
+  describe('markup — speed override', () => {
+    it('[speed=n] makes the typewriter reveal chars at n cps', () => {
+      // Default speed = 100 cps (10ms/char). [speed=1000] = 1ms/char.
+      // In 5ms at 1000cps → all 4 chars of "Fast" revealed.
+      // Without the tag at 100cps → only 0 chars in 5ms (need 10ms each).
+      core.events.emitSync('dialogue/show-text', {
+        text: '[speed=1000]Fast[/speed]',
+        speed: 1, // very slow default to prove the tag works
+      });
+      const ticks: DialogueTextTickParams[] = [];
+      core.events.on('test', 'dialogue/text:tick', (p: DialogueTextTickParams) => ticks.push(p));
+      core.events.emitSync('core/update', { dt: 5, tick: 1 });
+      const last = ticks[ticks.length - 1]!;
+      expect(last.done).toBe(true);
+      expect(last.text).toBe('Fast');
+    });
+
+    it('reverts to default speed after the [/speed] close tag', () => {
+      // "A[speed=1000]B[/speed]C" at default 100 cps
+      // After 1ms: A(0.1 chars at 100cps, not yet) | with 10ms: reveal A.
+      // B at 1000cps needs 1ms. C at 100cps needs 10ms.
+      // Give 22ms: A(10ms) + B(1ms) + C(10ms) + 1ms spare → all done
+      core.events.emitSync('dialogue/show-text', {
+        text: 'A[speed=1000]B[/speed]C',
+        speed: 100,
+      });
+      const ticks: DialogueTextTickParams[] = [];
+      core.events.on('test', 'dialogue/text:tick', (p: DialogueTextTickParams) => ticks.push(p));
+      core.events.emitSync('core/update', { dt: 22, tick: 1 });
+      const last = ticks[ticks.length - 1]!;
+      expect(last.done).toBe(true);
+      expect(last.text).toBe('ABC');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Markup: [pause=n] tag
+  // -------------------------------------------------------------------------
+
+  describe('markup — pause', () => {
+    it('delays typewriter advancement for the specified duration', () => {
+      // "AB[pause=200]C" at 100 cps (10ms/char)
+      core.events.emitSync('dialogue/show-text', { text: 'AB[pause=200]C', speed: 100 });
+      const ticks: DialogueTextTickParams[] = [];
+      core.events.on('test', 'dialogue/text:tick', (p: DialogueTextTickParams) => ticks.push(p));
+
+      // Tick 1: 15ms → A(10ms) + accumulate 5ms → reveals 'A'
+      core.events.emitSync('core/update', { dt: 15, tick: 1 });
+      expect(ticks[ticks.length - 1]!.text).toBe('A');
+
+      // Tick 2: 10ms → i(5ms acc + 5ms) → reveals 'B' then pause fires (200ms)
+      core.events.emitSync('core/update', { dt: 10, tick: 2 });
+      expect(ticks[ticks.length - 1]!.text).toBe('AB');
+
+      // Tick 3: 150ms → still inside pause (200 - 10 acc from tick2 = 195ms remaining)
+      // No chars advance → no new tick
+      const countBefore = ticks.length;
+      core.events.emitSync('core/update', { dt: 150, tick: 3 });
+      expect(ticks.length).toBe(countBefore);
+
+      // Tick 4: 60ms → drains remaining ~45ms of pause, 15ms left → reveals 'C' (10ms) done
+      core.events.emitSync('core/update', { dt: 60, tick: 4 });
+      const last = ticks[ticks.length - 1]!;
+      expect(last.text).toBe('ABC');
+      expect(last.done).toBe(true);
+    });
+
+    it('advance (skip) cancels an in-progress pause and reveals full text', () => {
+      core.events.emitSync('dialogue/show-text', { text: 'AB[pause=5000]C', speed: 1000 });
+      const ticks: DialogueTextTickParams[] = [];
+      core.events.on('test', 'dialogue/text:tick', (p: DialogueTextTickParams) => ticks.push(p));
+
+      // Tick: reveal AB, pause fires
+      core.events.emitSync('core/update', { dt: 3, tick: 1 });
+      expect(ticks[ticks.length - 1]!.text).toBe('AB');
+
+      // Skip — should cancel pause and reveal C immediately
+      core.events.emitSync('dialogue/advance', {});
+      const last = ticks[ticks.length - 1]!;
+      expect(last.text).toBe('ABC');
+      expect(last.done).toBe(true);
+    });
+  });
 });
