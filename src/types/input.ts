@@ -205,3 +205,143 @@ export interface InputActionTriggeredParams {
   /** Whether the action key was just pressed or released. */
   readonly state: 'pressed' | 'released';
 }
+
+// ---------------------------------------------------------------------------
+// input/gamepad:button:down
+// ---------------------------------------------------------------------------
+
+/**
+ * Parameters for `input/gamepad:button:down`.
+ *
+ * Emitted once when a gamepad button transitions from **released → pressed**.
+ *
+ * Gamepad buttons can also be used in `input/action:bind` via the code format
+ * `'Gamepad:<gamepadIndex>:<buttonIndex>'` (e.g. `'Gamepad:0:0'`).
+ */
+export interface InputGamepadButtonDownParams {
+  /** Zero-based index of the gamepad (matches `navigator.getGamepads()` order). */
+  readonly gamepadIndex: number;
+  /** Zero-based index of the button on the gamepad. */
+  readonly button: number;
+  /** How hard the button is pressed (`0`–`1`). */
+  readonly value: number;
+}
+
+// ---------------------------------------------------------------------------
+// input/gamepad:button:up
+// ---------------------------------------------------------------------------
+
+/**
+ * Parameters for `input/gamepad:button:up`.
+ *
+ * Emitted once when a gamepad button transitions from **pressed → released**.
+ */
+export interface InputGamepadButtonUpParams {
+  /** Zero-based index of the gamepad. */
+  readonly gamepadIndex: number;
+  /** Zero-based index of the button on the gamepad. */
+  readonly button: number;
+}
+
+// ---------------------------------------------------------------------------
+// input/gamepad:axes
+// ---------------------------------------------------------------------------
+
+/**
+ * Parameters for `input/gamepad:axes`.
+ *
+ * Emitted every frame for each connected gamepad that has at least one axis
+ * with an absolute value above the default deadzone (`0.05`).
+ * Use this event for raw analog reading; for digital action mapping prefer
+ * `input/gamepad:axis:bind`.
+ */
+export interface InputGamepadAxesParams {
+  /** Zero-based index of the gamepad. */
+  readonly gamepadIndex: number;
+  /** Current axis values in the range `−1`–`+1`, indexed by axis number. */
+  readonly axes: readonly number[];
+}
+
+// ---------------------------------------------------------------------------
+// input/gamepad:axis:bind
+// ---------------------------------------------------------------------------
+
+/**
+ * Parameters for `input/gamepad:axis:bind`.
+ *
+ * Maps a gamepad analog axis to a logical action, emitting
+ * `input/action:triggered` with `state: 'pressed'` when the axis value
+ * crosses `threshold` and `state: 'released'` when it falls back within
+ * the deadzone.
+ *
+ * @example
+ * ```ts
+ * // Map left-stick horizontal to 'move-right' / 'move-left'
+ * core.events.emitSync('input/gamepad:axis:bind', {
+ *   action: 'move-right',
+ *   axisIndex: 0,
+ *   direction: 'positive',
+ * });
+ * core.events.emitSync('input/gamepad:axis:bind', {
+ *   action: 'move-left',
+ *   axisIndex: 0,
+ *   direction: 'negative',
+ * });
+ * ```
+ */
+export interface InputGamepadAxisBindParams {
+  /** Logical action name to trigger. */
+  readonly action: string;
+  /** Zero-based gamepad index to read from. Defaults to `0`. */
+  readonly gamepadIndex?: number;
+  /** Zero-based axis index on the gamepad. */
+  readonly axisIndex: number;
+  /**
+   * Minimum absolute axis value (exclusive) before the axis is considered
+   * active.  Values within `[−deadzone, +deadzone]` are treated as zero.
+   * Defaults to `0.1`.
+   */
+  readonly deadzone?: number;
+  /**
+   * Axis value (absolute) at which `state: 'pressed'` fires.
+   * Defaults to `0.5`.
+   */
+  readonly threshold?: number;
+  /**
+   * Which half of the axis range triggers the action.
+   * `'positive'` → axis > threshold,
+   * `'negative'` → axis < −threshold,
+   * `'both'` → either direction (default).
+   */
+  readonly direction?: 'positive' | 'negative' | 'both';
+}
+
+// ---------------------------------------------------------------------------
+// input/gamepad:vibrate
+// ---------------------------------------------------------------------------
+
+/**
+ * Parameters for `input/gamepad:vibrate`.
+ *
+ * Requests haptic feedback on a connected gamepad.
+ * Has no effect if the browser or controller does not support vibration.
+ *
+ * @example
+ * ```ts
+ * core.events.emitSync('input/gamepad:vibrate', {
+ *   duration: 200,
+ *   strongMagnitude: 0.8,
+ *   weakMagnitude: 0.3,
+ * });
+ * ```
+ */
+export interface InputGamepadVibrateParams {
+  /** Zero-based gamepad index. Defaults to `0`. */
+  readonly gamepadIndex?: number;
+  /** Vibration duration in milliseconds. */
+  readonly duration: number;
+  /** Low-frequency (strong) motor magnitude in the range `0`–`1`. Defaults to `1`. */
+  readonly strongMagnitude?: number;
+  /** High-frequency (weak) motor magnitude in the range `0`–`1`. Defaults to `1`. */
+  readonly weakMagnitude?: number;
+}
