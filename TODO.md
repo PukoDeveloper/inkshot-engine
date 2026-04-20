@@ -1,142 +1,140 @@
-# TODO — inkshot-engine 缺少功能清單
+# TODO — inkshot-engine 功能清單
 
-以下是目前引擎尚未實作、但對於一個完整 2D 遊戲引擎而言重要的功能，依優先程度排列。
+本文件記錄已完成功能的摘要，以及尚未實作的建議功能，依優先程度排列。
+
+---
+
+## ✅ 已完成功能 (Completed)
+
+以下功能已完整實作並通過測試：
+
+| # | 功能 | Plugin / 模組 |
+|---|------|--------------|
+| 1 | **核心引擎與事件匯流排** — `createEngine()`、`Core`、`EventBus`（同步/非同步、before/after phase、優先權、once） | `Core`, `EventBus` |
+| 2 | **渲染管線** — Pixi.js 整合、多圖層管理、後製特效（`PostFxPipeline`/`ShaderPass`）、固定步長更新（`FixedTimeStep`）、精靈動畫（`AnimationSystem`）、物件池（`ObjectPool`） | `Renderer`, `RenderPipeline`, `PostFxPipeline` |
+| 3 | **攝影機** — 跟隨目標、限制邊界、縮放、震動（`camera/shake`）、攝影機驅動空間音效聆聽者 | `Camera` |
+| 4 | **資源管理** — 非同步資源載入（Pixi Assets）、Bundle 分包、進度回報、預先抓取 | `ResourceManager` |
+| 5 | **輸入系統** — 鍵盤、滑鼠/指標、邏輯 Action 綁定；Gamepad API（軸向映射、震動回饋） | `InputManager` |
+| 6 | **音效系統** — 分類音量控制、淡入淡出、暫停/恢復、空間音效（`PannerNode`）、聆聽者位置更新 | `AudioManager` |
+| 7 | **存檔系統** — 多存檔槽、全域存檔、`LocalStorageSaveAdapter`；before/after phase 掛鉤方便環境擴充 | `SaveManager`, `LocalStorageSaveAdapter` |
+| 8 | **場景管理** — 場景登錄/切換、非同步載入、`LoadingScreen` 進度顯示 | `SceneManager`, `LoadingScreen` |
+| 9 | **實體系統** — 標籤查詢、`SpriteAnimator`（影格動畫定義與播放） | `EntityManager`, `SpriteAnimator` |
+| 10 | **碰撞系統** — AABB/圓形/點形碰撞、Tile 地圖碰撞（實心/單向/斜面）、射線投射、感測器重疊事件 | `CollisionManager` |
+| 11 | **Tilemap 渲染器** — 分塊渲染（10 000×10 000+ Tile）、多圖層、動畫 Tile、Auto-tiling（4/8-bit 遮罩）、碰撞自動同步 | `TilemapManager` |
+| 12 | **粒子系統** — 連續/Burst 模式、重力/風力、形狀發射（point/rect/circle）、貼圖粒子、Pre-warm、RepeatBurst、ObjectPool 整合 | `ParticleManager` |
+| 13 | **補間動畫** — 豐富緩動函式庫、yoyo/loop/repeat、delay、`Timeline` 序列/並行軌道 | `TweenManager`, `Timeline` |
+| 14 | **定時器/排程** — `timer/once`、`timer/interval`、`timer/cooldown`；暫停遊戲時自動凍結 | `TimerManager` |
+| 15 | **尋路系統** — A* 演算法、加權地形、動態障礙物、BFS fallback、LoS 路徑平滑、512 筆 LRU 快取 | `PathfindingManager` |
+| 16 | **UI 元件系統** — Button/Label/Panel/ProgressBar/Slider/ScrollView/Dialog/StackPanel/DialogueBox；anchor 佈局；i18n 整合；自訂元件工廠登錄 | `UIManager` |
+| 17 | **對話系統** — 打字機效果、Rich-text 標記（顏色/速度/暫停）、選項選擇、i18n 整合、`dialoguebox` UI 元件 | `DialogueManager`, `DialogueMarkupParser` |
+| 18 | **腳本系統** — 非同步命令節點執行、多實例並發、內建命令（jump/if/wait/emit/say/choices/fork/call/wait-event）、ScriptError 事件 | `ScriptManager` |
+| 19 | **角色/演員系統** — ActorDef 狀態機、Trigger 條件、腳本掛鉤、批次管理 | `ActorManager` |
+| 20 | **變數儲存** — 命名空間二層 key-value store、深度 clone 快照、與 `save/slot:save`/`save/slot:load` 自動整合、store-set/get/patch 腳本命令 | `VariableStoreManager` |
+| 21 | **本地化 (i18n)** — 動態載入語系檔、插值、複數化、locale 切換廣播、UI/Dialog 自動訂閱 | `LocalizationManager` |
+| 22 | **遊戲狀態管理** — `GamePhase` 狀態機（menu/loading/playing/paused/gameover） | `GameStateManager` |
+| 23 | **插件依賴排序** — `sortPluginsByDependency`，依 `dependencies` 自動拓撲排序初始化順序 | `sortPlugins` |
 
 ---
 
 ## 🔴 高優先
 
-### 1. 粒子系統 (Particle System) ✅
-- [x] 新增 `ParticleManager` plugin（namespace: `particle`）
-- [x] 支援發射器（Emitter）設定：發射速率、方向、散射角、存活時間
-- [x] 支援粒子屬性隨時間變化：位置、縮放、旋轉、透明度、顏色
-- [x] 支援重力與外力（wind、gravity）及每粒子隨機偏差（gravityVariance、windVariance）
-- [x] 支援 Burst（一次性噴發）與持續發射兩種模式
-- [x] 支援旋轉動畫（startRotation、angularVelocity 及其偏差欄位）
-- [x] 支援發射形狀（spawnShape: point / rect / circle）
-- [x] 支援 Texture 貼圖粒子（texture 欄位，使用 Sprite.from）
-- [x] 支援 Pre-warm（preWarm：建立時立即模擬指定 ms）
-- [x] 支援 RepeatBurst（repeatBurst + repeatInterval：burst 自動循環）
-- [x] 透過 EventBus 控制：`particle/emit`、`particle/stop`、`particle/clear`
-- [x] 透過 EventBus 移動發射器：`particle/move`
-- [x] 透過 EventBus 暫停/恢復：`particle/pause`、`particle/resume`
-- [x] 透過 EventBus 熱更新設定：`particle/update`
-- [x] 透過 EventBus 查詢計數：`particle/count`（回傳 emitterCount、particleCount）
-- [x] 與 `ObjectPool` 整合，避免 GC 壓力
-- [x] 事件：`particle/complete`（Burst 自然結束 或 持續發射器 duration 結束後最後粒子死亡時發出）
+### 1. 開發者偵錯工具 (Debug / Dev Tools Overlay)
+- [ ] 新增 `DebugPlugin`（namespace: `debug`），僅在開發模式下載入
+- [ ] FPS 計數器與幀時間折線圖（顯示 16 ms 基準線）
+- [ ] 碰撞框（Collider）可視化：繪製 AABB、圓形、斜面輪廓，顏色依圖層（BODY/HITBOX/SENSOR）區分
+- [ ] 實體 Inspector：列出所有活躍實體及其 tags、position、data
+- [ ] Tilemap 格線疊加層，標示 chunk 邊界與碰撞 tile
+- [ ] EventBus 事件日誌面板（記錄最近 N 個事件，支援關鍵字篩選）
+- [ ] 快速鍵切換 overlay 顯示/隱藏（預設 `` ` `` / F12）
 
-### 2. Tilemap 渲染器 (Tilemap Renderer) ✅
-- [x] 新增 `TilemapManager` plugin（namespace: `tilemap`）
-- [x] 分塊渲染（Chunk-based rendering）：地圖切分為 N×N Tile 的 Chunk，每個 Chunk 設 `cullable=true`，Pixi 自動略過不在視口內的 Chunk，支援 10 000×10 000+ Tile 規模地圖
-- [x] 支援多圖層（Multiple layers）：任意數量圖層，每層可獨立設定 opacity、visible、zOffset
-- [x] 支援動態 Tile（動畫 Tile）：`animatedTiles` 定義多幀序列，由 `core/update` 驅動，直接更新 Sprite 貼圖不重建整個 Chunk
-- [x] 支援 Auto-tiling（自動連接）：4-bit / 8-bit 相鄰遮罩，`autoConnect:true` 自動對放置格與周邊格重算 variant Tile ID
-- [x] 與現有 `CollisionManager` 的 `collision/tilemap:set` 整合（圖層設 `collider:true` 自動同步碰撞資料）
-- [x] 事件：`tilemap/load`、`tilemap/unload`、`tilemap/set-tile`、`tilemap/get-tile`、`tilemap/loaded`、`tilemap/unloaded`
-- [x] 直接 API：`getTile()`、`setTile()`
+### 2. 物理引擎整合 (Physics Engine Adapter)
+- [ ] 新增 `PhysicsPlugin` 抽象介面（namespace: `physics`）
+- [ ] 提供 [Matter.js](https://brm.io/matter-js/) 適配器（輕量，適合瀏覽器）
+- [ ] 提供 [Rapier.js](https://rapier.rs/) WASM 適配器（高效能剛體/軟體模擬）
+- [ ] 事件：`physics/body:add`、`physics/body:remove`、`physics/impulse`、`physics/collision` 回呼
+- [ ] 與 `EntityManager` 位置同步（物理步驟後更新 entity.position）
 
 ---
 
 ## 🟠 中高優先
 
-### 3. 定時器 / 排程系統 (Timer / Scheduler) ✅
-- [x] 新增 `TimerManager` plugin（namespace: `timer`）
-- [x] 支援單次延遲回呼：`timer/once`（delay ms 後執行）
-- [x] 支援重複間隔回呼：`timer/interval`
-- [x] 支援冷卻查詢：`timer/cooldown`（是否已過冷卻期）
-- [x] 所有計時器綁定至 `core/tick`，暫停遊戲時自動暫停
-- [x] 事件：`timer/cancelled`、`timer/fired`
+### 3. 觸控與手勢輸入 (Touch / Gesture Input)
+- [ ] 擴充 `InputManager`，辨識多點觸控（Multi-touch）
+- [ ] 支援常見手勢：捏合縮放（Pinch-zoom）、雙指旋轉、滑動（Swipe）
+- [ ] 映射手勢至邏輯 action，與鍵盤/手柄統一接口
 
-### 4. 手柄 / 控制器輸入 (Gamepad Support) ✅
-- [x] 擴充 `InputManager`，加入瀏覽器 Gamepad API 支援
-- [x] 映射搖桿軸向（Analog Axes）至邏輯 action
-- [x] 支援按鍵下壓、放開的標準事件：`input/gamepad:button:down`、`input/gamepad:button:up`
-- [x] 支援震動回饋（Haptic Feedback，若瀏覽器支援）
-- [x] 可在 `input/action:bind` 中同時綁定鍵盤與手柄按鍵
+### 4. Tiled 地圖編輯器整合 (Tiled Map Editor Import)
+- [ ] 新增 `TiledLoader` 工具函式，解析 `.tmj`（Tiled JSON）格式
+- [ ] 將 Tiled 圖層、物件圖層（Object Layer）轉換為 `TilemapData` 與 `ActorDef`
+- [ ] 支援 Tiled 的 Tile 屬性（自訂 collision shape、animated tile 設定）
+- [ ] 支援 Wang Tile（Tiled 的 auto-tiling 格式）轉換為 `AutotileGroupDef`
+
+### 5. 輸入錄製與回放 (Input Recording & Playback)
+- [ ] 新增 `InputRecorder` plugin，逐幀記錄所有輸入事件（按鍵、指標、手柄）
+- [ ] 支援序列化為 JSON 並持久化（配合 `SaveManager`）
+- [ ] 回放模式：注入錄製的輸入序列，可用於自動測試、Demo 錄影、遊戲回放
 
 ---
 
 ## 🟡 中優先
 
-### 5. UI 元件系統 (UI Widget System) ✅
-- [x] 新增 `UIManager` plugin（namespace: `ui`）
-- [x] 內建基礎元件：`Button`、`Label`、`Panel`、`ProgressBar`、`Slider`
-- [x] 支援 `ScrollView` 和 `Dialog`（含確認/取消按鈕）
-- [x] 元件支援 i18n 文字（自動訂閱 `i18n/changed`）
-- [x] 事件驅動：`ui/show`、`ui/hide`、`ui/destroy`
-- [x] 支援簡易佈局（anchor、padding、stack layout）
-- [x] 彈性元件工廠登錄系統：`ui/register` 事件 + `uiManager.register()` 直接 API，可在任意時機掛載自訂元件類型（`myGame/healthbar` 等）
-- [x] 內建 `dialoguebox` 元件：整合 `DialogueManager` 事件，渲染說話者名稱、帶 Rich-text 標記的對話文字、選項按鈕、繼續提示符
+### 6. 小地圖系統 (Minimap)
+- [ ] 新增 `MinimapPlugin`（namespace: `minimap`），以低解析度縮圖渲染世界地圖
+- [ ] 支援自訂圖標（玩家、NPC、敵人、事件點）疊加
+- [ ] 支援霧效（探索過的區域才顯示）
+- [ ] 可掛載至 UI 層的任意位置
 
-### 6. 空間音效 (Spatial / Positional Audio) ✅
-- [x] 擴充 `AudioManager`，加入 `PannerNode` 支援
-- [x] `audio/play` 新增 `position: { x, y }` 可選參數
-- [x] 根據攝影機位置自動計算音量衰減與左右聲道平移
-- [x] 新增 `audio/listener:update` 事件，讓 Camera 驅動音訊聆聽者位置
-- [x] 支援最大聆聽距離與衰減曲線設定
-- [x] 修正：`audio/resume` 保留空間音效路徑（新建 source 透過 `pannerNode ?? gainNode` 重連）
-- [x] 修正：`audio/source:move` 在實例無 PannerNode 時發出 `console.warn` 開發警告
+### 7. 視野 / 迷霧系統 (Fog of War / Line-of-Sight)
+- [ ] 新增 `FogOfWarPlugin`（namespace: `fog`）
+- [ ] 以 tile 為單位追蹤探索狀態（unexplored / explored / visible）
+- [ ] 以遮罩貼圖或 Pixi Graphics 繪製迷霧
+- [ ] 支援視野角度與距離限制（扇形 LoS）
+- [ ] 事件：`fog/tile:revealed`（tile 首次進入視野）
 
-### 7. 尋路系統 (Pathfinding) ✅
-- [x] 新增 `PathfindingManager` plugin（namespace: `pathfinding`）
-- [x] 實作 A* 演算法，以 tilemap 為地圖來源
-- [x] 支援加權地形（不同 tile 移動代價）
-- [x] 支援動態障礙物（`includeDynamicObstacles`，透過 `tagFilter` 精確限制對象）
-- [x] 修正：起始格不可通行檢查（實體在牆內時直接回傳 `found: false`）
-- [x] 監聽 `tilemap/set-tile`：單格 O(1) 更新，無需整體重建地圖
-- [x] 事件：`pathfinding/find`（params: `from`, `to`, `tagFilter`, `fallbackToNearest`, `smoothPath` → output: `path[]`, `cost`, `nearest`）
-- [x] 路徑快取機制（512 筆 LRU，避免無上限增長）
-- [x] `pathfinding/weight:set` 事件：覆蓋特定 tile 值的移動代價
-- [x] `pathfinding/cache:clear` 事件：手動清除快取
-- [x] `fallbackToNearest`：目標在牆內時 BFS 找最近可通行格，結果回傳於 `output.nearest`
-- [x] `smoothPath`：字串拉扯（Bresenham LoS）後處理，消除斜角路徑鋸齒
+### 8. 過場動畫 / 演出系統 (Cutscene / Cinematic System)
+- [ ] 新增 `CutscenePlugin`（namespace: `cutscene`），以 Timeline 為底層驅動
+- [ ] 整合 `ScriptManager` 腳本指令（`cutscene/play`、`cutscene/skip`）
+- [ ] 支援攝影機軌道（平移、縮放、震動）與角色行走、對話的同步排程
+- [ ] 過場期間可選擇性鎖定玩家輸入
 
-### 8. 對話框顯示系統 (Dialogue Box Display) ✅
-- [x] 新增 `DialogueManager` plugin（namespace: `dialogue`）
-- [x] 純呈現層：不含對話樹、條件判斷或節點跳轉（由未來腳本系統控制流程）
-- [x] 命令事件：`dialogue/show-text`（啟動打字機）、`dialogue/show-choices`（顯示選項）、`dialogue/advance`、`dialogue/choice`、`dialogue/end`
-- [x] 回饋事件：`dialogue/advanced`（文字顯示完畢後玩家推進，供腳本系統接收）、`dialogue/choice:made`（玩家選擇，供腳本系統接收）
-- [x] 支援打字機效果（字元逐一顯示，可用 `dialogue/advance` 跳過）
-- [x] 與 `i18n/t` 整合，`dialogue/show-text` 支援 `i18nKey`
-- [x] 內建 `dialoguebox` UIWidget：訂閱對話事件、顯示說話者名稱、對話文字、選項按鈕、繼續提示符
-- [x] Rich-text 標記系統（`DialogueMarkupParser`）：
-  - [x] `[c=#rrggbb]…[/c]` / `[color=#rrggbb]…[/color]`：行內文字變色（支援 3 位與 6 位 hex）
-  - [x] `[speed=n]…[/speed]`：區段打字機速度覆蓋（chars/sec）
-  - [x] `[pause=n]`：暫停打字機 n 毫秒（自閉合 tag）
-  - [x] 未知 tag 靜默忽略；未閉合 block tag 自動在字串末尾閉合
-  - [x] `dialogue/text:tick` 附帶 `segments: DialogueTextSegment[]`，供渲染層使用
-  - [x] `dialoguebox` 使用 PixiJS `HTMLText` 渲染帶色段落（`<span style="color:…">`）
-  - [x] Parser 函式（`parseDialogueMarkup`, `buildTextSegments`, `getSpeedAtIndex`）從主索引公開 export
-  - [x] 防 ReDoS：tag 正規表達式限制括號巢狀，確保 O(n) 回溯
+### 9. 成就系統 (Achievement System)
+- [ ] 新增 `AchievementPlugin`（namespace: `achievement`）
+- [ ] 成就定義：id、名稱、描述、圖示、觸發條件（事件 + 條件表達式）
+- [ ] 透過 `VariableStoreManager` 持久化解鎖進度
+- [ ] 事件：`achievement/unlocked`（解鎖時廣播，供 UI 顯示提示）
+- [ ] 支援多步驟成就（進度追蹤，例如「擊倒 100 名敵人」）
 
 ---
 
 ## 🔵 低優先
 
-### 9. 開發者偵錯工具 (Debug / Dev Tools Overlay)
-- [ ] 新增 `DebugPlugin`（namespace: `debug`），僅在開發模式下載入
-- [ ] 顯示 FPS 計數器與幀時間圖表
-- [ ] 碰撞框（Collider）可視化（繪製 AABB / 圓形輪廓）
-- [ ] 實體 Inspector（列出所有活躍實體及其 tags / data）
-- [ ] EventBus 事件日誌（記錄最近 N 個事件）
-- [ ] 快速鍵切換 debug overlay 顯示 / 隱藏
+### 10. 程序生成工具 (Procedural Generation Utilities)
+- [ ] 提供 Simplex/Perlin Noise 工具函式（地形生成、隨機材質）
+- [ ] BSP（Binary Space Partitioning）地下城生成器
+- [ ] 隨機種子管理（確保可重現的生成結果）
+
+### 11. Web Worker 支援 (Web Worker Offloading)
+- [ ] 將 `PathfindingManager` 的 A* 計算移至 Worker，避免主執行緒卡頓
+- [ ] 提供通用 `WorkerBridge`，讓任意 plugin 可將耗時運算 offload 至 Worker
+- [ ] Worker 回傳結果後透過 EventBus 廣播，保持架構一致
 
 ---
 
 ## ⚪ 未來考量
 
-### 10. 網路 / 多人聯機 (Networking)
+### 12. 網路 / 多人聯機 (Networking)
 - [ ] 新增 `NetworkManager` plugin（namespace: `network`）
-- [ ] 抽象化底層傳輸（WebSocket / WebRTC）
+- [ ] 抽象化底層傳輸（WebSocket / WebRTC Data Channel）
 - [ ] 提供簡易的 RPC / 事件同步介面
 - [ ] 支援 Rollback Netcode 或 Lockstep 同步模型（擇一）
 - [ ] 事件：`network/connect`、`network/disconnect`、`network/message`
 
-### 11. 資料持久化擴充 (Persistence Adapters)
-- [ ] 新增 `IndexedDBSaveAdapter`（適合大型存檔資料）
-- [ ] 新增 `CloudSaveAdapter` 介面（供第三方後端實作）
+### 13. 資料持久化擴充 (Persistence Adapters)
+- [ ] 新增 `IndexedDBSaveAdapter`（適合大型存檔、二進位資料）
+- [ ] 新增 `CloudSaveAdapter` 抽象介面（供第三方後端實作）
 - [ ] 存檔版本遷移（migration）工具，處理舊版存檔格式升級
 
-### 12. 熱重載與插件動態更新 (Hot Reload / Live Update)
+### 14. 熱重載與插件動態更新 (Hot Reload / Live Update)
 - [ ] 支援在不重啟引擎的情況下重新載入場景或 plugin
-- [ ] 資源熱替換（修改圖片後自動更新 Pixi cache）
+- [ ] 資源熱替換（修改圖片後自動更新 Pixi texture cache）
+- [ ] 整合 Vite HMR API，開發期自動觸發場景重新載入
