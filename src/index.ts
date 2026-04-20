@@ -368,6 +368,22 @@ export type {
   ActorStateChangedParams,
 } from './types/actor.js';
 
+// Variable store system
+export { VariableStoreManager } from './plugins/VariableStoreManager.js';
+export type {
+  StoreNamespace,
+  StoreSnapshot,
+  StoreSetParams,
+  StoreGetParams,
+  StoreGetOutput,
+  StorePatchParams,
+  StoreGetNamespaceParams,
+  StoreGetNamespaceOutput,
+  StoreClearNamespaceParams,
+  StoreSnapshotOutput,
+  StoreRestoreParams,
+} from './types/store.js';
+
 // Script system
 export { ScriptManager } from './plugins/ScriptManager.js';
 export type {
