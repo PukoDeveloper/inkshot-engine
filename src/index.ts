@@ -124,8 +124,12 @@ export type {
 
 // Collision system
 export { CollisionManager } from './plugins/CollisionManager.js';
+export type { CollisionManagerOptions } from './plugins/CollisionManager.js';
 export { CollisionLayer } from './types/collision.js';
 export type {
+  TileCollisionShape,
+  TileShapeContext,
+  TileShapeResolver,
   ColliderShape,
   RectShape,
   CircleShape,

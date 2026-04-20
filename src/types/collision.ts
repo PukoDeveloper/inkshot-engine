@@ -83,6 +83,85 @@ export interface Collider {
 }
 
 // ---------------------------------------------------------------------------
+// Tile collision shapes
+// ---------------------------------------------------------------------------
+
+/**
+ * Built-in tile collision shapes.
+ *
+ * | Shape        | Behaviour                                                        |
+ * |--------------|------------------------------------------------------------------|
+ * | `'solid'`    | Full impassable block on all sides.                              |
+ * | `'empty'`    | Explicitly passable (overrides the default pass-through).        |
+ * | `'top-only'` | One-way platform — blocks downward movement only when the        |
+ * |              | entity's bottom was above the tile top before the move.          |
+ * | `'slope-ne'` | ◣ Floor slope rising left-to-right. Blocks downward movement.    |
+ * | `'slope-nw'` | ◢ Floor slope falling left-to-right. Blocks downward movement.   |
+ * | `'slope-se'` | ◤ Ceiling slope descending left-to-right. Blocks upward movement. |
+ * | `'slope-sw'` | ◥ Ceiling slope ascending left-to-right. Blocks upward movement.  |
+ *
+ * Pass any other string for a custom shape handled by
+ * {@link CollisionManagerOptions.customShapeResolvers}.
+ */
+export type TileCollisionShape =
+  | 'solid'
+  | 'empty'
+  | 'top-only'
+  | 'slope-ne'
+  | 'slope-nw'
+  | 'slope-se'
+  | 'slope-sw';
+
+/**
+ * Context passed to a {@link TileShapeResolver}.
+ */
+export interface TileShapeContext {
+  /** World-space X of the tile's left edge. */
+  tileX: number;
+  /** World-space Y of the tile's top edge. */
+  tileY: number;
+  /** Tile size in pixels (square tiles). */
+  tileSize: number;
+  /** Entity AABB in world space after the partial move on the current axis. */
+  entityAABB: { left: number; top: number; right: number; bottom: number };
+  /** The entity's collider shape (for offset / size data). */
+  entityShape: ColliderShape;
+  /** Entity world X after the move. */
+  entityX: number;
+  /** Entity world Y after the move. */
+  entityY: number;
+  /**
+   * Horizontal displacement for this move.
+   * `0` when the Y axis is being resolved.
+   */
+  dx: number;
+  /**
+   * Vertical displacement for this move.
+   * `0` when the X axis is being resolved.
+   */
+  dy: number;
+  /** Which axis is currently being resolved. */
+  axis: 'x' | 'y';
+}
+
+/**
+ * A function that resolves collision for a custom tile shape.
+ *
+ * Resolvers are tried in order; the first non-`null` result wins.
+ *
+ * @param shape  The shape string registered in `tileShapes`.
+ * @param ctx    Collision context for the current entity / tile pair.
+ * @returns `{ blocked: true, resolved }` to snap the entity on this axis,
+ *          `{ blocked: false, resolved }` to allow the move,
+ *          or `null` to pass handling to the next resolver (or default to
+ *          no collision when all resolvers return `null`).
+ */
+export type TileShapeResolver = (
+  shape: string,
+  ctx: TileShapeContext,
+) => { blocked: boolean; resolved: number } | null;
+
+// ---------------------------------------------------------------------------
 // Tilemap collision data
 // ---------------------------------------------------------------------------
 
@@ -95,8 +174,24 @@ export interface TileCollisionMapData {
    * `layers[row][col]` is the tile value at that cell.
    */
   layers: number[][];
-  /** Tile values that are treated as solid (impassable). */
-  solidValues: number[];
+  /**
+   * Maps tile values to their collision shape.
+   *
+   * Tile values absent from this record are treated as passable.
+   * Use {@link TileCollisionShape} strings for built-in behaviours, or any
+   * other string for custom shapes handled by
+   * {@link CollisionManagerOptions.customShapeResolvers}.
+   *
+   * @example
+   * ```ts
+   * tileShapes: {
+   *   1: 'solid',      // full block
+   *   2: 'top-only',   // one-way platform
+   *   3: 'slope-ne',   // ◣ ramp
+   * }
+   * ```
+   */
+  tileShapes: Record<number, TileCollisionShape | string>;
 }
 
 // ---------------------------------------------------------------------------

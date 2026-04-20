@@ -1,4 +1,5 @@
 import type { Filter } from 'pixi.js';
+import type { TileCollisionShape } from './collision.js';
 
 // ---------------------------------------------------------------------------
 // Tileset
@@ -218,16 +219,29 @@ export interface TilemapLayerDef {
   zOffset?: number;
 
   /**
-   * When `true`, the layer's solid tile data is automatically synchronised
+   * When `true`, the layer's tile shape data is automatically synchronised
    * to the `CollisionManager` via `collision/tilemap:set`.
    */
   collider?: boolean;
 
   /**
-   * Global tile IDs in this layer that are treated as **solid** (impassable).
+   * Maps global tile IDs in this layer to their collision shape.
    * Required when `collider` is `true`; ignored otherwise.
+   *
+   * Use {@link TileCollisionShape} strings for built-in shapes (`'solid'`,
+   * `'top-only'`, `'slope-ne'`, etc.), or any other string for custom shapes
+   * handled by `CollisionManagerOptions.customShapeResolvers`.
+   *
+   * @example
+   * ```ts
+   * tileShapes: {
+   *   1: 'solid',
+   *   2: 'top-only',
+   *   3: 'slope-ne',
+   * }
+   * ```
    */
-  solidTileIds?: number[];
+  tileShapes?: Record<number, TileCollisionShape | string>;
 
   /**
    * One or more Pixi `Filter` objects applied to this layer's `Container`.
