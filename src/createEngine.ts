@@ -2,6 +2,8 @@ import { Core } from './core/Core.js';
 import type { CoreOptions } from './core/Core.js';
 import { Renderer } from './rendering/Renderer.js';
 import type { EnginePlugin, PluginSource } from './types/plugin.js';
+export { sortPluginsByDependency } from './core/sortPlugins.js';
+import { sortPluginsByDependency } from './core/sortPlugins.js';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -131,8 +133,18 @@ export async function createEngine(options: EngineOptions = {}): Promise<EngineI
   // ── 3. Load & initialize plugins ─────────────────────────────────────────
   const loadedPlugins: EnginePlugin[] = [];
 
+  // First resolve every source (dynamic import for URL entries) so we can
+  // inspect `dependencies` declarations before starting any init() call.
+  const resolved: EnginePlugin[] = [];
   for (const source of pluginSources) {
-    const plugin = await resolvePlugin(source);
+    resolved.push(await resolvePlugin(source));
+  }
+
+  // Sort by declared dependencies (topological) so init order is correct
+  // regardless of the order the caller supplied plugins.
+  const ordered = sortPluginsByDependency(resolved);
+
+  for (const plugin of ordered) {
     await plugin.init(core);
     loadedPlugins.push(plugin);
   }

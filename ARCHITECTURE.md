@@ -113,7 +113,8 @@ Within a phase, listeners with a **higher** `priority` number run first (default
 
 ```ts
 interface EnginePlugin {
-  readonly namespace: string;          // e.g. 'audio', 'saves', 'myGame/combat'
+  readonly namespace: string;               // e.g. 'audio', 'saves', 'myGame/combat'
+  readonly dependencies?: readonly string[]; // namespaces that must init first
   init(core: Core): void | Promise<void>;
   destroy?(core: Core): void | Promise<void>;
 }
@@ -127,7 +128,7 @@ A well-behaved plugin:
 2. **Communicates only through the event bus** — it does not call methods on other plugins directly.
 3. **Releases all resources in `destroy()`** — unsubscribe from events, cancel timers, free assets.
 4. **Declares a unique `namespace`** that matches the prefix used for its own events.
-5. **Does not assume load order** beyond what is guaranteed by the `plugins` array ordering in `EngineOptions`.
+5. **Declares its prerequisites in `dependencies`** so `createEngine` can guarantee correct init order regardless of how the caller orders the `plugins` array.
 
 ### 3.3 Plugin Sources
 
@@ -135,6 +136,42 @@ Plugins may be supplied as:
 
 - **Objects** (TypeScript class instances / plain objects) — recommended for first-party plugins.
 - **URL strings** — the factory will dynamically `import()` the module and expect its `default` export to be an `EnginePlugin`.  Useful for lazy-loading or third-party plugins served from a CDN.
+
+### 3.4 Dependency Declaration & Init Order
+
+`createEngine` performs a **topological sort** (stable Kahn's algorithm) on all registered plugins before calling any `init()`.  This means the order in which plugins appear in the `plugins` array does **not** need to match the dependency order — only the `dependencies` field matters.
+
+```ts
+class CollisionManager implements EnginePlugin {
+  readonly namespace = 'collision';
+  // CollisionManager uses entity/query at runtime → EntityManager must be ready first
+  readonly dependencies = ['entity'] as const;
+
+  init(core: Core) { ... }
+}
+
+// The caller can supply plugins in any order:
+createEngine({
+  plugins: [
+    new CollisionManager(), // listed before EntityManager — still init'd after it
+    new SceneManager(),
+    new EntityManager(),
+  ],
+});
+```
+
+**Rules enforced at startup:**
+
+| Situation | Result |
+|---|---|
+| Dependency not in the `plugins` list | `createEngine` throws immediately |
+| Circular dependency (A → B → A) | `createEngine` throws immediately |
+| Duplicate `namespace` values | `createEngine` throws immediately |
+| No `dependencies` field | Plugin is treated as having no prerequisites |
+
+When no ordering constraint exists between two plugins, their relative order from the original `plugins` array is preserved (stable sort).
+
+`destroy()` is always called in **reverse init order**, so teardown mirrors startup automatically.
 
 ---
 
@@ -607,18 +644,21 @@ Engine starts
 
 ### 9.2 Recommended Plugin Initialisation Order
 
-```
+Because each built-in plugin declares its `dependencies`, `createEngine` automatically sorts them into the correct sequence.  The order in the `plugins` array no longer needs to be manually maintained:
+
+```ts
 createEngine({
   plugins: [
-    new ResourceManager(),       // must be first — others depend on assets/preload
+    new ResourceManager(),
     new AudioManager(),
     new LocalizationManager(),
     new InputManager(),
     new SaveManager(),
     new GameStateManager(),
     new EntityManager(),
-    new SceneManager(),          // scenes depend on all of the above
-    new TweenManager(),          // animation — can go anywhere after Core
+    new CollisionManager(),   // declares dependencies: ['entity'] — sorted automatically
+    new SceneManager(),
+    new TweenManager(),
   ],
 });
 ```
@@ -637,6 +677,7 @@ createEngine()
     ├── SaveManager.init()          → registers save/slot:*, save/global:*
     ├── GameStateManager.init()     → registers game/state:set, game/state:get
     ├── EntityManager.init()        → registers entity/create, entity/destroy, …
+    ├── CollisionManager.init()     → registers collision/move, collision/query, …
     ├── SceneManager.init()         → registers scene/register, scene/load, …
     │
     ├── (your game plugin — preload assets, register scenes, set initial state)
@@ -677,7 +718,196 @@ core.events.on('myGame', 'game/started', async () => {
 
 ---
 
-## 10. File & Module Conventions
+## 10. Collision System (CollisionManager)
+
+The `CollisionManager` is a built-in `EnginePlugin` (namespace `collision`) that provides 2D collision detection, movement resolution, spatial queries, and raycasting.
+
+### 10.1 Design
+
+**Unified pixel space.** All positions use the same coordinate system as `EntityManager`.  Tile-grid utilities convert tile coordinates to and from pixel space on demand, so pixel-movement and grid-movement games — and hybrids of both — work without extra configuration.
+
+**Colliders stored per entity.** When a collider is attached via `collision/collider:add` the manager stores it internally (keyed by entity ID).  There are no changes to the `Entity` interface.  Colliders are automatically cleaned up when their owning entity is destroyed (`entity/destroyed`).
+
+### 10.2 Collider Shapes
+
+| Shape    | Required fields     | Description                        |
+|----------|---------------------|------------------------------------|
+| `rect`   | `width`, `height`   | Axis-aligned bounding box (AABB)   |
+| `circle` | `radius`            | Circle collider                    |
+| `point`  | —                   | Zero-size point                    |
+
+All shapes accept optional `offsetX` / `offsetY` fields, relative to the entity's logical position.
+
+### 10.3 Collision Layers
+
+Use `CollisionLayer` constants and combine with bitwise `|`:
+
+```ts
+import { CollisionLayer } from 'inkshot-engine';
+
+const layer = CollisionLayer.BODY | CollisionLayer.HURTBOX;
+```
+
+| Constant  | Bit | Purpose                                                      |
+|-----------|-----|--------------------------------------------------------------|
+| `BODY`    |   1 | Physical obstacle — blocked by solid tiles and other bodies  |
+| `HITBOX`  |   2 | Deals damage (weapon swing area)                             |
+| `HURTBOX` |   4 | Receives damage (character body)                             |
+| `SENSOR`  |   8 | Overlap detection without physical blocking                  |
+
+### 10.4 Event Contract
+
+| Event                        | Async? | Description                                     |
+|------------------------------|--------|-------------------------------------------------|
+| `collision/collider:add`     | ✗ sync | Attach a shape + layer mask to an entity        |
+| `collision/collider:remove`  | ✗ sync | Detach a collider from an entity                |
+| `collision/tilemap:set`      | ✗ sync | Register or replace the active tile map         |
+| `collision/move`             | ✗ sync | Move a BODY entity with full collision resolution; returns resolved `(x, y)` and `blockedX`/`blockedY` flags |
+| `collision/query`            | ✗ sync | Return entity IDs whose colliders overlap a given shape + layer mask |
+| `collision/raycast`          | ✗ sync | Cast a ray; return the first hit entity or tile |
+| `collision/grid:snap`        | ✗ sync | Snap pixel coordinates to the nearest tile-grid corner |
+| `collision/grid:worldToTile` | ✗ sync | Convert pixel coords → tile `{ row, col }`      |
+| `collision/grid:tileToWorld` | ✗ sync | Convert tile `{ row, col }` → pixel top-left    |
+| `collision/hit`              | emitted | Fired on the **first frame** a hitbox contacts a hurtbox; `{ attackerId, victimId }` |
+| `collision/overlap`          | emitted | Fired when a sensor overlap begins (`entered: true`) or ends (`entered: false`) |
+
+### 10.5 Movement Resolution
+
+`collision/move` resolves axes **independently** (X first, then Y) to prevent corner-cutting:
+
+```
+1. Apply dx  →  check tile AABB  →  check BODY entities  →  snap if blocked
+2. Apply dy  →  check tile AABB  →  check BODY entities  →  snap if blocked
+3. [BODY colliders with movementMode:'grid'] snap to tile grid
+```
+
+The `blockedX` / `blockedY` flags let game code react (e.g. zero out velocity when hitting a floor or wall).
+
+### 10.6 Tilemap Format
+
+```ts
+core.events.emitSync('collision/tilemap:set', {
+  tileSize: 16,
+  layers: [
+    [0, 0, 0, 0],   // row 0 — open
+    [0, 0, 0, 0],   // row 1 — open
+    [1, 1, 1, 1],   // row 2 — solid floor
+  ],
+  solidValues: [1], // tile values treated as solid
+});
+```
+
+Internally the manager builds an O(1) `Set<"row,col">` lookup so per-frame tile checking adds negligible overhead regardless of map size.
+
+### 10.7 Pixel Mode vs Grid Mode
+
+| `movementMode` | Behaviour |
+|---|---|
+| `'pixel'` (default) | Free sub-pixel movement; collision resolution snaps to tile boundaries only when blocked. |
+| `'grid'` | Same resolution, but the entity is additionally snapped to the nearest tile corner after each `collision/move`. Useful for strict tile-locked movement (e.g. puzzle RPGs). |
+
+### 10.8 Ranged Weapons
+
+Two composable patterns — no changes to `CollisionManager` needed for either:
+
+**Hitscan (instant):** emit `collision/raycast` from the muzzle origin.  The first `HURTBOX` entity (or solid tile) in the ray's path is the hit.
+
+**Physical projectiles (arrows, fireballs):** spawn a projectile entity tagged `['projectile']` with a `circle` collider on the `HITBOX` layer.  `CollisionManager` automatically emits `collision/hit` on the first frame it overlaps a `HURTBOX` entity.
+
+### 10.9 Usage
+
+```ts
+import { createEngine, EntityManager, CollisionManager, CollisionLayer } from 'inkshot-engine';
+
+const { core } = await createEngine({
+  plugins: [
+    new EntityManager(),
+    new CollisionManager(),  // must come after EntityManager
+  ],
+});
+
+// ── Register tilemap ────────────────────────────────────────────────────
+core.events.emitSync('collision/tilemap:set', {
+  tileSize: 16,
+  layers: myTileData,
+  solidValues: [1, 2],
+});
+
+// ── Attach colliders ────────────────────────────────────────────────────
+const { output } = core.events.emitSync('entity/create', {
+  tags: ['player'], position: { x: 64, y: 64 },
+});
+const player = output.entity;
+
+core.events.emitSync('collision/collider:add', {
+  entityId: player.id,
+  shape: { type: 'rect', width: 14, height: 20, offsetX: -7, offsetY: -10 },
+  layer: CollisionLayer.BODY | CollisionLayer.HURTBOX,
+});
+
+// ── Move each fixed update ──────────────────────────────────────────────
+core.events.on('myGame', 'core/update', ({ dt }) => {
+  const { output: move } = core.events.emitSync('collision/move', {
+    entityId: player.id,
+    dx: velocityX * dt,
+    dy: velocityY * dt,
+  });
+  if (move.blockedY && velocityY > 0) velocityY = 0; // landed
+  if (move.blockedX) velocityX = 0;                  // hit a wall
+});
+
+// ── Query nearby enemies ────────────────────────────────────────────────
+const { output: q } = core.events.emitSync('collision/query', {
+  shape: { type: 'circle', radius: 80 },
+  position: player.position,
+  layerMask: CollisionLayer.HURTBOX,
+  excludeEntityId: player.id,
+});
+// q.entities → IDs of all nearby hurtbox entities
+
+// ── Hitscan attack ──────────────────────────────────────────────────────
+const { output: ray } = core.events.emitSync('collision/raycast', {
+  origin: player.position,
+  direction: { x: 1, y: 0 },
+  maxDistance: 200,
+  layerMask: CollisionLayer.HURTBOX,
+});
+if (ray.hit && ray.entityId) applyDamage(ray.entityId, 25);
+
+// ── React to combat events ──────────────────────────────────────────────
+core.events.on('combat', 'collision/hit', ({ attackerId, victimId }) => {
+  applyDamage(victimId, 10);
+});
+core.events.on('triggers', 'collision/overlap', ({ entityAId, entityBId, entered }) => {
+  if (entered) openDoor(entityAId, entityBId);
+});
+```
+
+### 10.10 Recommended Plugin Order
+
+`CollisionManager` must be registered **after** `EntityManager` because it uses
+`entity/query` to read entity positions at runtime:
+
+```ts
+createEngine({
+  plugins: [
+    new ResourceManager(),
+    new AudioManager(),
+    new LocalizationManager(),
+    new InputManager(),
+    new SaveManager(),
+    new GameStateManager(),
+    new EntityManager(),
+    new CollisionManager(),   // ← after EntityManager
+    new SceneManager(),
+    new TweenManager(),
+  ],
+});
+```
+
+---
+
+## 11. File & Module Conventions
 
 | Path | Purpose |
 |---|---|
@@ -699,6 +929,7 @@ Built-in plugins in `src/plugins/`:
 | `ResourceManager.ts` | `assets` | Multi-mode asset loading with cache-first guarantee |
 | `LocalizationManager.ts` | `i18n` | JSON locale loading, key lookup, variable substitution, and token interpolation |
 | `SceneManager.ts` | `scene` | Scene registration, lifecycle management, and transition orchestration |
+| `CollisionManager.ts` | `collision` | 2D collision detection, movement resolution, spatial queries, and raycasting |
 | `TweenManager.ts` | `tween` | Property-based animation driver; hosts `Tween` and `Timeline` objects |
 | `Timeline.ts` | _(n/a)_ | Fluent builder for sequenced/parallel tween animations (used via `TweenManager`) |
 
