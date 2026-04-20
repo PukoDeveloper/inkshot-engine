@@ -359,7 +359,9 @@ export class AudioManager implements EnginePlugin {
         const newSource = ctx.createBufferSource();
         newSource.buffer = buffer;
         newSource.loop = inst.loop;
-        newSource.connect(inst.gainNode);
+        // Reconnect through the panner node if this is a spatial instance,
+        // otherwise connect directly to the per-instance gain node.
+        newSource.connect(inst.pannerNode ?? inst.gainNode);
 
         const instanceId = params.instanceId;
         newSource.onended = () => {
@@ -522,7 +524,18 @@ export class AudioManager implements EnginePlugin {
       'audio/source:move',
       (params) => {
         const inst = this._instances.get(params.instanceId);
-        if (!inst?.pannerNode) return;
+        if (!inst) return;
+        if (!inst.pannerNode) {
+          // This is a non-spatial instance — always warn so callers don't
+          // silently get no effect when they forget to pass `position` to
+          // `audio/play`.
+          console.warn(
+            `[AudioManager] audio/source:move: instance "${params.instanceId}" ` +
+              `was not created with a position and has no PannerNode. ` +
+              `Pass a \`position\` parameter to \`audio/play\` to enable spatial audio.`,
+          );
+          return;
+        }
         inst.pannerNode.positionX.value =  params.x;
         inst.pannerNode.positionY.value = -params.y;
         inst.pannerNode.positionZ.value =  0;

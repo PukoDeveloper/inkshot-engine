@@ -26,17 +26,58 @@ export interface PathfindingFindParams {
   /** Goal position in world pixels. */
   readonly to: { x: number; y: number };
   /**
-   * When `true`, entities with a `BODY` collider layer are treated as dynamic
-   * obstacles and added to the impassable set for this query only.
+   * When `true`, entities are queried via `entity/query` and their tile cells
+   * are treated as dynamic obstacles for this query only.
    *
-   * This makes the search more expensive (entity positions are queried and
-   * converted to tile cells) but produces more accurate paths in scenes with
-   * many moving obstacles.  Paths found with dynamic obstacles are **not**
-   * cached.
+   * Use {@link tagFilter} to restrict which entities are considered.  Without
+   * a filter **every** active entity (including decorative sprites and HUD
+   * anchors) occupies a tile cell, which is rarely the desired behaviour.
+   *
+   * Paths found with dynamic obstacles are **not** cached.
    *
    * Default: `false`.
    */
   readonly includeDynamicObstacles?: boolean;
+  /**
+   * Tag filter applied when `includeDynamicObstacles` is `true`.
+   *
+   * Only entities that carry **all** of the listed tags are treated as dynamic
+   * obstacles.  For example, pass `['obstacle']` and tag every blocking NPC or
+   * movable crate with that tag to keep HUD elements and decorations out of
+   * the pathfinder's obstacle set.
+   *
+   * When omitted or empty, all entities are queried (the original behaviour).
+   *
+   * @example
+   * ```ts
+   * core.events.emitSync('pathfinding/find', {
+   *   from: player.position,
+   *   to: target.position,
+   *   includeDynamicObstacles: true,
+   *   tagFilter: ['obstacle'],
+   * });
+   * ```
+   */
+  readonly tagFilter?: string[];
+  /**
+   * When `true` and the goal tile is impassable, the pathfinder performs a
+   * BFS outward from the goal to locate the nearest passable tile and uses
+   * that as the effective destination instead of returning `found: false`.
+   *
+   * The actual target reached is reported in {@link PathfindingFindOutput.nearest}.
+   *
+   * Default: `false`.
+   */
+  readonly fallbackToNearest?: boolean;
+  /**
+   * When `true`, apply a string-pulling pass (line-of-sight shortcutting) to
+   * the raw A* waypoints.  Consecutive waypoints that have unobstructed
+   * line-of-sight on the tile grid are merged, eliminating the staircase
+   * artifacts that are common with diagonal grid movement.
+   *
+   * Default: `false`.
+   */
+  readonly smoothPath?: boolean;
   /**
    * Maximum number of A* iterations before the search is abandoned.
    * Protects against pathological cases on very large maps.
@@ -63,6 +104,14 @@ export interface PathfindingFindOutput {
    * `0` when `found` is `false`.
    */
   cost: number;
+  /**
+   * When `PathfindingFindParams.fallbackToNearest` is `true` and the original
+   * goal tile was impassable, this field contains the world-pixel centre of
+   * the nearest passable tile that was used as the effective destination.
+   *
+   * `undefined` when the original goal was passable or no fallback occurred.
+   */
+  nearest?: { x: number; y: number };
 }
 
 // ---------------------------------------------------------------------------
@@ -108,7 +157,8 @@ export interface PathfindingWeightSetParams {
  * Parameters for `pathfinding/cache:clear`.
  *
  * Manually clears cached paths.  Useful when the game world changes in a way
- * that does not trigger `collision/tilemap:set` (e.g. a door opens).
+ * that does not trigger `collision/tilemap:set` or `tilemap/set-tile` (e.g. a
+ * script-driven layout shift).
  *
  * @example
  * ```ts

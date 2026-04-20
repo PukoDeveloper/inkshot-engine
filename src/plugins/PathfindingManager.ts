@@ -1,7 +1,8 @@
 import type { Core } from '../core/Core.js';
 import type { EnginePlugin } from '../types/plugin.js';
 import type { TilemapSetParams } from '../types/collision.js';
-import type { EntityQueryOutput } from '../types/entity.js';
+import type { TilemapSetTileParams } from '../types/tilemap.js';
+import type { EntityQueryParams, EntityQueryOutput } from '../types/entity.js';
 import type {
   PathfindingFindParams,
   PathfindingFindOutput,
@@ -15,6 +16,12 @@ import type {
 
 /** Cost value that marks a cell as completely impassable. */
 const IMPASSABLE = Infinity;
+
+/** Maximum number of cached A* results before the oldest entry is evicted. */
+const CACHE_MAX_SIZE = 512;
+
+/** Maximum number of BFS expansions in `_findNearestPassable`. */
+const NEAREST_MAX_EXPANSIONS = 1_000;
 
 /** A single node in the A* open/closed set. */
 interface AStarNode {
@@ -121,6 +128,10 @@ export interface PathfindingManagerOptions {
  * | `pathfinding/weight:set`   | ✗ sync | Override movement cost for a tile value      |
  * | `pathfinding/cache:clear`  | ✗ sync | Manually clear the path cache                |
  *
+ * **Automatic invalidation** — the cost grid and path cache are updated
+ * automatically on `collision/tilemap:set` (full reload) and on
+ * `tilemap/set-tile` (single-cell O(1) update).
+ *
  * ### Usage
  * ```ts
  * import { createEngine, PathfindingManager } from 'inkshot-engine';
@@ -201,6 +212,23 @@ export class PathfindingManager implements EnginePlugin {
       this._cache.clear();
     });
 
+    // O(1) update when a single tile is changed at runtime (e.g. door opening).
+    // For collider layers this fires before the subsequent `collision/tilemap:set`
+    // (which rebuilds the full grid); for non-collider layers with weight overrides
+    // this is the only update that fires.
+    events.on<TilemapSetTileParams>(this.namespace, 'tilemap/set-tile', (params) => {
+      if (this._tileSize === 0) return;
+      if (!this._inBounds(params.row, params.col)) return;
+      // Update the cached raw value and recompute this cell's cost.
+      if (this._tileValues[params.row] !== undefined) {
+        this._tileValues[params.row]![params.col] = params.tileId;
+      }
+      if (this._grid[params.row] !== undefined) {
+        this._grid[params.row]![params.col] = this._cellCost(params.tileId, this._tileShapes);
+      }
+      this._cache.clear();
+    });
+
     events.on<PathfindingFindParams, PathfindingFindOutput>(
       this.namespace,
       'pathfinding/find',
@@ -209,6 +237,7 @@ export class PathfindingManager implements EnginePlugin {
         output.found = result.found;
         output.path  = result.path;
         output.cost  = result.cost;
+        if (result.nearest !== undefined) output.nearest = result.nearest;
       },
     );
 
@@ -332,27 +361,55 @@ export class PathfindingManager implements EnginePlugin {
     // Bounds check
     if (!this._inBounds(fromRow, fromCol) || !this._inBounds(toRow, toCol)) return empty;
 
-    // Goal cell impassable (use static grid only — dynamic obstacles are checked below)
-    if (this._grid[toRow][toCol] >= IMPASSABLE) return empty;
+    // Start-cell impassability check — e.g. entity was knocked into a wall.
+    if (this._grid[fromRow]![fromCol]! >= IMPASSABLE) return empty;
+
+    // Goal cell: try fallback to nearest passable when requested.
+    let effectiveToRow = toRow;
+    let effectiveToCol = toCol;
+    let nearest: { x: number; y: number } | undefined;
+
+    if (this._grid[toRow]![toCol]! >= IMPASSABLE) {
+      if (!params.fallbackToNearest) return empty;
+      const fallback = this._findNearestPassable(toRow, toCol);
+      if (!fallback) return empty;
+      effectiveToRow = fallback.row;
+      effectiveToCol = fallback.col;
+      nearest = this._tileCenter(effectiveToRow, effectiveToCol);
+    }
 
     // Cache lookup (static searches only)
-    const cacheKey = `${fromRow},${fromCol}→${toRow},${toCol}`;
+    const cacheKey = `${fromRow},${fromCol}→${effectiveToRow},${effectiveToCol}`;
     if (!params.includeDynamicObstacles) {
-      const cached = this._cache.get(cacheKey);
-      if (cached) return cached;
+      const cached = this._cacheGet(cacheKey);
+      if (cached) {
+        // Re-attach nearest when serving from cache.
+        return nearest !== undefined ? { ...cached, nearest } : cached;
+      }
     }
 
     // Build dynamic obstacle set if requested
     const dynamicBlocked = params.includeDynamicObstacles
-      ? this._buildDynamicObstacles()
+      ? this._buildDynamicObstacles(params.tagFilter)
       : null;
 
     const maxIter = params.maxIterations ?? 10_000;
-    const result = this._astar(fromRow, fromCol, toRow, toCol, dynamicBlocked, maxIter);
+    let result = this._astar(fromRow, fromCol, effectiveToRow, effectiveToCol, dynamicBlocked, maxIter);
 
-    // Cache static results
+    // Optional path smoothing (string-pulling)
+    if (result.found && params.smoothPath && result.path.length > 2) {
+      result = { ...result, path: this._smoothPath(result.path) };
+    }
+
+    // Attach nearest if a fallback cell was used
+    if (nearest !== undefined && result.found) {
+      result = { ...result, nearest };
+    }
+
+    // Cache static results (store without nearest so cache is goal-agnostic)
     if (!params.includeDynamicObstacles) {
-      this._cache.set(cacheKey, result);
+      const toCache = nearest !== undefined ? { found: result.found, path: result.path, cost: result.cost } : result;
+      this._cacheSet(cacheKey, toCache);
     }
 
     return result;
@@ -493,28 +550,32 @@ export class PathfindingManager implements EnginePlugin {
   // ---------------------------------------------------------------------------
 
   /**
-   * Query all active entities and return a set of tile-cell keys (`"row,col"`)
-   * that are occupied by BODY-layer colliders.
+   * Query active entities and return a set of tile-cell keys (`"row,col"`)
+   * that are occupied by those entities.
    *
-   * The method intentionally does **not** depend on `CollisionManager`
-   * internals — it queries entity positions via `entity/query` and uses its
-   * own simple AABB-to-tile conversion.
+   * Pass `tagFilter` to restrict which entities are considered.  Without a
+   * filter every active entity is included; use tags such as `'obstacle'` to
+   * exclude decorative sprites and HUD anchors.
+   *
+   * The method queries entity positions via `entity/query` and uses its own
+   * simple AABB-to-tile conversion without depending on `CollisionManager`
+   * internals.
    */
-  private _buildDynamicObstacles(): Set<string> {
+  private _buildDynamicObstacles(tagFilter?: string[]): Set<string> {
     const blocked = new Set<string>();
     if (!this._core || this._tileSize === 0) return blocked;
 
-    const { output } = this._core.events.emitSync<Record<string, never>, EntityQueryOutput>(
+    const queryParams: EntityQueryParams = tagFilter && tagFilter.length > 0
+      ? { tags: tagFilter }
+      : {};
+
+    const { output } = this._core.events.emitSync<EntityQueryParams, EntityQueryOutput>(
       'entity/query',
-      {},
+      queryParams,
     );
 
     const ts = this._tileSize;
     for (const entity of (output.entities ?? [])) {
-      // Use the entity's position as a single-cell obstacle.
-      // This is intentionally conservative — the entity occupies the tile its
-      // origin lands in.  Games that need more accurate footprints should
-      // extend PathfindingManager via subclassing or custom weight overrides.
       const row = Math.floor(entity.position.y / ts);
       const col = Math.floor(entity.position.x / ts);
       if (this._inBounds(row, col)) {
@@ -523,6 +584,143 @@ export class PathfindingManager implements EnginePlugin {
     }
 
     return blocked;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Private: LRU cache helpers
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Retrieve a cached path, refreshing its recency so it is not evicted before
+   * less-recently-used entries.
+   */
+  private _cacheGet(key: string): PathfindingFindOutput | undefined {
+    const value = this._cache.get(key);
+    if (value === undefined) return undefined;
+    // Move to most-recently-used position by re-inserting.
+    this._cache.delete(key);
+    this._cache.set(key, value);
+    return value;
+  }
+
+  /**
+   * Insert a path into the LRU cache.  When the cache exceeds
+   * {@link CACHE_MAX_SIZE} the oldest (least-recently-used) entry is evicted.
+   */
+  private _cacheSet(key: string, value: PathfindingFindOutput): void {
+    if (this._cache.has(key)) this._cache.delete(key);
+    this._cache.set(key, value);
+    if (this._cache.size > CACHE_MAX_SIZE) {
+      // Map preserves insertion order; the first key is the oldest.
+      this._cache.delete(this._cache.keys().next().value!);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Private: fallback nearest-passable cell (BFS)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * BFS outward from `(row, col)` to find the closest cell in the static grid
+   * that is passable (cost < {@link IMPASSABLE}).
+   *
+   * Returns `null` when no passable cell is found within
+   * {@link NEAREST_MAX_EXPANSIONS} steps.
+   */
+  private _findNearestPassable(
+    row: number,
+    col: number,
+  ): { row: number; col: number } | null {
+    const visited = new Set<string>();
+    const queue: Array<{ row: number; col: number }> = [{ row, col }];
+    visited.add(`${row},${col}`);
+    let expansions = 0;
+
+    while (queue.length > 0 && expansions < NEAREST_MAX_EXPANSIONS) {
+      const current = queue.shift()!;
+      expansions++;
+
+      if ((this._grid[current.row]?.[current.col] ?? IMPASSABLE) < IMPASSABLE) {
+        return current;
+      }
+
+      for (const [dr, dc] of DIRS_4) {
+        const nr = current.row + dr;
+        const nc = current.col + dc;
+        const nKey = `${nr},${nc}`;
+        if (this._inBounds(nr, nc) && !visited.has(nKey)) {
+          visited.add(nKey);
+          queue.push({ row: nr, col: nc });
+        }
+      }
+    }
+
+    return null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Private: path smoothing (string-pulling)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Remove redundant intermediate waypoints using a string-pulling pass.
+   *
+   * Two consecutive waypoints are merged when there is unobstructed
+   * line-of-sight between them on the tile grid (verified with Bresenham's
+   * line algorithm).  This eliminates the staircase artifacts typical of
+   * diagonal A* paths.
+   */
+  private _smoothPath(
+    path: { x: number; y: number }[],
+  ): { x: number; y: number }[] {
+    if (path.length <= 2) return path;
+
+    const result: { x: number; y: number }[] = [path[0]!];
+    let anchor = 0;
+
+    for (let i = 2; i < path.length; i++) {
+      if (!this._hasLoS(path[anchor]!, path[i]!)) {
+        // No LoS from anchor to i — commit the previous waypoint.
+        result.push(path[i - 1]!);
+        anchor = i - 1;
+      }
+    }
+
+    result.push(path[path.length - 1]!);
+    return result;
+  }
+
+  /**
+   * Returns `true` when every tile cell along the straight line from `a` to
+   * `b` (in world-pixel coordinates) is passable in the static grid.
+   *
+   * Uses Bresenham's line algorithm for integer tile-grid traversal.
+   */
+  private _hasLoS(
+    a: { x: number; y: number },
+    b: { x: number; y: number },
+  ): boolean {
+    const ts = this._tileSize;
+    let r0 = Math.floor(a.y / ts);
+    let c0 = Math.floor(a.x / ts);
+    const r1 = Math.floor(b.y / ts);
+    const c1 = Math.floor(b.x / ts);
+
+    const dr = Math.abs(r1 - r0);
+    const dc = Math.abs(c1 - c0);
+    const sr = r0 < r1 ? 1 : -1;
+    const sc = c0 < c1 ? 1 : -1;
+    let err = dr - dc;
+
+    while (true) {
+      if ((this._grid[r0]?.[c0] ?? IMPASSABLE) >= IMPASSABLE) return false;
+      if (r0 === r1 && c0 === c1) break;
+      const e2 = 2 * err;
+      if (e2 > -dc) { err -= dc; r0 += sr; }
+      if (e2 < dr)  { err += dr; c0 += sc; }
+    }
+
+    return true;
   }
 }
 
