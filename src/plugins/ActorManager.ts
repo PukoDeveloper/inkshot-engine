@@ -41,9 +41,14 @@ interface InterruptRecord {
 // Helpers
 // ---------------------------------------------------------------------------
 
-let _nextId = 0;
-function generateInstanceId(): string {
-  return `actor_${++_nextId}`;
+/**
+ * Recursively deep-clone a plain state object.
+ *
+ * `structuredClone` handles nested objects, arrays, Maps, Sets, etc.
+ * It is available in all supported environments (Node ≥ 17, modern browsers).
+ */
+function deepCloneState(state: Record<string, unknown>): Record<string, unknown> {
+  return structuredClone(state) as Record<string, unknown>;
 }
 
 // ---------------------------------------------------------------------------
@@ -155,6 +160,9 @@ export class ActorManager implements EnginePlugin {
 
   private _core: Core | null = null;
 
+  /** Auto-increment counter for instance ID generation. Resets on destroy. */
+  private _nextId = 0;
+
   /** Registered actor type blueprints, keyed by `ActorDef.id`. */
   private readonly _defs = new Map<string, ActorDef>();
 
@@ -264,6 +272,7 @@ export class ActorManager implements EnginePlugin {
       this._despawn(instanceId);
     }
     core.events.removeNamespace(this.namespace);
+    this._nextId = 0;
     this._defs.clear();
     this._core = null;
   }
@@ -309,7 +318,7 @@ export class ActorManager implements EnginePlugin {
       return null;
     }
 
-    const instanceId = params.instanceId ?? generateInstanceId();
+    const instanceId = params.instanceId ?? `actor_${++this._nextId}`;
     if (this._instances.has(instanceId)) {
       console.warn(
         `[ActorManager] actor/spawn: instance "${instanceId}" already exists.`,
@@ -317,11 +326,12 @@ export class ActorManager implements EnginePlugin {
       return null;
     }
 
-    // Deep-copy initial state so instances are independent.
-    const state: Record<string, unknown> = {
+    // Deep-clone initial state so instances are fully independent even when
+    // the def's initialState contains nested objects or arrays.
+    const state: Record<string, unknown> = deepCloneState({
       ...(def.initialState ?? {}),
       ...(params.initialState ?? {}),
-    };
+    });
 
     const instance: ActorInstance = {
       id:         instanceId,
