@@ -66,6 +66,7 @@
 - [x] 事件驅動：`ui/show`、`ui/hide`、`ui/destroy`
 - [x] 支援簡易佈局（anchor、padding、stack layout）
 - [x] 彈性元件工廠登錄系統：`ui/register` 事件 + `uiManager.register()` 直接 API，可在任意時機掛載自訂元件類型（`myGame/healthbar` 等）
+- [x] 內建 `dialoguebox` 元件：整合 `DialogueManager` 事件，渲染說話者名稱、帶 Rich-text 標記的對話文字、選項按鈕、繼續提示符
 
 ### 6. 空間音效 (Spatial / Positional Audio) ✅
 - [x] 擴充 `AudioManager`，加入 `PannerNode` 支援
@@ -90,19 +91,7 @@
 - [x] `fallbackToNearest`：目標在牆內時 BFS 找最近可通行格，結果回傳於 `output.nearest`
 - [x] `smoothPath`：字串拉扯（Bresenham LoS）後處理，消除斜角路徑鋸齒
 
----
-
-## 🔵 低優先
-
-### 8. 開發者偵錯工具 (Debug / Dev Tools Overlay)
-- [ ] 新增 `DebugPlugin`（namespace: `debug`），僅在開發模式下載入
-- [ ] 顯示 FPS 計數器與幀時間圖表
-- [ ] 碰撞框（Collider）可視化（繪製 AABB / 圓形輪廓）
-- [ ] 實體 Inspector（列出所有活躍實體及其 tags / data）
-- [ ] EventBus 事件日誌（記錄最近 N 個事件）
-- [ ] 快速鍵切換 debug overlay 顯示 / 隱藏
-
-### 9. 對話框顯示系統 (Dialogue Box Display) ✅
+### 8. 對話框顯示系統 (Dialogue Box Display) ✅
 - [x] 新增 `DialogueManager` plugin（namespace: `dialogue`）
 - [x] 純呈現層：不含對話樹、條件判斷或節點跳轉（由未來腳本系統控制流程）
 - [x] 命令事件：`dialogue/show-text`（啟動打字機）、`dialogue/show-choices`（顯示選項）、`dialogue/advance`、`dialogue/choice`、`dialogue/end`
@@ -110,6 +99,27 @@
 - [x] 支援打字機效果（字元逐一顯示，可用 `dialogue/advance` 跳過）
 - [x] 與 `i18n/t` 整合，`dialogue/show-text` 支援 `i18nKey`
 - [x] 內建 `dialoguebox` UIWidget：訂閱對話事件、顯示說話者名稱、對話文字、選項按鈕、繼續提示符
+- [x] Rich-text 標記系統（`DialogueMarkupParser`）：
+  - [x] `[c=#rrggbb]…[/c]` / `[color=#rrggbb]…[/color]`：行內文字變色（支援 3 位與 6 位 hex）
+  - [x] `[speed=n]…[/speed]`：區段打字機速度覆蓋（chars/sec）
+  - [x] `[pause=n]`：暫停打字機 n 毫秒（自閉合 tag）
+  - [x] 未知 tag 靜默忽略；未閉合 block tag 自動在字串末尾閉合
+  - [x] `dialogue/text:tick` 附帶 `segments: DialogueTextSegment[]`，供渲染層使用
+  - [x] `dialoguebox` 使用 PixiJS `HTMLText` 渲染帶色段落（`<span style="color:…">`）
+  - [x] Parser 函式（`parseDialogueMarkup`, `buildTextSegments`, `getSpeedAtIndex`）從主索引公開 export
+  - [x] 防 ReDoS：tag 正規表達式限制括號巢狀，確保 O(n) 回溯
+
+---
+
+## 🔵 低優先
+
+### 9. 開發者偵錯工具 (Debug / Dev Tools Overlay)
+- [ ] 新增 `DebugPlugin`（namespace: `debug`），僅在開發模式下載入
+- [ ] 顯示 FPS 計數器與幀時間圖表
+- [ ] 碰撞框（Collider）可視化（繪製 AABB / 圓形輪廓）
+- [ ] 實體 Inspector（列出所有活躍實體及其 tags / data）
+- [ ] EventBus 事件日誌（記錄最近 N 個事件）
+- [ ] 快速鍵切換 debug overlay 顯示 / 隱藏
 
 ---
 

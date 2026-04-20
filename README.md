@@ -1270,6 +1270,216 @@ core.events.emitSync('pathfinding/cache:clear', {});
 
 ---
 
+### UIManager (`ui`)
+
+A flexible, event-driven UI widget system.  Widgets live on the `ui` render layer and are identified by a string id.  Nine widget types are built in; custom types can be registered at any time.
+
+#### Built-in Widget Types
+
+| Type          | Description                                                                         |
+|---------------|-------------------------------------------------------------------------------------|
+| `label`       | Text display (supports i18n auto-update)                                            |
+| `button`      | Clickable button with hover / press highlight and optional i18n label               |
+| `panel`       | Styled rounded-rect background container                                            |
+| `progressbar` | Horizontal / vertical fill bar (0–1 value)                                          |
+| `slider`      | Draggable range input with pointer events                                           |
+| `scrollview`  | Masked scrollable content area                                                      |
+| `dialog`      | Modal dialog with title, message, confirm and cancel buttons                        |
+| `stack`       | Linear layout container (StackPanel) with configurable direction and spacing        |
+| `dialoguebox` | Dialogue box that subscribes to `dialogue/*` events (see [DialogueManager](#dialoguemanager-dialogue)) |
+
+#### Event Contract — Commands
+
+| Event        | Async? | Description |
+|--------------|--------|-------------|
+| `ui/register` | ✗ sync | Register (or replace) a widget factory; returns `{ registered: boolean }` |
+| `ui/create`   | ✗ sync | Create a widget and mount it on the ui layer; returns `{ widget }` |
+| `ui/show`     | ✗ sync | Make a widget visible |
+| `ui/hide`     | ✗ sync | Hide a widget (keeps it in memory) |
+| `ui/destroy`  | ✗ sync | Destroy a widget and remove it from the layer |
+| `ui/update`   | ✗ sync | Update properties of an existing widget |
+| `ui/get`      | ✗ sync | Retrieve a widget instance by id; returns `{ widget }` |
+
+#### Event Contract — Notifications
+
+| Event          | When |
+|----------------|------|
+| `ui/created`   | After a widget is created and mounted |
+| `ui/shown`     | After a widget is made visible |
+| `ui/hidden`    | After a widget is hidden |
+| `ui/destroyed` | After a widget is destroyed |
+
+#### Usage
+
+```ts
+import { createEngine, UIManager } from 'inkshot-engine';
+
+const { core } = await createEngine({ plugins: [new UIManager()] });
+
+// ① Create a label anchored to the top-right corner
+const { output } = core.events.emitSync('ui/create', {
+  type: 'label',
+  id: 'score',
+  text: 'Score: 0',
+  anchor: 'top-right',
+  x: -16,
+  y: 16,
+});
+
+// ② Update it later
+core.events.emitSync('ui/update', { id: 'score', text: 'Score: 42' });
+
+// ③ Show / hide
+core.events.emitSync('ui/hide', { id: 'score' });
+core.events.emitSync('ui/show', { id: 'score' });
+
+// ④ Register a custom widget type
+core.events.emitSync('ui/register', {
+  type: 'myGame/hud',
+  factory: (id, props, core) => {
+    // build and return a UIWidget object
+  },
+});
+
+// ⑤ Dialogue box (subscribes to dialogue/* events automatically)
+core.events.emitSync('ui/create', {
+  type: 'dialoguebox',
+  id: 'box',
+  width: 600,
+  height: 160,
+  anchor: 'bottom-center',
+  y: -20,
+});
+```
+
+---
+
+### DialogueManager (`dialogue`)
+
+A pure presentation renderer for a dialogue box.  All flow control (branching, conditions, tree traversal) belongs to the script system, which drives DialogueManager by sending commands.
+
+#### Inline Markup
+
+Text passed to `dialogue/show-text` may contain inline markup tags:
+
+| Tag | Description |
+|-----|-------------|
+| `[c=#rrggbb]…[/c]` | Colour the enclosed text (shorthand) |
+| `[color=#rrggbb]…[/color]` | Colour the enclosed text (long form) |
+| `[speed=n]…[/speed]` | Override typewriter speed inside the block (chars/sec) |
+| `[pause=n]` | Pause the typewriter for `n` milliseconds (self-closing) |
+
+All tags are stripped from the plain text; the `dialogue/text:tick` event carries both the plain text and a `segments` array of styled runs for the display layer to render.
+
+Example:
+
+```
+'She [speed=20]slowly said[/speed][pause=400][c=#ff4444]Danger![/c]'
+```
+
+Unknown or malformed tags are silently dropped.  Unclosed block tags are automatically closed at the end of the string.
+
+#### Event Contract — Commands
+
+| Event                   | Description |
+|-------------------------|-------------|
+| `dialogue/show-text`    | Display a line of text (starts typewriter animation) |
+| `dialogue/show-choices` | Display a list of player choices |
+| `dialogue/advance`      | Skip typewriter **or** signal "ready for next" to the script |
+| `dialogue/choice`       | Confirm a player choice by index |
+| `dialogue/end`          | End the current session |
+| `dialogue/state:get`    | Query current display state (pull pattern) |
+
+#### `dialogue/show-text` Parameters
+
+| Parameter      | Type | Default | Description |
+|----------------|------|---------|-------------|
+| `text`         | `string` | — | Raw text body (supports inline markup) |
+| `i18nKey`      | `string` | — | i18n key for the text (takes precedence over `text`) |
+| `i18nArgs`     | `Record<string,string>` | — | Interpolation args forwarded to `i18n/t` |
+| `speaker`      | `string` | — | Speaker name shown above the text |
+| `speakerI18nKey` | `string` | — | i18n key for the speaker name |
+| `portrait`     | `string` | — | Resource key for a speaker portrait image |
+| `speed`        | `number` | `40` | Default typewriter speed in chars/sec (can be overridden per-segment with `[speed=n]`) |
+
+#### Event Contract — Notifications
+
+| Event                   | When |
+|-------------------------|------|
+| `dialogue/started`      | Session opens (first `show-text` or `show-choices` call) |
+| `dialogue/node`         | A new text line begins (speaker / portrait changed) |
+| `dialogue/text:tick`    | Typewriter advances (and once with `done: true` when complete) |
+| `dialogue/choices`      | Choice list becomes active |
+| `dialogue/advanced`     | Player advanced after text was fully revealed |
+| `dialogue/choice:made`  | Player confirmed a choice (carries `{ index }`) |
+| `dialogue/ended`        | Session ends |
+
+#### Usage
+
+```ts
+import { createEngine, DialogueManager, UIManager } from 'inkshot-engine';
+import type { DialogueTextTickParams } from 'inkshot-engine';
+
+const { core } = await createEngine({
+  plugins: [new UIManager(), new DialogueManager({ defaultCharsPerSecond: 40 })],
+});
+
+// ① Mount a dialogue box widget (optional — subscribes to events automatically)
+core.events.emitSync('ui/create', {
+  type: 'dialoguebox',
+  id: 'box',
+  anchor: 'bottom-center',
+  y: -20,
+});
+
+// ② Script system sends the first line (markup supported)
+core.events.emitSync('dialogue/show-text', {
+  text: 'She [speed=20]slowly said[/speed][pause=400][c=#ff4444]Danger![/c]',
+  speaker: 'Alice',
+});
+
+// ③ Player presses Advance → next line or choices
+core.events.on('script', 'dialogue/advanced', () => {
+  core.events.emitSync('dialogue/show-choices', {
+    choices: [
+      { text: 'Run away!', index: 0 },
+      { text: 'Stay calm.', index: 1 },
+    ],
+  });
+});
+
+// ④ Player picks a choice → script continues
+core.events.on('script', 'dialogue/choice:made', ({ index }) => {
+  core.events.emitSync('dialogue/end', {});
+});
+
+// ⑤ React to the typewriter tick (e.g. play a beep sound per character)
+core.events.on<DialogueTextTickParams>('sfx', 'dialogue/text:tick', ({ done }) => {
+  if (!done) playBeep();
+});
+```
+
+#### `parseDialogueMarkup` — Direct Parser API
+
+The markup parser is also exported for use in custom renderers or unit tests:
+
+```ts
+import { parseDialogueMarkup, buildTextSegments, getSpeedAtIndex } from 'inkshot-engine';
+
+const { plain, colorSpans, speedSpans, pauses } = parseDialogueMarkup(
+  '[c=#ff0000]Red[/c] normal [speed=200]fast[/speed]'
+);
+// plain === 'Red normal fast'
+
+// Build the visible portion of styled segments at reveal position 10
+const segments = buildTextSegments(plain, 10, colorSpans);
+
+// Get the typewriter speed at character index 12
+const speed = getSpeedAtIndex(12, speedSpans, 40);
+```
+
+---
+
 ## Renderer & Layers
 
 The `Renderer` manages named render layers on the Pixi stage.  Display objects should always be placed inside a layer rather than added to the root stage.
@@ -1398,6 +1608,20 @@ import type {
   // Pathfinding
   PathfindingFindParams, PathfindingFindOutput,
   PathfindingWeightSetParams, PathfindingCacheClearParams,
+  // UI
+  UICreateParams, UICreateOutput, UIRegisterParams, UIRegisterOutput,
+  UIShowParams, UIHideParams, UIDestroyParams, UIUpdateParams,
+  UIGetParams, UIGetOutput, UICreatedParams,
+  UILabelProps, UIButtonProps, UIPanelProps, UIProgressBarProps,
+  UISliderProps, UIScrollViewProps, UIDialogProps, UIStackPanelProps,
+  UIDialogueBoxProps,
+  // Dialogue
+  DialogueShowTextParams, DialogueShowChoicesParams,
+  DialogueNodeParams, DialogueTextTickParams, DialogueChoicesParams,
+  DialogueAdvancedParams, DialogueChoiceMadeParams,
+  DialogueStateGetOutput, DialogueTextSegment,
+  // Dialogue markup parser
+  ParsedMarkup, ColorSpan, SpeedSpan, PauseMark,
   // Events
   EventHandler, ListenerOptions,
 } from 'inkshot-engine';
