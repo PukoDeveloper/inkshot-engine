@@ -343,6 +343,50 @@ export type {
   UIDialogueBoxProps,
 } from './types/ui.js';
 
+// Actor system
+export { ActorManager } from './plugins/ActorManager.js';
+export type {
+  ActorDef,
+  ActorInstance,
+  TriggerDef,
+  TriggerConditionCtx,
+  ActorDefineParams,
+  ActorSpawnParams,
+  ActorSpawnOutput,
+  ActorDespawnParams,
+  ActorStateSetParams,
+  ActorStateGetParams,
+  ActorStateGetOutput,
+  ActorStatePatchParams,
+  ActorStatePatchedParams,
+  ActorListOutput,
+  ActorTriggerParams,
+  ActorSpawnedParams,
+  ActorDespawnedParams,
+  ActorScriptStartedParams,
+  ActorScriptEndedParams,
+  ActorStateChangedParams,
+} from './types/actor.js';
+
+// Script system
+export { ScriptManager } from './plugins/ScriptManager.js';
+export type {
+  ScriptNode,
+  ScriptDef,
+  ScriptContext,
+  ScriptCommandHandler,
+  ScriptDefineParams,
+  ScriptRunParams,
+  ScriptStopParams,
+  ScriptRegisterCommandParams,
+  ScriptInstanceState,
+  ScriptStateGetOutput,
+  ScriptStartedParams,
+  ScriptEndedParams,
+  ScriptStepParams,
+  ScriptErrorParams,
+} from './types/script.js';
+
 // Dialogue system
 export { DialogueManager } from './plugins/DialogueManager.js';
 export {

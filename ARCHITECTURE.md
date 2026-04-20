@@ -1830,7 +1830,144 @@ core.events.on('script', 'dialogue/choice:made', ({ index }) => {
 
 ---
 
-## 16. TypeScript Style
+## 16. Script System (ScriptManager)
+
+`ScriptManager` drives data-defined behaviours as ordered lists of command nodes.
+
+### 16.1 Architecture
+
+Scripts are registered with `script/define` and started with `script/run`.  Each
+run is isolated by an `instanceId`; different IDs execute **concurrently** in
+JavaScript's single-threaded event loop.
+
+```
+script/run  instanceId: 'guard-1'  ──wait─────────────────►
+script/run  instanceId: 'guard-2'      ──wait─────────────►
+script/run  instanceId: 'cutscene'           ──say─►end
+```
+
+### 16.2 Built-in Commands
+
+| Command         | Key fields                                                   | Description                                                           |
+|-----------------|--------------------------------------------------------------|-----------------------------------------------------------------------|
+| `label`         | `name`                                                       | Position marker — no-op at runtime                                    |
+| `jump`          | `target`                                                     | Unconditional jump to a label                                         |
+| `if`            | `var`, `value`, `jump`                                       | Jump when `vars[var] === value`; warns if label missing               |
+| `if-not`        | `var`, `value`, `jump`                                       | Jump when `vars[var] !== value`                                       |
+| `if-gt`         | `var` (string), `value` (number), `jump`                     | Jump when `vars[var] > value` (numeric)                               |
+| `if-lt`         | `var` (string), `value` (number), `jump`                     | Jump when `vars[var] < value` (numeric)                               |
+| `set`           | `var`, `value`                                               | Write a value into the variable store                                 |
+| `wait`          | `ms`                                                         | Pause for N milliseconds                                              |
+| `emit`          | `event`, `params?`                                           | Fire a custom event synchronously                                     |
+| `say`           | `text?`, `speaker?`, `portrait?`, `speed?`                   | Show dialogue text via `DialogueManager`, await advance               |
+| `choices`       | `choices`, `prompt?`, `var?`                                 | Show choices, store picked index in `var`                             |
+| `end`           | —                                                            | Close the dialogue session                                            |
+| `wait-event`    | `event`, `var?`, `timeout?` (ms), `timeoutJump?`             | Suspend until an event fires; optional timeout with label fallback    |
+| `call`          | `id`, `vars?`                                                | Run a sub-script inline (shared vars, same instance lane)             |
+| `fork`          | `id`, `instanceId?`, `vars?`, `priority?`                    | Launch a concurrent instance (fire-and-forget)                        |
+| `wait-instance` | `instanceId`                                                 | Suspend until a named instance finishes                               |
+| `stop-instance` | `instanceId`                                                 | Stop another running instance                                         |
+
+### 16.3 `wait-event` with Timeout
+
+The optional `timeout` / `timeoutJump` fields let a script give up waiting after
+a deadline:
+
+```ts
+// Wait up to 3 seconds for the player to arrive; otherwise branch to 'idle'
+{ cmd: 'wait-event', event: 'player/arrived', timeout: 3000, timeoutJump: 'idle' }
+```
+
+If the event fires before the timeout, execution continues normally from the
+next node.  If the timeout fires first:
+- If `timeoutJump` is provided, execution jumps to that label.
+- Otherwise execution falls through to the next node.
+
+### 16.4 Event Contract
+
+| Event                     | Direction | Description                                     |
+|---------------------------|-----------|-------------------------------------------------|
+| `script/define`           | → SM      | Register or overwrite a script definition       |
+| `script/run`              | → SM      | Start a script instance                         |
+| `script/stop`             | → SM      | Stop one or all running instances               |
+| `script/register-command` | → SM      | Register a custom command handler               |
+| `script/state:get`        | → SM      | Query execution state → `ScriptStateGetOutput`  |
+| `script/started`          | SM →      | A script instance began execution               |
+| `script/ended`            | SM →      | A script instance finished or was stopped       |
+| `script/step`             | SM →      | Before each command node executes               |
+| `script/error`            | SM →      | A command handler threw an unhandled error      |
+
+---
+
+## 17. Actor System (ActorManager)
+
+`ActorManager` manages game characters whose behaviour is driven by a trigger
+table and a set of scripts.
+
+### 17.1 Concepts
+
+- **ActorDef** — Blueprint declaring scripts, triggers, and initial state.
+- **ActorInstance** — A live copy with its own independent `state` store.
+- **TriggerDef** — Binds an event to a script run on the actor.
+
+### 17.2 Trigger Modes
+
+| Mode | Lane | Typical use |
+|------|------|-------------|
+| `'concurrent'` | `<actorId>:<triggerId>` | Looping background behaviours (patrol, ambient VFX) |
+| `'blocking'`   | `<actorId>` (primary)   | Interrupting sequences (dialogue, cutscene)         |
+
+`blocking` supports `priority` (preempts lower-priority scripts) and `onEnd`
+(`'restore'` re-launches the preempted script after the blocking script ends).
+
+### 17.3 `actor/spawned` Trigger Behaviour
+
+Triggers with `event: 'actor/spawned'` are fired **directly** on the newly
+spawned instance at spawn time, **not** via the event bus.  This ensures that
+existing instances are never affected when a new instance is spawned.
+
+### 17.4 State Management
+
+| Event                | Description                                                                 |
+|----------------------|-----------------------------------------------------------------------------|
+| `actor/state:set`    | Write a single key; emits `actor/state:changed`                             |
+| `actor/state:patch`  | Write multiple keys atomically; emits **one** `actor/state:patched` event   |
+| `actor/state:get`    | Returns a **deep clone** of the state (mutations do not affect live state)  |
+| `actor/list`         | Returns all live `ActorInstance` objects                                    |
+
+`actor/state:patch` example:
+
+```ts
+// Update three keys and receive one notification
+core.events.emitSync('actor/state:patch', {
+  instanceId: 'merchant-1',
+  patch: { gold: 0, isAvailable: false, quest: 'done' },
+});
+// → emits actor/state:patched once with { patch, previous }
+```
+
+### 17.5 Full Event Contract
+
+| Event                   | Direction | Description                                            |
+|-------------------------|-----------|--------------------------------------------------------|
+| `actor/define`          | → AM      | Register an actor type blueprint                       |
+| `actor/spawn`           | → AM      | Create a new instance → `ActorSpawnOutput`             |
+| `actor/despawn`         | → AM      | Remove a live instance                                 |
+| `actor/state:set`       | → AM      | Write one state key                                    |
+| `actor/state:patch`     | → AM      | Write multiple state keys atomically                   |
+| `actor/state:get`       | → AM      | Read a deep-cloned snapshot → `ActorStateGetOutput`    |
+| `actor/list`            | → AM      | List all live instances → `ActorListOutput`            |
+| `actor/trigger`         | → AM      | Manually fire a named trigger on an instance           |
+| `actor/spawned`         | AM →      | Emitted after spawn + spawned triggers are fired       |
+| `actor/despawned`       | AM →      | Emitted after an instance is removed                   |
+| `actor/script:started`  | AM →      | A trigger caused a script to start                     |
+| `actor/script:ended`    | AM →      | A trigger-started script ended                         |
+| `actor/state:changed`   | AM →      | A single state key was written via `actor/state:set`   |
+| `actor/state:patched`   | AM →      | Multiple state keys written via `actor/state:patch`    |
+
+---
+
+## 18. TypeScript Style
 
 - **Strict mode** is enabled.  All code must pass `tsc --strict` without error.
 - Prefer `interface` over `type` for object shapes; use `type` for unions, aliases, and mapped types.
@@ -1841,7 +1978,7 @@ core.events.on('script', 'dialogue/choice:made', ({ index }) => {
 
 ---
 
-## 17. Coding Style
+## 19. Coding Style
 
 - 2-space indentation, single quotes, trailing commas (enforced by the project's formatter).
 - Prefer `async/await` over raw Promises.
@@ -1856,7 +1993,7 @@ core.events.on('script', 'dialogue/choice:made', ({ index }) => {
 
 ---
 
-## 18. Lifecycle Summary
+## 20. Lifecycle Summary
 
 ```
 createEngine(options)
