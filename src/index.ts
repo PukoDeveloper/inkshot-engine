@@ -221,6 +221,24 @@ export type {
 
 export type { EnginePlugin, PluginSource } from './types/plugin.js';
 
+// Particle system
+export { ParticleManager } from './plugins/ParticleManager.js';
+export type { ParticleDisplay, ParticleLayer, ParticleManagerOptions } from './plugins/ParticleManager.js';
+export type {
+  ParticleConfig,
+  ParticleEmitParams,
+  ParticleEmitOutput,
+  ParticleStopParams,
+  ParticleClearParams,
+  ParticleCompleteParams,
+  ParticleMoveParams,
+  ParticlePauseParams,
+  ParticleResumeParams,
+  ParticleCountParams,
+  ParticleCountOutput,
+  ParticleUpdateParams,
+} from './types/particle.js';
+
 // Rendering
 export { Renderer } from './rendering/Renderer.js';
 export { RenderPipeline } from './rendering/RenderPipeline.js';
