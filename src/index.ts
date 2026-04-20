@@ -174,6 +174,28 @@ export { createEngine, sortPluginsByDependency } from './createEngine.js';
 export type { EngineOptions, EngineInstance } from './createEngine.js';
 
 
+// Tilemap system
+export { TilemapManager } from './plugins/TilemapManager.js';
+export { AutotileBit } from './types/tilemap.js';
+export type {
+  TilesetDef,
+  TileAnimationFrame,
+  AnimatedTileDef,
+  AutotileMode,
+  AutotileGroupDef,
+  TilemapLayerDef,
+  TilemapData,
+  TilemapLoadParams,
+  TilemapLoadOutput,
+  TilemapUnloadParams,
+  TilemapSetTileParams,
+  TilemapGetTileParams,
+  TilemapGetTileOutput,
+  TilemapLoadedParams,
+  TilemapUnloadedParams,
+  TilemapLayerSetFilterParams,
+} from './types/tilemap.js';
+
 // Tween system
 export { TweenManager, Tween, Easing } from './plugins/TweenManager.js';
 export type { EasingFn, TweenOptions, Advanceable } from './plugins/TweenManager.js';
