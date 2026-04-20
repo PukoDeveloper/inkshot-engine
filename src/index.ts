@@ -309,3 +309,35 @@ export type {
   PathfindingWeightSetParams,
   PathfindingCacheClearParams,
 } from './types/pathfinding.js';
+
+// UI system
+export { UIManager } from './plugins/UIManager.js';
+export type {
+  UIWidget,
+  UIWidgetFactory,
+  UIAnchor,
+  UICreateParams,
+  UICreateOutput,
+  UIRegisterParams,
+  UIRegisterOutput,
+  UIShowParams,
+  UIHideParams,
+  UIDestroyParams,
+  UIUpdateParams,
+  UIGetParams,
+  UIGetOutput,
+  UICreatedParams,
+  UIShownParams,
+  UIHiddenParams,
+  UIDestroyedParams,
+  UILabelProps,
+  UIButtonProps,
+  UIPanelProps,
+  UIProgressBarProps,
+  UISliderProps,
+  UIScrollViewProps,
+  UIDialogProps,
+  UIStackPanelProps,
+  UIScrollViewWidget,
+  UIStackPanelWidget,
+} from './types/ui.js';

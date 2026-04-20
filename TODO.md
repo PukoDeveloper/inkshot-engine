@@ -58,13 +58,14 @@
 
 ## 🟡 中優先
 
-### 5. UI 元件系統 (UI Widget System)
-- [ ] 新增 `UIManager` plugin（namespace: `ui`）
-- [ ] 內建基礎元件：`Button`、`Label`、`Panel`、`ProgressBar`、`Slider`
-- [ ] 支援 `ScrollView` 和 `Dialog`（含確認/取消按鈕）
-- [ ] 元件支援 i18n 文字（自動訂閱 `i18n/changed`）
-- [ ] 事件驅動：`ui/show`、`ui/hide`、`ui/destroy`
-- [ ] 支援簡易佈局（anchor、padding、stack layout）
+### 5. UI 元件系統 (UI Widget System) ✅
+- [x] 新增 `UIManager` plugin（namespace: `ui`）
+- [x] 內建基礎元件：`Button`、`Label`、`Panel`、`ProgressBar`、`Slider`
+- [x] 支援 `ScrollView` 和 `Dialog`（含確認/取消按鈕）
+- [x] 元件支援 i18n 文字（自動訂閱 `i18n/changed`）
+- [x] 事件驅動：`ui/show`、`ui/hide`、`ui/destroy`
+- [x] 支援簡易佈局（anchor、padding、stack layout）
+- [x] 彈性元件工廠登錄系統：`ui/register` 事件 + `uiManager.register()` 直接 API，可在任意時機掛載自訂元件類型（`myGame/healthbar` 等）
 
 ### 6. 空間音效 (Spatial / Positional Audio) ✅
 - [x] 擴充 `AudioManager`，加入 `PannerNode` 支援
