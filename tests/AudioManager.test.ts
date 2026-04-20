@@ -50,12 +50,28 @@ function createMockGain() {
   };
 }
 
+function createMockPanner() {
+  return {
+    panningModel: 'equalpower' as PanningModelType,
+    distanceModel: 'linear' as DistanceModelType,
+    refDistance: 1,
+    maxDistance: 10_000,
+    rolloffFactor: 1,
+    positionX: { value: 0 },
+    positionY: { value: 0 },
+    positionZ: { value: 0 },
+    connect: vi.fn(),
+  };
+}
+
 type MockSource = ReturnType<typeof createMockSource>;
 type MockGain = ReturnType<typeof createMockGain>;
+type MockPanner = ReturnType<typeof createMockPanner>;
 
 /** Factory so tests can inspect specific source/gain instances. */
 let lastSource: MockSource;
 let lastGain: MockGain;
+let lastPanner: MockPanner;
 
 class MockAudioContext {
   get currentTime() {
@@ -67,6 +83,18 @@ class MockAudioContext {
   close = vi.fn().mockResolvedValue(undefined);
   decodeAudioData = vi.fn().mockResolvedValue(mockBuffer);
 
+  listener = {
+    positionX: { value: 0 },
+    positionY: { value: 0 },
+    positionZ: { value: 0 },
+    forwardX: { value: 0 },
+    forwardY: { value: 0 },
+    forwardZ: { value: -1 },
+    upX: { value: 0 },
+    upY: { value: -1 },
+    upZ: { value: 0 },
+  };
+
   createBufferSource = vi.fn().mockImplementation(() => {
     lastSource = createMockSource();
     return lastSource;
@@ -75,6 +103,11 @@ class MockAudioContext {
   createGain = vi.fn().mockImplementation(() => {
     lastGain = createMockGain();
     return lastGain;
+  });
+
+  createPanner = vi.fn().mockImplementation(() => {
+    lastPanner = createMockPanner();
+    return lastPanner;
   });
 }
 
@@ -942,6 +975,205 @@ describe('AudioManager', () => {
 
       const entry = output.instances.find((i) => i.instanceId === 'bgm4');
       expect(entry?.currentTime).toBeCloseTo(1.5);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Spatial audio — audio/play with position
+  // -------------------------------------------------------------------------
+
+  describe('spatial audio — audio/play with position', () => {
+    beforeEach(async () => {
+      await core.events.emit('audio/load', { key: 'sfx', url: 'sfx.wav' });
+    });
+
+    it('creates a PannerNode when position is provided', () => {
+      const mockCtx = (audio as unknown as { _ctx: MockAudioContext })._ctx;
+      const createPannerSpy = vi.spyOn(mockCtx ?? new MockAudioContext(), 'createPanner');
+
+      core.events.emitSync('audio/play', { key: 'sfx', instanceId: 'spatial', position: { x: 100, y: 50 } });
+
+      expect(createPannerSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('does NOT create a PannerNode when position is omitted', () => {
+      // trigger context creation first
+      core.events.emitSync('audio/play', { key: 'sfx', instanceId: 'no-spatial' });
+      const mockCtx = (audio as unknown as { _ctx: MockAudioContext })._ctx!;
+      const createPannerSpy = vi.spyOn(mockCtx, 'createPanner');
+
+      core.events.emitSync('audio/play', { key: 'sfx', instanceId: 'no-spatial-2' });
+
+      expect(createPannerSpy).not.toHaveBeenCalled();
+    });
+
+    it('maps game X to PannerNode positionX and negates game Y to positionY', () => {
+      core.events.emitSync('audio/play', {
+        key: 'sfx',
+        instanceId: 'pos-test',
+        position: { x: 200, y: 80 },
+      });
+
+      expect(lastPanner.positionX.value).toBe(200);
+      expect(lastPanner.positionY.value).toBe(-80);
+      expect(lastPanner.positionZ.value).toBe(0);
+    });
+
+    it('connects source to panner and panner to gain when spatial', () => {
+      core.events.emitSync('audio/play', {
+        key: 'sfx',
+        instanceId: 'conn-test',
+        position: { x: 0, y: 0 },
+      });
+
+      // source.connect → panner; panner.connect → gain
+      expect(lastSource.connect).toHaveBeenCalledWith(lastPanner);
+      expect(lastPanner.connect).toHaveBeenCalledWith(lastGain);
+    });
+
+    it('connects source directly to gain when non-spatial', () => {
+      core.events.emitSync('audio/play', { key: 'sfx', instanceId: 'non-spatial-conn' });
+
+      // Source should connect directly to the instance gain node
+      expect(lastSource.connect).toHaveBeenCalledWith(lastGain);
+    });
+
+    it('applies custom panningModel to the PannerNode', () => {
+      core.events.emitSync('audio/play', {
+        key: 'sfx',
+        instanceId: 'panning-model',
+        position: { x: 0, y: 0 },
+        panningModel: 'HRTF',
+      });
+
+      expect(lastPanner.panningModel).toBe('HRTF');
+    });
+
+    it('applies custom distanceModel to the PannerNode', () => {
+      core.events.emitSync('audio/play', {
+        key: 'sfx',
+        instanceId: 'dist-model',
+        position: { x: 0, y: 0 },
+        distanceModel: 'inverse',
+      });
+
+      expect(lastPanner.distanceModel).toBe('inverse');
+    });
+
+    it('applies refDistance, maxDistance, and rolloffFactor', () => {
+      core.events.emitSync('audio/play', {
+        key: 'sfx',
+        instanceId: 'panner-params',
+        position: { x: 0, y: 0 },
+        refDistance: 50,
+        maxDistance: 500,
+        rolloffFactor: 2,
+      });
+
+      expect(lastPanner.refDistance).toBe(50);
+      expect(lastPanner.maxDistance).toBe(500);
+      expect(lastPanner.rolloffFactor).toBe(2);
+    });
+
+    it('uses default PannerNode values when optional spatial params are omitted', () => {
+      core.events.emitSync('audio/play', {
+        key: 'sfx',
+        instanceId: 'panner-defaults',
+        position: { x: 0, y: 0 },
+      });
+
+      expect(lastPanner.panningModel).toBe('equalpower');
+      expect(lastPanner.distanceModel).toBe('linear');
+      expect(lastPanner.refDistance).toBe(1);
+      expect(lastPanner.maxDistance).toBe(10_000);
+      expect(lastPanner.rolloffFactor).toBe(1);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Spatial audio — audio/listener:update
+  // -------------------------------------------------------------------------
+
+  describe('audio/listener:update', () => {
+    beforeEach(async () => {
+      await core.events.emit('audio/load', { key: 'sfx', url: 'sfx.wav' });
+      // Trigger context creation
+      core.events.emitSync('audio/play', { key: 'sfx', instanceId: '_init' });
+    });
+
+    it('is a no-op before the AudioContext is created', () => {
+      // Create a fresh audio manager with no context yet
+      const freshCore = createStubCore();
+      const freshAudio = new AudioManager();
+      freshAudio.init(freshCore);
+
+      expect(() => {
+        freshCore.events.emitSync('audio/listener:update', { x: 100, y: 200 });
+      }).not.toThrow();
+
+      freshAudio.destroy(freshCore);
+    });
+
+    it('sets listener position using AudioParam API (negate Y)', () => {
+      const listener = (audio as unknown as { _ctx: MockAudioContext })._ctx!.listener;
+
+      core.events.emitSync('audio/listener:update', { x: 300, y: 150 });
+
+      expect(listener.positionX.value).toBe(300);
+      expect(listener.positionY.value).toBe(-150);
+      expect(listener.positionZ.value).toBe(1);
+    });
+
+    it('sets listener orientation so forward points into the screen', () => {
+      const listener = (audio as unknown as { _ctx: MockAudioContext })._ctx!.listener;
+
+      core.events.emitSync('audio/listener:update', { x: 0, y: 0 });
+
+      expect(listener.forwardX.value).toBe(0);
+      expect(listener.forwardY.value).toBe(0);
+      expect(listener.forwardZ.value).toBe(-1);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Spatial audio — audio/source:move
+  // -------------------------------------------------------------------------
+
+  describe('audio/source:move', () => {
+    beforeEach(async () => {
+      await core.events.emit('audio/load', { key: 'sfx', url: 'sfx.wav' });
+    });
+
+    it('updates the PannerNode position for a spatial instance', () => {
+      core.events.emitSync('audio/play', {
+        key: 'sfx',
+        instanceId: 'moving-sound',
+        position: { x: 10, y: 20 },
+      });
+
+      core.events.emitSync('audio/source:move', { instanceId: 'moving-sound', x: 300, y: 150 });
+
+      expect(lastPanner.positionX.value).toBe(300);
+      expect(lastPanner.positionY.value).toBe(-150);
+      expect(lastPanner.positionZ.value).toBe(0);
+    });
+
+    it('is a no-op for a non-spatial instance (no PannerNode)', () => {
+      core.events.emitSync('audio/play', { key: 'sfx', instanceId: 'non-spatial-move' });
+
+      expect(() => {
+        core.events.emitSync('audio/source:move', {
+          instanceId: 'non-spatial-move',
+          x: 100,
+          y: 200,
+        });
+      }).not.toThrow();
+    });
+
+    it('is a no-op for an unknown instanceId', () => {
+      expect(() => {
+        core.events.emitSync('audio/source:move', { instanceId: 'ghost', x: 0, y: 0 });
+      }).not.toThrow();
     });
   });
 });

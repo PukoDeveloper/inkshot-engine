@@ -66,20 +66,20 @@
 - [ ] 事件驅動：`ui/show`、`ui/hide`、`ui/destroy`
 - [ ] 支援簡易佈局（anchor、padding、stack layout）
 
-### 6. 空間音效 (Spatial / Positional Audio)
-- [ ] 擴充 `AudioManager`，加入 `PannerNode` 支援
-- [ ] `audio/play` 新增 `position: { x, y }` 可選參數
-- [ ] 根據攝影機位置自動計算音量衰減與左右聲道平移
-- [ ] 新增 `audio/listener:update` 事件，讓 Camera 驅動音訊聆聽者位置
-- [ ] 支援最大聆聽距離與衰減曲線設定
+### 6. 空間音效 (Spatial / Positional Audio) ✅
+- [x] 擴充 `AudioManager`，加入 `PannerNode` 支援
+- [x] `audio/play` 新增 `position: { x, y }` 可選參數
+- [x] 根據攝影機位置自動計算音量衰減與左右聲道平移
+- [x] 新增 `audio/listener:update` 事件，讓 Camera 驅動音訊聆聽者位置
+- [x] 支援最大聆聽距離與衰減曲線設定
 
-### 7. 尋路系統 (Pathfinding)
-- [ ] 新增 `PathfindingManager` plugin（namespace: `pathfinding`）
-- [ ] 實作 A* 演算法，以 tilemap 為地圖來源
-- [ ] 支援加權地形（不同 tile 移動代價）
-- [ ] 支援動態障礙物（基於 `CollisionManager` 的 BODY 實體）
-- [ ] 事件：`pathfinding/find`（params: `from`, `to` → output: `path[]`）
-- [ ] 路徑快取機制，避免每幀重算
+### 7. 尋路系統 (Pathfinding) ✅
+- [x] 新增 `PathfindingManager` plugin（namespace: `pathfinding`）
+- [x] 實作 A* 演算法，以 tilemap 為地圖來源
+- [x] 支援加權地形（不同 tile 移動代價）
+- [x] 支援動態障礙物（基於 `CollisionManager` 的 BODY 實體）
+- [x] 事件：`pathfinding/find`（params: `from`, `to` → output: `path[]`）
+- [x] 路徑快取機制，避免每幀重算
 
 ---
 

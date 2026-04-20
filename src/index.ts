@@ -17,6 +17,9 @@ export type {
   AudioStateOutput,
   AudioInstanceInfo,
   AudioListOutput,
+  AudioPosition,
+  AudioListenerUpdateParams,
+  AudioSourceMoveParams,
 } from './types/audio.js';
 
 // Asset system
@@ -296,3 +299,13 @@ export type {
   TimerCancelledParams,
   TimerCancelAllOutput,
 } from './types/timer.js';
+
+// Pathfinding system
+export { PathfindingManager } from './plugins/PathfindingManager.js';
+export type { PathfindingManagerOptions } from './plugins/PathfindingManager.js';
+export type {
+  PathfindingFindParams,
+  PathfindingFindOutput,
+  PathfindingWeightSetParams,
+  PathfindingCacheClearParams,
+} from './types/pathfinding.js';

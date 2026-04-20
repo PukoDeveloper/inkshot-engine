@@ -17,6 +17,8 @@ import type {
   AudioStateOutput,
   AudioListOutput,
   AudioInstanceInfo,
+  AudioListenerUpdateParams,
+  AudioSourceMoveParams,
 } from '../types/audio.js';
 
 // ---------------------------------------------------------------------------
@@ -48,6 +50,11 @@ interface AudioInstance {
    * `undefined` for uncategorised instances.
    */
   readonly category?: AudioCategory;
+  /**
+   * Spatial `PannerNode` for positional audio.
+   * Present only when the instance was created with a `position` parameter.
+   */
+  readonly pannerNode?: PannerNode;
 }
 
 // ---------------------------------------------------------------------------
@@ -87,6 +94,8 @@ interface AudioInstance {
  * | `audio/unload`  | ✗ sync | Remove a buffer from cache |
  * | `audio/state`   | ✗ sync | Query the state of a playback instance (pull) |
  * | `audio/list`    | ✗ sync | List all active (playing / paused) instances (pull) |
+ * | `audio/listener:update` | ✗ sync | Update the listener world position (for spatial audio) |
+ * | `audio/source:move`     | ✗ sync | Reposition a spatial audio source at runtime |
  *
  * ---
  *
@@ -221,6 +230,26 @@ export class AudioManager implements EnginePlugin {
           : this._masterGain!;
         gainNode.connect(upstreamGain);
 
+        // ── Spatial (PannerNode) wiring ──────────────────────────────────────
+        // When a world-space `position` is provided, insert a PannerNode between
+        // the source and the per-instance gain.  This gives per-stream volume
+        // control AND spatial processing simultaneously.
+        let pannerNode: PannerNode | undefined;
+        if (params.position !== undefined) {
+          pannerNode = ctx.createPanner();
+          pannerNode.panningModel  = params.panningModel  ?? 'equalpower';
+          pannerNode.distanceModel = params.distanceModel ?? 'linear';
+          pannerNode.refDistance   = params.refDistance   ?? 1;
+          pannerNode.maxDistance   = params.maxDistance   ?? 10_000;
+          pannerNode.rolloffFactor = params.rolloffFactor ?? 1;
+          // Map game 2-D coords to Web Audio 3-D space (negate Y because Web
+          // Audio Y points up while game Y points down; fixed Z keeps it in-plane).
+          pannerNode.positionX.value =  params.position.x;
+          pannerNode.positionY.value = -params.position.y;
+          pannerNode.positionZ.value =  0;
+          pannerNode.connect(gainNode);
+        }
+
         const source = ctx.createBufferSource();
         source.buffer = buffer;
         source.loop = params.loop ?? false;
@@ -233,7 +262,8 @@ export class AudioManager implements EnginePlugin {
         if (params.loopEnd !== undefined) {
           source.loopEnd = params.loopEnd;
         }
-        source.connect(gainNode);
+        // Source connects to panner (if spatial) or directly to the gain node.
+        source.connect(pannerNode ?? gainNode);
 
         const instance: AudioInstance = {
           key: params.key,
@@ -244,6 +274,7 @@ export class AudioManager implements EnginePlugin {
           loop: params.loop ?? false,
           state: 'playing',
           category: params.category,
+          pannerNode,
         };
 
         source.onended = () => {
@@ -447,6 +478,54 @@ export class AudioManager implements EnginePlugin {
           });
         }
         output.instances = instances;
+      },
+    );
+
+    // ── audio/listener:update ─────────────────────────────────────────────────
+
+    events.on<AudioListenerUpdateParams>(
+      this.namespace,
+      'audio/listener:update',
+      (params) => {
+        const ctx = this._ctx;
+        if (!ctx) return;
+        const listener = ctx.listener;
+        // Web Audio Y axis points up; game Y axis points down.
+        if (typeof listener.positionX !== 'undefined') {
+          // Modern API (AudioParam-based)
+          listener.positionX.value =  params.x;
+          listener.positionY.value = -params.y;
+          listener.positionZ.value =  1;
+        } else {
+          // Legacy API
+          (listener as AudioListener).setPosition(params.x, -params.y, 1);
+        }
+        // Orient the listener so that "forward" is into the screen plane
+        // and "up" follows the game's inverted Y axis.
+        if (typeof listener.forwardX !== 'undefined') {
+          listener.forwardX.value =  0;
+          listener.forwardY.value =  0;
+          listener.forwardZ.value = -1;
+          listener.upX.value =  0;
+          listener.upY.value = -1;
+          listener.upZ.value =  0;
+        } else {
+          (listener as AudioListener).setOrientation(0, 0, -1, 0, -1, 0);
+        }
+      },
+    );
+
+    // ── audio/source:move ─────────────────────────────────────────────────────
+
+    events.on<AudioSourceMoveParams>(
+      this.namespace,
+      'audio/source:move',
+      (params) => {
+        const inst = this._instances.get(params.instanceId);
+        if (!inst?.pannerNode) return;
+        inst.pannerNode.positionX.value =  params.x;
+        inst.pannerNode.positionY.value = -params.y;
+        inst.pannerNode.positionZ.value =  0;
       },
     );
   }

@@ -124,6 +124,62 @@ export interface AudioPlayParams {
    * Defaults to the end of the buffer.  Maps to `AudioBufferSourceNode.loopEnd`.
    */
   readonly loopEnd?: number;
+
+  // ── Spatial audio ─────────────────────────────────────────────────────────
+
+  /**
+   * World-space position of the audio source.
+   *
+   * When provided, the instance is routed through a `PannerNode` so that
+   * volume and stereo panning are computed automatically based on the
+   * distance and direction from the listener.
+   *
+   * When omitted, the instance plays without spatial processing (the default
+   * non-positional behaviour is preserved).
+   */
+  readonly position?: { x: number; y: number };
+
+  /**
+   * Panning model for the `PannerNode`.
+   * - `'equalpower'` (default) — simple equal-power panning; cheap and
+   *   generally appropriate for 2D games.
+   * - `'HRTF'` — head-related transfer function; higher quality but more CPU.
+   *
+   * Ignored when `position` is not provided.
+   */
+  readonly panningModel?: 'equalpower' | 'HRTF';
+
+  /**
+   * Distance attenuation model.
+   * - `'linear'` (default) — linear roll-off between `refDistance` and
+   *   `maxDistance`.  Simple and predictable for 2D games.
+   * - `'inverse'` — physically-based inverse-distance law.
+   * - `'exponential'` — exponential roll-off.
+   *
+   * Ignored when `position` is not provided.
+   */
+  readonly distanceModel?: 'linear' | 'inverse' | 'exponential';
+
+  /**
+   * Reference distance in pixels — the distance from the listener at which
+   * the volume is `1` (full gain before any attenuation starts).
+   * Defaults to `1`.  Ignored when `position` is not provided.
+   */
+  readonly refDistance?: number;
+
+  /**
+   * Maximum audible distance in pixels.  Beyond this distance the sound is
+   * inaudible (gain reaches `0` for the `'linear'` model).
+   * Defaults to `10 000`.  Ignored when `position` is not provided.
+   */
+  readonly maxDistance?: number;
+
+  /**
+   * Roll-off factor that controls how quickly volume decays with distance.
+   * Higher values produce faster attenuation.
+   * Defaults to `1`.  Ignored when `position` is not provided.
+   */
+  readonly rolloffFactor?: number;
 }
 
 /** Output for `audio/play`. */
@@ -134,6 +190,22 @@ export interface AudioPlayOutput {
    * `audio/volume`, and `audio/state` to target this specific sound.
    */
   instanceId: string;
+}
+
+// ---------------------------------------------------------------------------
+// Spatial / Positional Audio extensions
+// ---------------------------------------------------------------------------
+
+/**
+ * 2D world-space position for a spatial audio source or listener.
+ * The Y axis follows game convention (positive = down); the AudioManager
+ * negates Y internally when forwarding to the Web Audio `PannerNode`.
+ */
+export interface AudioPosition {
+  /** World X coordinate in pixels. */
+  x: number;
+  /** World Y coordinate in pixels (positive = down). */
+  y: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -391,4 +463,67 @@ export interface AudioInstanceInfo {
 export interface AudioListOutput {
   /** Snapshot of every active instance at the moment of the query. */
   instances: AudioInstanceInfo[];
+}
+
+// ---------------------------------------------------------------------------
+// audio/listener:update
+// ---------------------------------------------------------------------------
+
+/**
+ * Parameters for `audio/listener:update`.
+ *
+ * Updates the position of the Web Audio **listener** — typically driven by
+ * the game camera so that spatial sounds are heard from the camera's
+ * perspective.
+ *
+ * The engine maps game coordinates (Y positive = down) to Web Audio
+ * coordinates (Y positive = up) automatically.
+ *
+ * @example
+ * ```ts
+ * // Update listener position every frame to follow the camera:
+ * core.events.on('myGame', 'core/render', () => {
+ *   const { output } = core.events.emitSync('camera/state', {});
+ *   core.events.emitSync('audio/listener:update', {
+ *     x: output.x + output.width  / 2,
+ *     y: output.y + output.height / 2,
+ *   });
+ * });
+ * ```
+ */
+export interface AudioListenerUpdateParams {
+  /** Listener world X coordinate in pixels. */
+  readonly x: number;
+  /** Listener world Y coordinate in pixels (positive = down). */
+  readonly y: number;
+}
+
+// ---------------------------------------------------------------------------
+// audio/source:move
+// ---------------------------------------------------------------------------
+
+/**
+ * Parameters for `audio/source:move`.
+ *
+ * Repositions an existing spatial audio source at runtime.
+ * Has no effect if the instance does not have a `PannerNode` (i.e. the
+ * instance was not started with a `position` parameter).
+ *
+ * @example
+ * ```ts
+ * // Move an ambient sound with a moving NPC:
+ * core.events.emitSync('audio/source:move', {
+ *   instanceId: 'npc-footsteps',
+ *   x: npc.position.x,
+ *   y: npc.position.y,
+ * });
+ * ```
+ */
+export interface AudioSourceMoveParams {
+  /** Identifier of the playback instance to reposition. */
+  readonly instanceId: string;
+  /** New world X coordinate in pixels. */
+  readonly x: number;
+  /** New world Y coordinate in pixels (positive = down). */
+  readonly y: number;
 }
