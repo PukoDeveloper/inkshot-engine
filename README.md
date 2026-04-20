@@ -20,6 +20,7 @@ Everything communicates through a shared **EventBus** — no tight coupling, no 
    - [SaveManager (`save`)](#savemanager-save)
    - [GameStateManager (`game`)](#gamestatemanager-game)
    - [SceneManager (`scene`)](#scenemanager-scene)
+   - [CollisionManager (`collision`)](#collisionmanager-collision)
    - [TweenManager (`tween`)](#tweenmanager-tween)
 5. [Renderer & Layers](#renderer--layers)
 6. [Writing Your Own Plugin](#writing-your-own-plugin)
@@ -502,6 +503,130 @@ Transition effects (fade-out / fade-in) can be added by subscribing to the `befo
 
 ---
 
+### CollisionManager (`collision`)
+
+2D collision detection, movement resolution, spatial queries, and raycasting.  Must be registered **after** `EntityManager`.
+
+#### Event Contract
+
+| Event | Async? | Description |
+|-------|--------|-------------|
+| `collision/collider:add` | ✗ | Attach a shape + layer mask to an entity |
+| `collision/collider:remove` | ✗ | Detach a collider from an entity |
+| `collision/tilemap:set` | ✗ | Register or replace the active tile map (see format below) |
+| `collision/move` | ✗ | Move a `BODY` entity with full collision resolution; returns `{ x, y, blockedX, blockedY }` |
+| `collision/query` | ✗ | Return entity IDs whose colliders overlap a given shape + layer mask |
+| `collision/raycast` | ✗ | Cast a ray; return the first hit entity or tile |
+| `collision/grid:snap` | ✗ | Snap pixel coordinates to the nearest tile-grid corner |
+| `collision/grid:worldToTile` | ✗ | Pixel coords → tile `{ col, row }` |
+| `collision/grid:tileToWorld` | ✗ | Tile `{ col, row }` → pixel top-left |
+| `collision/hit` | — emitted | First-frame hitbox ↔ hurtbox contact: `{ attackerId, victimId }` |
+| `collision/overlap` | — emitted | Sensor overlap begin (`entered: true`) or end (`entered: false`) |
+
+#### Collision Layers
+
+```ts
+import { CollisionLayer } from 'inkshot-engine';
+
+// Combine layers with bitwise OR
+const layer = CollisionLayer.BODY | CollisionLayer.HURTBOX;
+```
+
+| Constant | Purpose |
+|---|---|
+| `BODY` | Physical obstacle — blocked by solid tiles and other bodies |
+| `HITBOX` | Deals damage (weapon swing area) |
+| `HURTBOX` | Receives damage (character body) |
+| `SENSOR` | Overlap detection without physical blocking |
+
+#### Tile Shapes
+
+The `tileShapes` record maps tile values to collision behaviours:
+
+| Shape | Behaviour |
+|---|---|
+| `'solid'` | Full block on all sides |
+| `'empty'` | Explicitly passable |
+| `'top-only'` | One-way platform — blocks downward movement only when entity was above tile top |
+| `'slope-ne'` ◣ | Floor ramp rising left-to-right |
+| `'slope-nw'` ◢ | Floor ramp falling left-to-right |
+| `'slope-se'` ◤ | Ceiling ramp descending left-to-right |
+| `'slope-sw'` ◥ | Ceiling ramp ascending left-to-right |
+
+Any custom string is supported via `CollisionManagerOptions.customShapeResolvers`.
+
+#### Usage
+
+```ts
+import { createEngine, EntityManager, CollisionManager, CollisionLayer } from 'inkshot-engine';
+import type { TileShapeResolver } from 'inkshot-engine';
+
+// Optional: add custom tile shapes
+const iceResolver: TileShapeResolver = (shape, ctx) => {
+  if (shape !== 'ice') return null;
+  if (ctx.axis === 'y' && ctx.dy > 0) {
+    return { blocked: true, resolved: ctx.tileY - (ctx.entityAABB.bottom - ctx.entityY) };
+  }
+  return { blocked: false, resolved: ctx.entityY };
+};
+
+const { core } = await createEngine({
+  plugins: [
+    new EntityManager(),
+    new CollisionManager({ customShapeResolvers: [iceResolver] }),
+  ],
+});
+
+// Register a tilemap
+core.events.emitSync('collision/tilemap:set', {
+  tileSize: 16,
+  layers: myTileGrid,           // number[][]  (row-major)
+  tileShapes: {
+    1: 'solid',
+    2: 'top-only',
+    3: 'slope-ne',
+    4: 'ice',
+  },
+});
+
+// Attach a BODY + HURTBOX collider to the player entity
+core.events.emitSync('collision/collider:add', {
+  entityId: player.id,
+  shape: { type: 'rect', width: 14, height: 20, offsetX: -7, offsetY: -10 },
+  layer: CollisionLayer.BODY | CollisionLayer.HURTBOX,
+});
+
+// Move with full collision resolution each fixed update
+core.events.on('myGame', 'core/update', ({ dt }) => {
+  const { output: move } = core.events.emitSync('collision/move', {
+    entityId: player.id,
+    dx: velocityX * dt,
+    dy: velocityY * dt,
+  });
+  if (move.blockedY && velocityY > 0) velocityY = 0; // landed
+  if (move.blockedX) velocityX = 0;                  // hit a wall
+});
+
+// Hitscan attack
+const { output: ray } = core.events.emitSync('collision/raycast', {
+  origin: player.position,
+  direction: { x: 1, y: 0 },
+  maxDistance: 200,
+  layerMask: CollisionLayer.HURTBOX,
+});
+if (ray.hit && ray.entityId) applyDamage(ray.entityId, 25);
+
+// Combat callbacks
+core.events.on('combat', 'collision/hit', ({ attackerId, victimId }) => {
+  applyDamage(victimId, 10);
+});
+core.events.on('triggers', 'collision/overlap', ({ entityAId, entityBId, entered }) => {
+  if (entered) openDoor(entityAId, entityBId);
+});
+```
+
+---
+
 ### TweenManager (`tween`)
 
 Drives property-based animations (tweens) and sequenced animation timelines, all tied to the engine's `core/tick` event.
@@ -798,6 +923,10 @@ import type {
   InputActionTriggeredParams,
   // Save
   SaveSlotSaveOutput,
+  // Collision
+  TileCollisionShape, TileShapeContext, TileShapeResolver,
+  CollisionMoveOutput, CollisionQueryOutput, CollisionRaycastOutput,
+  ColliderShape,
   // Tween
   TweenToParams, TweenToOutput, TweenKillParams, TweenFinishedParams,
   EasingFn, TweenOptions, Advanceable,

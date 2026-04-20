@@ -74,7 +74,7 @@ const TILEMAP = {
     [0, 0, 1, 0, 0],
     [1, 1, 1, 1, 1],
   ],
-  solidValues: [1],
+  tileShapes: { 1: 'solid' as const },
 };
 
 // ---------------------------------------------------------------------------
@@ -197,7 +197,7 @@ describe('CollisionManager', () => {
       core.events.emitSync('collision/tilemap:set', {
         tileSize: TILE_SIZE,
         layers: [[0, 0], [0, 0]],
-        solidValues: [1],
+        tileShapes: { 1: 'solid' as const },
       });
 
       const entity = em.create({ id: 'nowall', position: { x: 0, y: 0 } });
@@ -331,7 +331,7 @@ describe('CollisionManager', () => {
       core.events.emitSync('collision/tilemap:set', {
         tileSize: TILE_SIZE,
         layers: [[1, 1, 1, 1, 1], [0, 0, 0, 0, 0]],
-        solidValues: [1],
+        tileShapes: { 1: 'solid' as const },
       });
 
       // Entity 8px tall starts at y=20, moving up.
@@ -912,6 +912,199 @@ describe('CollisionManager', () => {
         entityId: entity.id, dx: 10, dy: 0,
       }) as { output: Partial<CollisionMoveOutput> };
       expect(output.x).toBeUndefined();
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // top-only tiles
+  // ─────────────────────────────────────────────────────────────────────────
+  describe('top-only tiles', () => {
+    /**
+     * Map with a single top-only platform tile at row=2, col=2.
+     * (row 2 starts at y=32, tile top = 32)
+     */
+    const TOP_ONLY_MAP = {
+      tileSize: TILE_SIZE,
+      layers: [
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 2, 0, 0],
+        [0, 0, 0, 0, 0],
+      ],
+      tileShapes: { 2: 'top-only' as const },
+    };
+
+    it('blocks entity falling onto the top of a top-only tile', () => {
+      const { core, em } = createSetup();
+      core.events.emitSync('collision/tilemap:set', TOP_ONLY_MAP);
+
+      // Entity above tile top (y=32), 8px tall, falling down.
+      const entity = em.create({ id: 'fall', position: { x: 32, y: 16 } });
+      core.events.emitSync('collision/collider:add', {
+        entityId: entity.id,
+        shape: { type: 'rect', width: 8, height: 8 },
+        layer: CollisionLayer.BODY,
+      });
+
+      const { output } = core.events.emitSync('collision/move', {
+        entityId: entity.id, dx: 0, dy: 30,
+      }) as { output: CollisionMoveOutput };
+
+      expect(output.blockedY).toBe(true);
+      // Tile top = row 2 * 16 = 32. Entity bottom = posY + 8 = 32 → posY = 24.
+      expect(output.y).toBe(24);
+    });
+
+    it('does not block entity moving up through a top-only tile', () => {
+      const { core, em } = createSetup();
+      core.events.emitSync('collision/tilemap:set', TOP_ONLY_MAP);
+
+      // Entity below tile top, jumping upward.
+      const entity = em.create({ id: 'jump', position: { x: 32, y: 40 } });
+      core.events.emitSync('collision/collider:add', {
+        entityId: entity.id,
+        shape: { type: 'rect', width: 8, height: 8 },
+        layer: CollisionLayer.BODY,
+      });
+
+      const { output } = core.events.emitSync('collision/move', {
+        entityId: entity.id, dx: 0, dy: -30,
+      }) as { output: CollisionMoveOutput };
+
+      expect(output.blockedY).toBe(false);
+    });
+
+    it('does not block entity that was already below the tile top when starting to move down', () => {
+      const { core, em } = createSetup();
+      core.events.emitSync('collision/tilemap:set', TOP_ONLY_MAP);
+
+      // Entity already inside the tile (bottom started below tile top).
+      const entity = em.create({ id: 'inside', position: { x: 32, y: 35 } });
+      core.events.emitSync('collision/collider:add', {
+        entityId: entity.id,
+        shape: { type: 'rect', width: 8, height: 8 },
+        layer: CollisionLayer.BODY,
+      });
+
+      const { output } = core.events.emitSync('collision/move', {
+        entityId: entity.id, dx: 0, dy: 5,
+      }) as { output: CollisionMoveOutput };
+
+      expect(output.blockedY).toBe(false);
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Custom shape resolvers
+  // ─────────────────────────────────────────────────────────────────────────
+  describe('custom shape resolvers', () => {
+    it('invokes a custom resolver for unknown shape strings', () => {
+      const resolver = vi.fn().mockReturnValue(null);
+
+      const { core } = createCoreStub();
+      const em = new EntityManager();
+      const cm = new CollisionManager({ customShapeResolvers: [resolver] });
+      em.init(core);
+      cm.init(core);
+
+      core.events.emitSync('collision/tilemap:set', {
+        tileSize: TILE_SIZE,
+        layers: [[0, 0], [0, 3]],
+        tileShapes: { 3: 'my-custom-shape' },
+      });
+
+      const entity = em.create({ id: 'custom', position: { x: 0, y: 0 } });
+      core.events.emitSync('collision/collider:add', {
+        entityId: entity.id,
+        shape: { type: 'rect', width: 8, height: 8 },
+        layer: CollisionLayer.BODY,
+      });
+
+      core.events.emitSync('collision/move', {
+        entityId: entity.id, dx: 10, dy: 10,
+      });
+
+      expect(resolver).toHaveBeenCalledWith(
+        'my-custom-shape',
+        expect.objectContaining({ tileSize: TILE_SIZE }),
+      );
+    });
+
+    it('uses the result of a custom resolver that returns blocked=true', () => {
+      const { core } = createCoreStub();
+      const em = new EntityManager();
+      // Custom "ice" shape: solid only on the Y axis when moving down.
+      const cm = new CollisionManager({
+        customShapeResolvers: [
+          (shape, ctx) => {
+            if (shape !== 'ice') return null;
+            if (ctx.axis === 'y' && ctx.dy > 0) {
+              return { blocked: true, resolved: ctx.tileY - (ctx.entityAABB.bottom - ctx.entityY) };
+            }
+            return { blocked: false, resolved: ctx.axis === 'x' ? ctx.entityX : ctx.entityY };
+          },
+        ],
+      });
+      em.init(core);
+      cm.init(core);
+
+      // Ice tile at row=3 (y=48).
+      core.events.emitSync('collision/tilemap:set', {
+        tileSize: TILE_SIZE,
+        layers: [
+          [0, 0, 0],
+          [0, 0, 0],
+          [0, 0, 0],
+          [4, 4, 4],
+        ],
+        tileShapes: { 4: 'ice' },
+      });
+
+      const entity = em.create({ id: 'icer', position: { x: 8, y: 24 } });
+      core.events.emitSync('collision/collider:add', {
+        entityId: entity.id,
+        shape: { type: 'rect', width: 8, height: 8 },
+        layer: CollisionLayer.BODY,
+      });
+
+      const { output } = core.events.emitSync('collision/move', {
+        entityId: entity.id, dx: 0, dy: 30,
+      }) as { output: CollisionMoveOutput };
+
+      expect(output.blockedY).toBe(true);
+      // Ice tile top = 48. Entity bottom = posY + 8 = 48 → posY = 40.
+      expect(output.y).toBe(40);
+    });
+
+    it('falls back to no-collision when all resolvers return null', () => {
+      const { core } = createCoreStub();
+      const em = new EntityManager();
+      const cm = new CollisionManager({
+        customShapeResolvers: [(_shape, _ctx) => null],
+      });
+      em.init(core);
+      cm.init(core);
+
+      core.events.emitSync('collision/tilemap:set', {
+        tileSize: TILE_SIZE,
+        layers: [[0, 5], [0, 0]],
+        tileShapes: { 5: 'unhandled' },
+      });
+
+      const entity = em.create({ id: 'fall2', position: { x: 0, y: 0 } });
+      core.events.emitSync('collision/collider:add', {
+        entityId: entity.id,
+        shape: { type: 'rect', width: 8, height: 8 },
+        layer: CollisionLayer.BODY,
+      });
+
+      const { output } = core.events.emitSync('collision/move', {
+        entityId: entity.id, dx: 20, dy: 0,
+      }) as { output: CollisionMoveOutput };
+
+      // No blocking from unhandled shape.
+      expect(output.blockedX).toBe(false);
+      expect(output.x).toBe(20);
     });
   });
 });

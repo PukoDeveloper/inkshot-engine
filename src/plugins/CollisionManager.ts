@@ -6,6 +6,8 @@ import type {
   ColliderShape,
   Collider,
   TileCollisionMapData,
+  TileShapeContext,
+  TileShapeResolver,
   ColliderAddParams,
   ColliderRemoveParams,
   TilemapSetParams,
@@ -24,6 +26,41 @@ import type {
   CollisionHitParams,
   CollisionOverlapParams,
 } from '../types/collision.js';
+
+// ---------------------------------------------------------------------------
+// CollisionManager options
+// ---------------------------------------------------------------------------
+
+/**
+ * Options accepted by the {@link CollisionManager} constructor.
+ */
+export interface CollisionManagerOptions {
+  /**
+   * Custom shape resolvers evaluated after all built-in shapes.
+   *
+   * Resolvers are tried in registration order; the first non-`null`
+   * result wins.  Any unknown shape string that is not handled by any
+   * resolver is treated as passable (no collision).
+   *
+   * @example
+   * ```ts
+   * new CollisionManager({
+   *   customShapeResolvers: [
+   *     (shape, ctx) => {
+   *       if (shape !== 'ice') return null;
+   *       // Ice tiles: block movement but return a slightly higher snap
+   *       // so the entity sits on top of the ice surface.
+   *       if (ctx.axis === 'y' && ctx.dy > 0 && ctx.entityAABB.bottom >= ctx.tileY) {
+   *         return { blocked: true, resolved: ctx.tileY - (ctx.entityAABB.bottom - ctx.entityY) };
+   *       }
+   *       return { blocked: false, resolved: ctx.entityY };
+   *     },
+   *   ],
+   * });
+   * ```
+   */
+  customShapeResolvers?: TileShapeResolver[];
+}
 
 // ---------------------------------------------------------------------------
 // Module-level geometry helpers
@@ -294,14 +331,20 @@ export class CollisionManager implements EnginePlugin {
   readonly dependencies = ['entity'] as const;
   private _core: Core | null = null;
 
+  private readonly _options: CollisionManagerOptions;
+
+  constructor(options: CollisionManagerOptions = {}) {
+    this._options = options;
+  }
+
   /** Colliders keyed by entity ID. */
   private readonly _colliders = new Map<string, Collider>();
 
   /** Active tile collision map, or `null` if none has been registered. */
   private _tilemap: TileCollisionMapData | null = null;
 
-  /** O(1) solid-tile lookup. Key format: `"row,col"`. */
-  private readonly _solidTiles = new Set<string>();
+  /** O(1) tile shape lookup. Key: `"row,col"`, value: shape string. */
+  private readonly _tileShapeMap = new Map<string, string>();
 
   /**
    * Hit pairs overlapping in the previous fixed update.
@@ -410,7 +453,7 @@ export class CollisionManager implements EnginePlugin {
   destroy(core: Core): void {
     core.events.removeNamespace(this.namespace);
     this._colliders.clear();
-    this._solidTiles.clear();
+    this._tileShapeMap.clear();
     this._tilemap = null;
     this._prevHitPairs.clear();
     this._prevSensorPairs.clear();
@@ -453,24 +496,24 @@ export class CollisionManager implements EnginePlugin {
     this._tilemap = {
       tileSize: params.tileSize,
       layers: params.layers,
-      solidValues: params.solidValues,
+      tileShapes: params.tileShapes,
     };
 
-    // Rebuild O(1) solid-tile set.
-    this._solidTiles.clear();
-    const solidSet = new Set(params.solidValues);
+    // Rebuild O(1) tile shape lookup.
+    this._tileShapeMap.clear();
     for (let row = 0; row < params.layers.length; row++) {
       const rowData = params.layers[row];
       for (let col = 0; col < rowData.length; col++) {
-        if (solidSet.has(rowData[col])) {
-          this._solidTiles.add(`${row},${col}`);
+        const shape = params.tileShapes[rowData[col]];
+        if (shape !== undefined && shape !== 'empty') {
+          this._tileShapeMap.set(`${row},${col}`, shape);
         }
       }
     }
   }
 
-  private _isTileSolid(row: number, col: number): boolean {
-    return this._solidTiles.has(`${row},${col}`);
+  private _getTileShape(row: number, col: number): string | null {
+    return this._tileShapeMap.get(`${row},${col}`) ?? null;
   }
 
   // ---------------------------------------------------------------------------
@@ -557,16 +600,18 @@ export class CollisionManager implements EnginePlugin {
 
     for (let row = rowMin; row <= rowMax; row++) {
       for (let col = colMin; col <= colMax; col++) {
-        if (!this._isTileSolid(row, col)) continue;
-        blocked = true;
-        if (dx > 0) {
-          // Moving right — snap entity's right edge to tile's left edge.
-          const snap = col * ts - shapeRightOffset(shape);
-          if (snap < resolved) resolved = snap;
-        } else {
-          // Moving left — snap entity's left edge to tile's right edge.
-          const snap = (col + 1) * ts - shapeLeftOffset(shape);
-          if (snap > resolved) resolved = snap;
+        const tileShape = this._getTileShape(row, col);
+        if (!tileShape) continue;
+        const result = this._resolveTileOnAxis(
+          tileShape, shape, posX, posY, col * ts, row * ts, ts, dx, 0, 'x',
+        );
+        if (result.blocked) {
+          blocked = true;
+          if (dx > 0) {
+            if (result.resolved < resolved) resolved = result.resolved;
+          } else {
+            if (result.resolved > resolved) resolved = result.resolved;
+          }
         }
       }
     }
@@ -595,21 +640,155 @@ export class CollisionManager implements EnginePlugin {
 
     for (let row = rowMin; row <= rowMax; row++) {
       for (let col = colMin; col <= colMax; col++) {
-        if (!this._isTileSolid(row, col)) continue;
-        blocked = true;
-        if (dy > 0) {
-          // Moving down — snap entity's bottom edge to tile's top edge.
-          const snap = row * ts - shapeBottomOffset(shape);
-          if (snap < resolved) resolved = snap;
-        } else {
-          // Moving up — snap entity's top edge to tile's bottom edge.
-          const snap = (row + 1) * ts - shapeTopOffset(shape);
-          if (snap > resolved) resolved = snap;
+        const tileShape = this._getTileShape(row, col);
+        if (!tileShape) continue;
+        const result = this._resolveTileOnAxis(
+          tileShape, shape, posX, posY, col * ts, row * ts, ts, 0, dy, 'y',
+        );
+        if (result.blocked) {
+          blocked = true;
+          if (dy > 0) {
+            if (result.resolved < resolved) resolved = result.resolved;
+          } else {
+            if (result.resolved > resolved) resolved = result.resolved;
+          }
         }
       }
     }
 
     return { blocked, resolved };
+  }
+
+  /**
+   * Resolve a single tile's collision contribution on one axis.
+   *
+   * Returns `{ blocked, resolved }` where `resolved` is the entity's position
+   * (on the given axis) after applying the tile constraint.
+   */
+  private _resolveTileOnAxis(
+    shapeId: string,
+    entityShape: ColliderShape,
+    entityX: number,
+    entityY: number,
+    tileX: number,
+    tileY: number,
+    ts: number,
+    dx: number,
+    dy: number,
+    axis: 'x' | 'y',
+  ): { blocked: boolean; resolved: number } {
+    const defaultResolved = axis === 'x' ? entityX : entityY;
+
+    switch (shapeId) {
+      case 'empty':
+        return { blocked: false, resolved: defaultResolved };
+
+      case 'solid': {
+        if (axis === 'x') {
+          const snap = dx > 0
+            ? tileX - shapeRightOffset(entityShape)
+            : tileX + ts - shapeLeftOffset(entityShape);
+          return { blocked: true, resolved: snap };
+        }
+        const snap = dy > 0
+          ? tileY - shapeBottomOffset(entityShape)
+          : tileY + ts - shapeTopOffset(entityShape);
+        return { blocked: true, resolved: snap };
+      }
+
+      case 'top-only': {
+        // Blocks only downward movement when the entity was above the tile top
+        // before this move (prevents tunnelling through from above).
+        if (axis === 'y' && dy > 0) {
+          const prevBottom = (entityY - dy) + shapeBottomOffset(entityShape);
+          if (prevBottom <= tileY) {
+            return { blocked: true, resolved: tileY - shapeBottomOffset(entityShape) };
+          }
+        }
+        return { blocked: false, resolved: defaultResolved };
+      }
+
+      case 'slope-ne':
+      case 'slope-nw': {
+        // Floor slopes — only block downward movement on the Y axis.
+        if (axis === 'y' && dy > 0) {
+          const entityAABB = getShapeAABB(entityShape, entityX, entityY);
+          const centreX = (entityAABB.left + entityAABB.right) / 2;
+          const localX = Math.max(0, Math.min(ts, centreX - tileX));
+          // slope-ne ◣: surface rises left-to-right (/ shape)
+          // slope-nw ◢: surface falls left-to-right (\ shape)
+          const surfaceY = shapeId === 'slope-ne'
+            ? tileY + ts - localX
+            : tileY + localX;
+          if (entityAABB.bottom >= surfaceY) {
+            return { blocked: true, resolved: surfaceY - shapeBottomOffset(entityShape) };
+          }
+        }
+        return { blocked: false, resolved: defaultResolved };
+      }
+
+      case 'slope-se':
+      case 'slope-sw': {
+        // Ceiling slopes — only block upward movement on the Y axis.
+        if (axis === 'y' && dy < 0) {
+          const entityAABB = getShapeAABB(entityShape, entityX, entityY);
+          const centreX = (entityAABB.left + entityAABB.right) / 2;
+          const localX = Math.max(0, Math.min(ts, centreX - tileX));
+          // slope-se ◤: ceiling descends left-to-right
+          // slope-sw ◥: ceiling ascends left-to-right
+          const ceilY = shapeId === 'slope-se'
+            ? tileY + localX
+            : tileY + ts - localX;
+          if (entityAABB.top <= ceilY) {
+            return { blocked: true, resolved: ceilY - shapeTopOffset(entityShape) };
+          }
+        }
+        return { blocked: false, resolved: defaultResolved };
+      }
+
+      default:
+        return this._resolveCustomShape(
+          shapeId, entityShape, entityX, entityY, tileX, tileY, ts, dx, dy, axis,
+        );
+    }
+  }
+
+  /** Delegate unknown shapes to registered custom resolvers. */
+  private _resolveCustomShape(
+    shapeId: string,
+    entityShape: ColliderShape,
+    entityX: number,
+    entityY: number,
+    tileX: number,
+    tileY: number,
+    ts: number,
+    dx: number,
+    dy: number,
+    axis: 'x' | 'y',
+  ): { blocked: boolean; resolved: number } {
+    const defaultResolved = axis === 'x' ? entityX : entityY;
+    const resolvers = this._options.customShapeResolvers;
+    if (!resolvers?.length) return { blocked: false, resolved: defaultResolved };
+
+    const ctx: TileShapeContext = {
+      tileX,
+      tileY,
+      tileSize: ts,
+      entityAABB: getShapeAABB(entityShape, entityX, entityY),
+      entityShape,
+      entityX,
+      entityY,
+      dx,
+      dy,
+      axis,
+    };
+
+    for (const resolver of resolvers) {
+      const result = resolver(shapeId, ctx);
+      if (result !== null) return result;
+    }
+
+    return { blocked: false, resolved: defaultResolved };
   }
 
   /** Resolve the entity against other BODY entities on the X axis. */
@@ -808,7 +987,7 @@ export class CollisionManager implements EnginePlugin {
     let t = 0;
 
     while (t <= maxDistance) {
-      if (this._isTileSolid(tileRow, tileCol)) {
+      if (this._getTileShape(tileRow, tileCol) !== null) {
         return t;
       }
 

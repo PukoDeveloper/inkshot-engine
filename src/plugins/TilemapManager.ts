@@ -118,7 +118,7 @@ interface AnimatedSpriteRef {
  *     tileWidth: 16, tileHeight: 16,
  *     mapWidth: 200, mapHeight: 200,
  *     tilesets: [{ firstgid: 1, name: 'world', textureKey: 'tileset', tileWidth: 16, tileHeight: 16 }],
- *     layers: [{ name: 'ground', data: flatTileArray, collider: true, solidTileIds: [1] }],
+ *     layers: [{ name: 'ground', data: flatTileArray, collider: true, tileShapes: { 1: 'solid' } }],
  *     animatedTiles: { 3: { frames: [{ tileId: 3, duration: 150 }, { tileId: 4, duration: 150 }] } },
  *   },
  * });
@@ -729,7 +729,7 @@ export class TilemapManager implements EnginePlugin {
 
   /**
    * Push the current state of `layerDef.data` to the `CollisionManager` as a
-   * solid-tile grid.
+   * tile shape grid.
    */
   private _syncCollision(layerDef: TilemapLayerDef, mapData: TilemapData): void {
     if (!this._core) return;
@@ -744,7 +744,7 @@ export class TilemapManager implements EnginePlugin {
     this._core.events.emitSync('collision/tilemap:set', {
       tileSize: mapData.tileWidth,
       layers: rows,
-      solidValues: layerDef.solidTileIds ?? [],
+      tileShapes: layerDef.tileShapes ?? {},
     });
   }
 

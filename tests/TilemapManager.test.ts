@@ -521,7 +521,7 @@ describe('TilemapManager', () => {
 
       const data = makeMapData({
         layers: [
-          { name: 'collision', data: new Array(16).fill(1), collider: true, solidTileIds: [1] },
+          { name: 'collision', data: new Array(16).fill(1), collider: true, tileShapes: { 1: 'solid' as const } },
         ],
       });
       await loadMap(core, data);
@@ -529,7 +529,7 @@ describe('TilemapManager', () => {
       expect(collisionHandler).toHaveBeenCalledWith(
         expect.objectContaining({
           tileSize: 16,
-          solidValues: [1],
+          tileShapes: { 1: 'solid' },
         }),
         expect.anything(),
         expect.anything(),
