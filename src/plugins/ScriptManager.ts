@@ -229,7 +229,7 @@ export class ScriptManager implements EnginePlugin {
       (_params, output) => {
         output.running   = this._running !== null;
         output.scriptId  = this._running?.script.id ?? null;
-        output.nodeIndex = this._running?.nextIndex ?? 0;
+        output.nodeIndex = this._running?.nextIndex ?? null;
       },
     );
   }

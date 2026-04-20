@@ -178,8 +178,11 @@ export interface ScriptStateGetOutput {
   running: boolean;
   /** ID of the currently running script, or `null` when idle. */
   scriptId: string | null;
-  /** Zero-based index of the node currently being executed. */
-  nodeIndex: number;
+  /**
+   * Zero-based index of the node currently being executed, or `null` when no
+   * script is running.
+   */
+  nodeIndex: number | null;
 }
 
 // ---------------------------------------------------------------------------
