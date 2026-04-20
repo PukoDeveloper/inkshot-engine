@@ -10,11 +10,20 @@
 - [x] 新增 `ParticleManager` plugin（namespace: `particle`）
 - [x] 支援發射器（Emitter）設定：發射速率、方向、散射角、存活時間
 - [x] 支援粒子屬性隨時間變化：位置、縮放、旋轉、透明度、顏色
-- [x] 支援重力與外力（wind、gravity）
+- [x] 支援重力與外力（wind、gravity）及每粒子隨機偏差（gravityVariance、windVariance）
 - [x] 支援 Burst（一次性噴發）與持續發射兩種模式
+- [x] 支援旋轉動畫（startRotation、angularVelocity 及其偏差欄位）
+- [x] 支援發射形狀（spawnShape: point / rect / circle）
+- [x] 支援 Texture 貼圖粒子（texture 欄位，使用 Sprite.from）
+- [x] 支援 Pre-warm（preWarm：建立時立即模擬指定 ms）
+- [x] 支援 RepeatBurst（repeatBurst + repeatInterval：burst 自動循環）
 - [x] 透過 EventBus 控制：`particle/emit`、`particle/stop`、`particle/clear`
+- [x] 透過 EventBus 移動發射器：`particle/move`
+- [x] 透過 EventBus 暫停/恢復：`particle/pause`、`particle/resume`
+- [x] 透過 EventBus 熱更新設定：`particle/update`
+- [x] 透過 EventBus 查詢計數：`particle/count`（回傳 emitterCount、particleCount）
 - [x] 與 `ObjectPool` 整合，避免 GC 壓力
-- [x] 事件：`particle/complete`（Burst 結束時發出）
+- [x] 事件：`particle/complete`（Burst 自然結束 或 持續發射器 duration 結束後最後粒子死亡時發出）
 
 ### 2. Tilemap 渲染器 (Tilemap Renderer) ✅
 - [x] 新增 `TilemapManager` plugin（namespace: `tilemap`）

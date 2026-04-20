@@ -22,6 +22,7 @@ Everything communicates through a shared **EventBus** — no tight coupling, no 
    - [SceneManager (`scene`)](#scenemanager-scene)
    - [CollisionManager (`collision`)](#collisionmanager-collision)
    - [TweenManager (`tween`)](#tweenmanager-tween)
+   - [ParticleManager (`particle`)](#particlemanager-particle)
 5. [Renderer & Layers](#renderer--layers)
 6. [Writing Your Own Plugin](#writing-your-own-plugin)
 7. [Engine Lifecycle](#engine-lifecycle)
@@ -819,6 +820,155 @@ const tween = new Tween(sprite, { alpha: 0 }, {
 
 ---
 
+### ParticleManager (`particle`)
+
+Drives a 2D particle simulation: burst explosions, continuous fire/smoke trails, VFX effects, and anything else that needs many short-lived display objects.  Integrates with `ObjectPool` to avoid garbage-collection pressure.
+
+#### `ParticleConfig` fields
+
+| Field | Default | Description |
+|---|---|---|
+| `x`, `y` | — | Emitter world-space origin |
+| `speed` | — | Initial particle speed in px/s |
+| `speedVariance` | `0` | Random ± applied to `speed` |
+| `angle` | `0` | Launch direction in degrees (0 = right, 90 = down) |
+| `spread` | `0` | Half-spread in degrees — each particle picks a direction in `[angle−spread, angle+spread]` |
+| `lifetime` | — | Particle lifetime in ms |
+| `lifetimeVariance` | `0` | Random ± applied to `lifetime` |
+| `burst` | `false` | If `true`, emit `burstCount` particles immediately then stop |
+| `burstCount` | `10` | Particles to emit in a burst |
+| `rate` | `20` | Particles per second in continuous mode |
+| `duration` | `undefined` | Max continuous emission time in ms (`undefined` = forever) |
+| `repeatBurst` | `false` | Re-emit a new burst after all particles from the previous one expire |
+| `repeatInterval` | `1000` | Wait time between burst repeats in ms |
+| `gravity` | `0` | Downward acceleration in px/s² |
+| `gravityVariance` | `0` | Random ± applied to per-particle gravity |
+| `wind` | `0` | Rightward acceleration in px/s² |
+| `windVariance` | `0` | Random ± applied to per-particle wind |
+| `startRotation` | `0` | Initial particle rotation in degrees |
+| `rotationVariance` | `0` | Random ± applied to `startRotation` |
+| `angularVelocity` | `0` | Rotation speed in degrees/s |
+| `angularVelocityVariance` | `0` | Random ± applied to `angularVelocity` |
+| `spawnShape` | `'point'` | Spawn area: `'point'` / `'rect'` / `'circle'` |
+| `spawnWidth`, `spawnHeight` | — | Rect spawn dimensions |
+| `spawnRadius` | — | Circle spawn radius |
+| `startAlpha` | `1` | Alpha at birth |
+| `endAlpha` | `0` | Alpha at death |
+| `startScale` | `1` | Scale at birth |
+| `endScale` | `0` | Scale at death |
+| `startColor` | `0xffffff` | Tint at birth |
+| `endColor` | `startColor` | Tint at death (no change if omitted) |
+| `radius` | `4` | Display circle radius in pixels |
+| `texture` | — | `ResourceManager` key — uses a `Sprite` instead of a `Graphics` circle |
+| `preWarm` | `0` | Milliseconds to simulate immediately on emitter creation |
+
+#### Event Contract
+
+| Event | Direction | Description |
+|-------|-----------|-------------|
+| `particle/emit` | ✗ `emitSync` | Create and start an emitter; returns `{ id }` |
+| `particle/stop` | ✗ `emitSync` | Stop spawning new particles (live particles continue) |
+| `particle/clear` | ✗ `emitSync` | Immediately destroy particles; omit `id` to clear all emitters |
+| `particle/move` | ✗ `emitSync` | Relocate an emitter's spawn origin (live particles unaffected) |
+| `particle/pause` | ✗ `emitSync` | Freeze one or all emitters; omit `id` to pause all |
+| `particle/resume` | ✗ `emitSync` | Unfreeze one or all paused emitters |
+| `particle/update` | ✗ `emitSync` | Merge a partial config into a running emitter; affects newly spawned particles only |
+| `particle/count` | ✗ `emitSync` | Query `{ emitterCount, particleCount }` |
+| `particle/complete` | — emitted | Fired when a burst or continuous+duration emitter ends naturally (not on forced clear) |
+
+#### Usage
+
+```ts
+import { createEngine, ParticleManager } from 'inkshot-engine';
+
+const { core } = await createEngine({
+  plugins: [new ParticleManager()],
+});
+
+// ① One-shot burst explosion
+const id = core.events.emitSync('particle/emit', {
+  config: {
+    x: 400, y: 300,
+    burst: true, burstCount: 30,
+    speed: 150, speedVariance: 50,
+    angle: 270, spread: 180,   // all directions
+    gravity: 400,
+    lifetime: 800, lifetimeVariance: 200,
+    startColor: 0xff8800, endColor: 0xff0000,
+    startAlpha: 1, endAlpha: 0,
+    startScale: 1, endScale: 0.2,
+    spawnShape: 'circle', spawnRadius: 10,
+  },
+}).output.id;
+
+// ② Continuous fire trail following a character
+const fireId = core.events.emitSync('particle/emit', {
+  config: {
+    x: hero.x, y: hero.y,
+    rate: 60,
+    speed: 20, spread: 20, angle: 270,
+    gravity: -200,           // particles rise
+    lifetime: 500,
+    startColor: 0xffff00, endColor: 0xff4400,
+    startAlpha: 0.9, endAlpha: 0,
+    texture: 'spark',        // use a Sprite texture
+  },
+}).output.id;
+
+// Update emitter position each tick to follow the hero
+core.events.on('myGame', 'core/update', () => {
+  core.events.emitSync('particle/move', { id: fireId, x: hero.x, y: hero.y });
+});
+
+// ③ Repeating burst (e.g. muzzle flash, looping campfire sparks)
+core.events.emitSync('particle/emit', {
+  config: {
+    x: 200, y: 200,
+    burst: true, burstCount: 10, lifetime: 300,
+    repeatBurst: true, repeatInterval: 500,
+    speed: 60, spread: 45,
+    startColor: 0xffffff, endColor: 0xffffff,
+    preWarm: 500,            // appear mid-stream immediately
+  },
+});
+
+// ④ Pause / resume
+core.events.emitSync('particle/pause', {});   // pause all
+core.events.emitSync('particle/resume', {});  // resume all
+
+// ⑤ Hot-update the emission rate
+core.events.emitSync('particle/update', { id: fireId, config: { rate: 120 } });
+
+// ⑥ Query live counts
+const { output } = core.events.emitSync('particle/count', {});
+console.log(output.emitterCount, output.particleCount);
+
+// ⑦ React to natural completion
+core.events.on('vfx', 'particle/complete', ({ id }) => {
+  console.log(`Emitter ${id} finished`);
+});
+
+// ⑧ Force-clear (no particle/complete fires)
+core.events.emitSync('particle/clear', { id: fireId });
+```
+
+#### Custom display factory
+
+Pass `createDisplay` to swap out Pixi.js for any display back-end (useful in tests):
+
+```ts
+const pm = new ParticleManager({
+  poolSize: 512,
+  createDisplay: () => ({
+    x: 0, y: 0, alpha: 1,
+    scale: { x: 1, y: 1 },
+    rotation: 0, tint: 0xffffff,
+  }),
+});
+```
+
+---
+
 ## Renderer & Layers
 
 The `Renderer` manages named render layers on the Pixi stage.  Display objects should always be placed inside a layer rather than added to the root stage.
@@ -931,6 +1081,10 @@ import type {
   TweenToParams, TweenToOutput, TweenKillParams, TweenFinishedParams,
   EasingFn, TweenOptions, Advanceable,
   TimelineOptions,
+  // Particle
+  ParticleConfig, ParticleEmitOutput, ParticleCompleteParams,
+  ParticleMoveParams, ParticlePauseParams, ParticleResumeParams,
+  ParticleCountOutput, ParticleUpdateParams,
   // Events
   EventHandler, ListenerOptions,
 } from 'inkshot-engine';

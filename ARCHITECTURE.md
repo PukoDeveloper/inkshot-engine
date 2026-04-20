@@ -656,9 +656,12 @@ createEngine({
     new SaveManager(),
     new GameStateManager(),
     new EntityManager(),
+    new SpriteAnimator(),
     new CollisionManager(),   // declares dependencies: ['entity'] — sorted automatically
-    new SceneManager(),
+    new TilemapManager(),
     new TweenManager(),
+    new ParticleManager(),
+    new SceneManager(),
   ],
 });
 ```
@@ -677,7 +680,11 @@ createEngine()
     ├── SaveManager.init()          → registers save/slot:*, save/global:*
     ├── GameStateManager.init()     → registers game/state:set, game/state:get
     ├── EntityManager.init()        → registers entity/create, entity/destroy, …
+    ├── SpriteAnimator.init()       → registers animator/define, animator/play, …
     ├── CollisionManager.init()     → registers collision/move, collision/query, …
+    ├── TilemapManager.init()       → registers tilemap/load, tilemap/set-tile, …
+    ├── TweenManager.init()         → registers tween/to, tween/kill, …
+    ├── ParticleManager.init()      → registers particle/emit, particle/clear, …
     ├── SceneManager.init()         → registers scene/register, scene/load, …
     │
     ├── (your game plugin — preload assets, register scenes, set initial state)
@@ -1012,9 +1019,15 @@ Built-in plugins in `src/plugins/`:
 | `ResourceManager.ts` | `assets` | Multi-mode asset loading with cache-first guarantee |
 | `LocalizationManager.ts` | `i18n` | JSON locale loading, key lookup, variable substitution, and token interpolation |
 | `SceneManager.ts` | `scene` | Scene registration, lifecycle management, and transition orchestration |
+| `EntityManager.ts` | `entity` | ECS-lite entity creation, destruction, and tag-based queries |
+| `SpriteAnimator.ts` | `animator` | Frame-based sprite animation driven by `EntityManager` entities |
 | `CollisionManager.ts` | `collision` | 2D collision detection, movement resolution, spatial queries, and raycasting |
 | `TweenManager.ts` | `tween` | Property-based animation driver; hosts `Tween` and `Timeline` objects |
 | `Timeline.ts` | _(n/a)_ | Fluent builder for sequenced/parallel tween animations (used via `TweenManager`) |
+| `TilemapManager.ts` | `tilemap` | Chunk-based tilemap rendering with autotile, animated tiles, and multi-layer support |
+| `ParticleManager.ts` | `particle` | 2D particle emitter system with burst/continuous modes, spawn shapes, and ObjectPool reuse |
+| `LocalStorageSaveAdapter.ts` | _(n/a)_ | `localStorage`-backed persistence adapter for `SaveManager` |
+| `LoadingScreen.ts` | `loading` | Built-in fade-in/fade-out loading overlay wired to `scene/load` |
 
 Rules:
 
@@ -1226,7 +1239,142 @@ const level1: SceneDescriptor = {
 
 ---
 
-## 12. TypeScript Style
+## 12. Particle System (ParticleManager)
+
+The `ParticleManager` is a built-in `EnginePlugin` (namespace `particle`) that drives a 2D particle simulation.  It integrates with `ObjectPool` to reuse display objects and avoid garbage-collection pressure.
+
+### 12.1 Architecture
+
+```
+core/update  (fixed tick)
+    │
+    ▼
+ParticleManager._update(dt)
+    │
+    ├── for each Emitter (active, not paused)
+    │       ├── continuous: accumulate dt → spawn new particles at rate
+    │       ├── burst:      already spawned; wait for particles to expire
+    │       └── _stepEmitter(emitter, dt)
+    │               ├── advance each Particle (physics + visual interpolation)
+    │               └── reap dead particles → pool.release(display)
+    │
+    └── remove finished emitters → emit particle/complete (if natural end)
+```
+
+Each emitter owns an `ObjectPool<ParticleDisplay>`.  When a particle dies its display object is returned to the pool; when a new particle is spawned the pool is checked first before allocating.
+
+### 12.2 Emission Modes
+
+| Mode | Trigger | `particle/complete` |
+|---|---|---|
+| **Burst** (`burst: true`) | Emits `burstCount` immediately, then waits for all to die | ✓ fired after last particle dies |
+| **Continuous** (default) | Emits at `rate` per second until `duration` elapses or `stop()` is called | ✓ fired after `duration` expires **and** last particle dies (natural end only) |
+| **Repeat burst** (`repeatBurst: true`) | Burst cycles indefinitely; `repeatInterval` ms between cycles | ✗ not fired between cycles |
+
+### 12.3 Pre-warm
+
+Setting `preWarm > 0` fast-forwards the simulation by that many milliseconds immediately after the emitter is created.  The engine uses 16 ms steps (60 fps cadence) so the state is physically accurate.  Use this to make continuous effects (fire, smoke) appear mid-stream when a scene opens:
+
+```ts
+core.events.emitSync('particle/emit', {
+  config: {
+    x: 100, y: 400,
+    rate: 60, lifetime: 800,
+    speed: 40, gravity: -200,
+    preWarm: 1000,   // start 1 second in
+  },
+});
+```
+
+### 12.4 Spawn Shapes
+
+| `spawnShape` | Description |
+|---|---|
+| `'point'` (default) | All particles originate at `(x, y)` |
+| `'rect'` | Uniform random offset within `[−w/2, w/2] × [−h/2, h/2]` |
+| `'circle'` | Uniform random offset within a disc (`√random` for area-uniform distribution) |
+
+### 12.5 Event Contract
+
+| Event | Async? | Description |
+|---|---|---|
+| `particle/emit` | ✗ `emitSync` | Create and start an emitter; returns `{ id }` |
+| `particle/stop` | ✗ `emitSync` | Stop spawning new particles; live particles continue |
+| `particle/clear` | ✗ `emitSync` | Immediately remove one or all emitters and their particles |
+| `particle/move` | ✗ `emitSync` | Relocate an emitter's spawn origin |
+| `particle/pause` | ✗ `emitSync` | Freeze one or all emitters (no spawn, no advance) |
+| `particle/resume` | ✗ `emitSync` | Unfreeze one or all paused emitters |
+| `particle/update` | ✗ `emitSync` | Merge a partial config into a running emitter |
+| `particle/count` | ✗ `emitSync` | Query `{ emitterCount, particleCount }` |
+| `particle/complete` | — emitted | Fired when an emitter ends **naturally** |
+
+### 12.6 Direct API
+
+```ts
+import { createEngine, ParticleManager } from 'inkshot-engine';
+
+const { core } = await createEngine({
+  plugins: [new ParticleManager({ poolSize: 512 })],
+});
+
+// Start a continuous flame
+const id = core.events.emitSync('particle/emit', {
+  config: {
+    x: 200, y: 400,
+    rate: 80,
+    speed: 30, spread: 20, angle: 270,
+    gravity: -300,
+    lifetime: 600,
+    startColor: 0xffff00, endColor: 0xff2200,
+    angularVelocity: 90, angularVelocityVariance: 45,
+    spawnShape: 'circle', spawnRadius: 8,
+    preWarm: 600,
+  },
+}).output.id;
+
+// Move with the hero each tick
+core.events.on('myGame', 'core/update', () => {
+  core.events.emitSync('particle/move', { id, x: hero.x, y: hero.y });
+});
+
+// Slow it down in pause menu
+core.events.emitSync('particle/pause',  {});
+core.events.emitSync('particle/resume', {});
+
+// Hot-swap rate without stopping the emitter
+core.events.emitSync('particle/update', { id, config: { rate: 160 } });
+
+// Query
+const { output } = core.events.emitSync('particle/count', {});
+console.log(`${output.emitterCount} emitters, ${output.particleCount} particles`);
+
+// Stop and wait for live particles to die naturally
+core.events.emitSync('particle/stop', { id });
+core.events.on('vfx', 'particle/complete', ({ id }) => console.log(`${id} done`));
+
+// Force clear immediately
+core.events.emitSync('particle/clear', {});   // clear all
+```
+
+### 12.7 Custom Display Factory
+
+For tests or non-Pixi environments pass a `createDisplay` factory:
+
+```ts
+const pm = new ParticleManager({
+  createDisplay: () => ({
+    x: 0, y: 0, alpha: 1,
+    scale: { x: 1, y: 1 },
+    rotation: 0, tint: 0xffffff,
+  }),
+});
+```
+
+The default factory creates a `Sprite` (when `config.texture` is set) or a small filled `Graphics` circle (using `config.radius`, default `4`).
+
+---
+
+## 13. TypeScript Style
 
 - **Strict mode** is enabled.  All code must pass `tsc --strict` without error.
 - Prefer `interface` over `type` for object shapes; use `type` for unions, aliases, and mapped types.
@@ -1237,7 +1385,7 @@ const level1: SceneDescriptor = {
 
 ---
 
-## 13. Coding Style
+## 14. Coding Style
 
 - 2-space indentation, single quotes, trailing commas (enforced by the project's formatter).
 - Prefer `async/await` over raw Promises.
@@ -1252,7 +1400,7 @@ const level1: SceneDescriptor = {
 
 ---
 
-## 14. Lifecycle Summary
+## 15. Lifecycle Summary
 
 ```
 createEngine(options)
