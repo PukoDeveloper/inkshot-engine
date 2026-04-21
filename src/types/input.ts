@@ -379,3 +379,355 @@ export interface InputGamepadDisconnectedParams {
   /** Human-readable name of the gamepad, sourced from `Gamepad.id`. */
   readonly id: string;
 }
+
+// ---------------------------------------------------------------------------
+// input/touch:start
+// ---------------------------------------------------------------------------
+
+/**
+ * Parameters for `input/touch:start`.
+ *
+ * Emitted when a new touch point begins contact (Pointer Events with
+ * `pointerType === 'touch'`).
+ */
+export interface InputTouchStartParams {
+  /** Unique identifier for this touch point (`PointerEvent.pointerId`). */
+  readonly pointerId: number;
+  /** Horizontal position in client (viewport) coordinates. */
+  readonly x: number;
+  /** Vertical position in client (viewport) coordinates. */
+  readonly y: number;
+}
+
+// ---------------------------------------------------------------------------
+// input/touch:end
+// ---------------------------------------------------------------------------
+
+/**
+ * Parameters for `input/touch:end`.
+ *
+ * Emitted when a touch point leaves contact (or is cancelled).
+ */
+export interface InputTouchEndParams {
+  /** Unique identifier for this touch point. */
+  readonly pointerId: number;
+  /** Horizontal position in client coordinates at the moment of lift. */
+  readonly x: number;
+  /** Vertical position in client coordinates at the moment of lift. */
+  readonly y: number;
+}
+
+// ---------------------------------------------------------------------------
+// input/touch:move
+// ---------------------------------------------------------------------------
+
+/**
+ * Parameters for `input/touch:move`.
+ *
+ * Emitted **at most once per frame** per touch point (throttled to the
+ * `core/tick` rhythm).  Carries the final position and accumulated delta
+ * for that frame.
+ */
+export interface InputTouchMoveParams {
+  /** Unique identifier for this touch point. */
+  readonly pointerId: number;
+  /** Final horizontal position this frame in client coordinates. */
+  readonly x: number;
+  /** Final vertical position this frame in client coordinates. */
+  readonly y: number;
+  /** Horizontal movement since the last `input/touch:move` event for this point. */
+  readonly dx: number;
+  /** Vertical movement since the last `input/touch:move` event for this point. */
+  readonly dy: number;
+}
+
+// ---------------------------------------------------------------------------
+// input/gesture:pinch
+// ---------------------------------------------------------------------------
+
+/**
+ * Parameters for `input/gesture:pinch`.
+ *
+ * Emitted once per frame while exactly two touch points are active and at
+ * least one has moved.  Values are relative to when the two-finger gesture
+ * began (i.e. the moment the second finger made contact).
+ */
+export interface InputGesturePinchParams {
+  /**
+   * Current distance between the two touch points divided by the distance
+   * at gesture start.  `> 1` means the fingers moved apart (zoom in),
+   * `< 1` means they moved closer (zoom out).
+   */
+  readonly scale: number;
+  /**
+   * Multiplicative change since the last event
+   * (`currentDistance / previousDistance`).
+   */
+  readonly delta: number;
+  /** Horizontal midpoint of the two touch points in client coordinates. */
+  readonly centerX: number;
+  /** Vertical midpoint of the two touch points in client coordinates. */
+  readonly centerY: number;
+}
+
+// ---------------------------------------------------------------------------
+// input/gesture:rotate
+// ---------------------------------------------------------------------------
+
+/**
+ * Parameters for `input/gesture:rotate`.
+ *
+ * Emitted once per frame while exactly two touch points are active and at
+ * least one has moved.
+ */
+export interface InputGestureRotateParams {
+  /**
+   * Total rotation in **radians** accumulated since the gesture started.
+   * Positive values are clockwise, negative are counter-clockwise (matches
+   * the browser's `atan2` convention).
+   */
+  readonly rotation: number;
+  /** Change in rotation (radians) since the last event. */
+  readonly delta: number;
+  /** Horizontal midpoint of the two touch points in client coordinates. */
+  readonly centerX: number;
+  /** Vertical midpoint of the two touch points in client coordinates. */
+  readonly centerY: number;
+}
+
+// ---------------------------------------------------------------------------
+// input/gesture:swipe
+// ---------------------------------------------------------------------------
+
+/**
+ * Parameters for `input/gesture:swipe`.
+ *
+ * Emitted when a single touch point lifts and the motion was fast enough
+ * and long enough to qualify as a swipe (default: distance ≥ 30 px,
+ * velocity ≥ 0.1 px/ms).
+ *
+ * The dominant axis (horizontal vs. vertical) determines the direction.
+ */
+export interface InputGestureSwipeParams {
+  /** The dominant direction of the swipe. */
+  readonly direction: 'left' | 'right' | 'up' | 'down';
+  /** Swipe velocity in pixels per millisecond. */
+  readonly velocity: number;
+  /** Euclidean distance of the swipe in pixels. */
+  readonly distance: number;
+  /** X position where the touch began. */
+  readonly startX: number;
+  /** Y position where the touch began. */
+  readonly startY: number;
+  /** X position where the touch ended. */
+  readonly endX: number;
+  /** Y position where the touch ended. */
+  readonly endY: number;
+}
+
+// ---------------------------------------------------------------------------
+// input/touch:state  (Pull query)
+// ---------------------------------------------------------------------------
+
+/**
+ * Output for `input/touch:state`.
+ *
+ * Synchronous query — use `core.events.emitSync` to retrieve all currently
+ * active touch points without subscribing to push events.
+ *
+ * @example
+ * ```ts
+ * const { output } = core.events.emitSync<Record<string, never>, InputTouchStateOutput>(
+ *   'input/touch:state',
+ *   {},
+ * );
+ * console.log(output.touches.size); // number of active touches
+ * ```
+ */
+export interface InputTouchStateOutput {
+  /**
+   * Map of currently active touch points keyed by `pointerId`.
+   * Each entry holds the current `{ x, y }` in client coordinates.
+   */
+  touches: Map<number, { x: number; y: number }>;
+}
+
+// ---------------------------------------------------------------------------
+// InputRecorder — shared data structures
+// ---------------------------------------------------------------------------
+
+/**
+ * A single recorded input event.
+ */
+export interface InputRecordEntry {
+  /** The engine-frame number at which this event was emitted. */
+  readonly frame: number;
+  /** The event name (e.g. `'input/key:down'`). */
+  readonly event: string;
+  /** The raw parameters object passed to the event. */
+  readonly params: unknown;
+}
+
+/**
+ * A complete, self-contained recording of input events.
+ *
+ * Designed to be JSON-serialisable so it can be persisted via `SaveManager`
+ * or sent over the network.
+ */
+export interface InputRecording {
+  /** Schema version — currently always `1`. */
+  readonly version: 1;
+  /** Ordered list of all recorded input events. */
+  readonly entries: InputRecordEntry[];
+  /** Total number of engine frames captured. */
+  readonly frameCount: number;
+  /** Unix timestamp (ms) when the recording was started. */
+  readonly createdAt: number;
+}
+
+// ---------------------------------------------------------------------------
+// input/recorder:start
+// ---------------------------------------------------------------------------
+
+/**
+ * Parameters for `input/recorder:start`.
+ *
+ * Starts recording all `input/*` events.  If a recording is already in
+ * progress it is discarded and a fresh recording begins.
+ */
+// eslint-disable-next-line @typescript-eslint/no-empty-interface
+export interface InputRecorderStartParams {
+  // intentionally empty — no options currently
+}
+
+// ---------------------------------------------------------------------------
+// input/recorder:stop
+// ---------------------------------------------------------------------------
+
+/**
+ * Output for `input/recorder:stop`.
+ *
+ * Stops an active recording and returns the captured data.
+ */
+export interface InputRecorderStopOutput {
+  /** The completed recording.  `null` if no recording was in progress. */
+  readonly recording: InputRecording | null;
+}
+
+// ---------------------------------------------------------------------------
+// input/recorder:play
+// ---------------------------------------------------------------------------
+
+/**
+ * Parameters for `input/recorder:play`.
+ *
+ * Starts playing back a previously captured recording.  During playback the
+ * recorder injects the recorded events into the EventBus on the correct
+ * frame so game logic reacts as if the original input was happening live.
+ */
+export interface InputRecorderPlayParams {
+  /** The recording to replay. */
+  readonly recording: InputRecording;
+  /** When `true` the recording loops indefinitely.  Defaults to `false`. */
+  readonly loop?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// input/recorder:pause  /  input/recorder:resume
+// ---------------------------------------------------------------------------
+
+/**
+ * Parameters for `input/recorder:pause`.
+ *
+ * Pauses an active playback without discarding the position.
+ */
+// eslint-disable-next-line @typescript-eslint/no-empty-interface
+export interface InputRecorderPauseParams {
+  // intentionally empty
+}
+
+/**
+ * Parameters for `input/recorder:resume`.
+ *
+ * Resumes a paused playback from where it was paused.
+ */
+// eslint-disable-next-line @typescript-eslint/no-empty-interface
+export interface InputRecorderResumeParams {
+  // intentionally empty
+}
+
+// ---------------------------------------------------------------------------
+// input/recorder:save
+// ---------------------------------------------------------------------------
+
+/**
+ * Parameters for `input/recorder:save`.
+ *
+ * Serialises a recording to JSON and persists it via `SaveManager` into the
+ * global save area under the key `inputRecording/<slotId>`.
+ */
+export interface InputRecorderSaveParams {
+  /** Unique identifier for this recording within the global save. */
+  readonly slotId: string;
+  /** The recording to persist. */
+  readonly recording: InputRecording;
+}
+
+// ---------------------------------------------------------------------------
+// input/recorder:load
+// ---------------------------------------------------------------------------
+
+/**
+ * Parameters for `input/recorder:load`.
+ *
+ * Loads a previously saved recording from the global save area.
+ */
+export interface InputRecorderLoadParams {
+  /** The `slotId` passed to `input/recorder:save`. */
+  readonly slotId: string;
+}
+
+/**
+ * Output for `input/recorder:load`.
+ */
+export interface InputRecorderLoadOutput {
+  /** The loaded recording, or `null` if no recording was found for that key. */
+  readonly recording: InputRecording | null;
+}
+
+// ---------------------------------------------------------------------------
+// input/recorder:state  (Pull query)
+// ---------------------------------------------------------------------------
+
+/**
+ * Output for `input/recorder:state`.
+ *
+ * Synchronous query — call with `emitSync` to inspect the current recorder
+ * status without subscribing to push events.
+ */
+export interface InputRecorderStateOutput {
+  /** Current operational state of the recorder. */
+  readonly state: 'idle' | 'recording' | 'playing' | 'paused';
+  /**
+   * Current frame counter.
+   * During recording: the number of frames captured so far.
+   * During playback / paused: the current playback frame.
+   * When idle: `0`.
+   */
+  readonly frame: number;
+}
+
+// ---------------------------------------------------------------------------
+// input/recorder:playback:end
+// ---------------------------------------------------------------------------
+
+/**
+ * Parameters for `input/recorder:playback:end`.
+ *
+ * Emitted when a non-looping playback reaches the end of the recording, or
+ * when `input/recorder:stop` is called during playback.
+ */
+export interface InputRecorderPlaybackEndParams {
+  /** The recording that just finished playing. */
+  readonly recording: InputRecording;
+}

@@ -14,7 +14,7 @@
 | 2 | **渲染管線** — Pixi.js 整合、多圖層管理、後製特效（`PostFxPipeline`/`ShaderPass`）、固定步長更新（`FixedTimeStep`）、精靈動畫（`AnimationSystem`）、物件池（`ObjectPool`） | `Renderer`, `RenderPipeline`, `PostFxPipeline` |
 | 3 | **攝影機** — 跟隨目標、限制邊界、縮放、震動（`camera/shake`）、攝影機驅動空間音效聆聽者 | `Camera` |
 | 4 | **資源管理** — 非同步資源載入（Pixi Assets）、Bundle 分包、進度回報、預先抓取 | `ResourceManager` |
-| 5 | **輸入系統** — 鍵盤、滑鼠/指標、邏輯 Action 綁定；Gamepad API（軸向映射、震動回饋） | `InputManager` |
+| 5 | **輸入系統** — 鍵盤、滑鼠/指標、邏輯 Action 綁定；Gamepad API（軸向映射、震動回饋）；多點觸控（Multi-touch）；手勢辨識（Pinch-zoom、雙指旋轉、Swipe）；手勢映射至邏輯 action；`InputRecorder` 逐幀錄製/回放/序列化 | `InputManager`, `InputRecorder` |
 | 6 | **音效系統** — 分類音量控制、淡入淡出、暫停/恢復、空間音效（`PannerNode`）、聆聽者位置更新 | `AudioManager` |
 | 7 | **存檔系統** — 多存檔槽、全域存檔、`LocalStorageSaveAdapter`；before/after phase 掛鉤方便環境擴充 | `SaveManager`, `LocalStorageSaveAdapter` |
 | 8 | **場景管理** — 場景登錄/切換、非同步載入、`LoadingScreen` 進度顯示 | `SceneManager`, `LoadingScreen` |
@@ -66,9 +66,9 @@
 ## 🟠 中高優先
 
 ### 3. 觸控與手勢輸入 (Touch / Gesture Input)
-- [ ] 擴充 `InputManager`，辨識多點觸控（Multi-touch）
-- [ ] 支援常見手勢：捏合縮放（Pinch-zoom）、雙指旋轉、滑動（Swipe）
-- [ ] 映射手勢至邏輯 action，與鍵盤/手柄統一接口
+- [x] 擴充 `InputManager`，辨識多點觸控（Multi-touch）
+- [x] 支援常見手勢：捏合縮放（Pinch-zoom）、雙指旋轉、滑動（Swipe）
+- [x] 映射手勢至邏輯 action，與鍵盤/手柄統一接口
 
 ### 4. Tiled 地圖編輯器整合 (Tiled Map Editor Import)
 - [ ] 新增 `TiledLoader` 工具函式，解析 `.tmj`（Tiled JSON）格式
@@ -77,9 +77,9 @@
 - [ ] 支援 Wang Tile（Tiled 的 auto-tiling 格式）轉換為 `AutotileGroupDef`
 
 ### 5. 輸入錄製與回放 (Input Recording & Playback)
-- [ ] 新增 `InputRecorder` plugin，逐幀記錄所有輸入事件（按鍵、指標、手柄）
-- [ ] 支援序列化為 JSON 並持久化（配合 `SaveManager`）
-- [ ] 回放模式：注入錄製的輸入序列，可用於自動測試、Demo 錄影、遊戲回放
+- [x] 新增 `InputRecorder` plugin，逐幀記錄所有輸入事件（按鍵、指標、手柄）
+- [x] 支援序列化為 JSON 並持久化（配合 `SaveManager`）
+- [x] 回放模式：注入錄製的輸入序列，可用於自動測試、Demo 錄影、遊戲回放
 
 ---
 

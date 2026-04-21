@@ -78,6 +78,7 @@ export type { CoreOptions } from './core/Core.js';
 
 // Input system
 export { InputManager } from './plugins/InputManager.js';
+export { InputRecorder } from './plugins/InputRecorder.js';
 export type {
   InputKeyDownParams,
   InputKeyUpParams,
@@ -96,6 +97,25 @@ export type {
   InputGamepadVibrateParams,
   InputGamepadConnectedParams,
   InputGamepadDisconnectedParams,
+  InputTouchStartParams,
+  InputTouchEndParams,
+  InputTouchMoveParams,
+  InputGesturePinchParams,
+  InputGestureRotateParams,
+  InputGestureSwipeParams,
+  InputTouchStateOutput,
+  InputRecordEntry,
+  InputRecording,
+  InputRecorderStartParams,
+  InputRecorderStopOutput,
+  InputRecorderPlayParams,
+  InputRecorderPauseParams,
+  InputRecorderResumeParams,
+  InputRecorderSaveParams,
+  InputRecorderLoadParams,
+  InputRecorderLoadOutput,
+  InputRecorderStateOutput,
+  InputRecorderPlaybackEndParams,
 } from './types/input.js';
 
 // Game state system
