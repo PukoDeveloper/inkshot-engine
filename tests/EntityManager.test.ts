@@ -12,6 +12,8 @@ function createContainerStub() {
   return {
     x: 0,
     y: 0,
+    zIndex: 0,
+    sortableChildren: false,
     label: '',
     parent: null as unknown,
     addChild(c: unknown) { children.push(c); (c as Record<string, unknown>).parent = this; },
@@ -265,6 +267,65 @@ describe('EntityManager', () => {
       };
       expect(output.entities).toHaveLength(1);
       expect(output.entities[0].id).toBe('a');
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Y-Sort
+  // -----------------------------------------------------------------------
+
+  describe('Y-Sort', () => {
+    it('defaults ySort to false and ySortOffset to 0', () => {
+      const entity = em.create();
+      expect(entity.ySort).toBe(false);
+      expect(entity.ySortOffset).toBe(0);
+    });
+
+    it('stores ySort and ySortOffset from descriptor', () => {
+      const entity = em.create({ ySort: true, ySortOffset: 32 });
+      expect(entity.ySort).toBe(true);
+      expect(entity.ySortOffset).toBe(32);
+    });
+
+    it('sets initial zIndex from position.y + ySortOffset when ySort is true', () => {
+      const entity = em.create({ position: { x: 0, y: 100 }, ySort: true, ySortOffset: 16 });
+      expect(entity.display.zIndex).toBe(116);
+    });
+
+    it('does not set zIndex when ySort is false', () => {
+      const entity = em.create({ position: { x: 0, y: 100 }, ySort: false });
+      expect(entity.display.zIndex).toBe(0);
+    });
+
+    it('updates display.zIndex on core/update when ySort is true', () => {
+      const entity = em.create({ position: { x: 0, y: 50 }, ySort: true, ySortOffset: 0 });
+      entity.position.y = 200;
+
+      core.events.emitSync('core/update', { dt: 16.67, tick: 1 });
+
+      expect(entity.display.zIndex).toBe(200);
+    });
+
+    it('includes ySortOffset in zIndex update', () => {
+      const entity = em.create({ position: { x: 0, y: 50 }, ySort: true, ySortOffset: 24 });
+      entity.position.y = 100;
+
+      core.events.emitSync('core/update', { dt: 16.67, tick: 1 });
+
+      expect(entity.display.zIndex).toBe(124);
+    });
+
+    it('does not update zIndex on core/update when ySort is false', () => {
+      const entity = em.create({ position: { x: 0, y: 50 }, ySort: false });
+      entity.position.y = 200;
+
+      core.events.emitSync('core/update', { dt: 16.67, tick: 1 });
+
+      expect(entity.display.zIndex).toBe(0);
+    });
+
+    it('enables sortableChildren on the world layer', () => {
+      expect(worldLayer.sortableChildren).toBe(true);
     });
   });
 
