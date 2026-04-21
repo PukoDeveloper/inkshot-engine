@@ -1,3 +1,17 @@
+// Settings system
+export { SettingsManager } from './plugins/SettingsManager.js';
+export type {
+  SettingsManagerOptions,
+  SettingsSetParams,
+  SettingsGetParams,
+  SettingsGetOutput,
+  SettingsGetAllOutput,
+  SettingsResetParams,
+  SettingsSaveOutput,
+  SettingsLoadOutput,
+  SettingsChangedParams,
+} from './types/settings.js';
+
 // Audio system
 export { AudioManager } from './plugins/AudioManager.js';
 export type {
