@@ -507,3 +507,121 @@ export type {
   DebugEventLogFilterParams,
   DebugEventLogGetOutput,
 } from './types/debug.js';
+
+// Lighting system
+export { LightingPlugin } from './plugins/LightingPlugin.js';
+export type {
+  PointLight,
+  AmbientLight,
+  LightingPluginOptions,
+  LightAddParams,
+  LightAddOutput,
+  LightRemoveParams,
+  LightUpdateParams,
+  LightGetParams,
+  LightGetOutput,
+  AmbientSetParams,
+  LightStateOutput,
+} from './types/lighting.js';
+
+// Parallax system
+export { ParallaxPlugin } from './plugins/ParallaxPlugin.js';
+export type { ParallaxContainer } from './plugins/ParallaxPlugin.js';
+export type {
+  ParallaxLayerDef,
+  ParallaxPluginOptions,
+  ParallaxLayerAddParams,
+  ParallaxLayerAddOutput,
+  ParallaxLayerRemoveParams,
+  ParallaxLayerGetParams,
+  ParallaxLayerGetOutput,
+  ParallaxLayersOutput,
+  ParallaxLayerUpdateParams,
+} from './types/parallax.js';
+
+// Tiled map loader
+export { loadTiledMap } from './plugins/TiledLoader.js';
+export type {
+  TiledMap,
+  TiledLayer,
+  TiledTileLayer,
+  TiledObjectLayer,
+  TiledGroupLayer,
+  TiledObject,
+  TiledProperty,
+  TiledTilesetRef,
+  TiledTileData,
+  TiledAnimationFrame,
+  TiledLoaderOptions,
+  TiledLoaderOutput,
+} from './plugins/TiledLoader.js';
+
+// Cutscene system
+export { CutscenePlugin } from './plugins/CutscenePlugin.js';
+export type {
+  CutsceneDef,
+  CutsceneStep,
+  CutsceneStepKind,
+  CutsceneStepWait,
+  CutsceneStepCameraMove,
+  CutsceneStepCameraZoom,
+  CutsceneStepCameraShake,
+  CutsceneStepCameraFollow,
+  CutsceneStepEmit,
+  CutsceneStepScript,
+  CutsceneStepLockInput,
+  CutsceneStepUnlockInput,
+  CutsceneStepParallel,
+  CutsceneStatus,
+  CutsceneState,
+  CutsceneDefineParams,
+  CutscenePlayParams,
+  CutsceneStartedParams,
+  CutsceneEndedParams,
+  CutsceneStepStartedParams,
+  CutsceneStepEndedParams,
+  CutsceneStateOutput,
+} from './types/cutscene.js';
+
+// Minimap system
+export { MinimapPlugin } from './plugins/MinimapPlugin.js';
+export type {
+  MinimapConfig,
+  MinimapIcon,
+  MinimapInitParams,
+  MinimapIconAddParams,
+  MinimapIconAddOutput,
+  MinimapIconRemoveParams,
+  MinimapIconUpdateParams,
+  MinimapIconsOutput,
+  MinimapConfigOutput,
+} from './types/minimap.js';
+
+// Achievement system
+export { AchievementPlugin } from './plugins/AchievementPlugin.js';
+export type {
+  AchievementDef,
+  AchievementState,
+  AchievementDefineParams,
+  AchievementUnlockParams,
+  AchievementProgressParams,
+  AchievementGetParams,
+  AchievementGetOutput,
+  AchievementListOutput,
+  AchievementUnlockedParams,
+  AchievementResetParams,
+} from './types/achievement.js';
+
+// Fog of War system
+export { FogOfWarPlugin } from './plugins/FogOfWarPlugin.js';
+export type {
+  FogTileState,
+  FogConfig,
+  FogInitParams,
+  FogUpdateParams,
+  FogRevealParams,
+  FogGetTileParams,
+  FogGetTileOutput,
+  FogStateOutput,
+  FogTileRevealedParams,
+} from './types/fog.js';

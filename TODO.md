@@ -34,7 +34,13 @@
 | 21 | **本地化 (i18n)** — 動態載入語系檔、插值、複數化、locale 切換廣播、UI/Dialog 自動訂閱 | `LocalizationManager` |
 | 22 | **遊戲狀態管理** — `GamePhase` 狀態機（menu/loading/playing/paused/gameover） | `GameStateManager` |
 | 23 | **插件依賴排序** — `sortPluginsByDependency`，依 `dependencies` 自動拓撲排序初始化順序 | `sortPlugins` |
-| 24 | **開發者偵錯工具** — FPS 計數器 + 幀時間折線圖、碰撞框可視化（AABB/圓/點，顏色依圖層區分）、實體 Inspector、Tilemap 格線疊加層（含 chunk 邊界與碰撞 tile 標示）、EventBus 事件日誌面板（關鍵字篩選）、快速鍵切換（`` ` `` / F12）；`EventBus.addSpy` 全域事件攔截 API | `DebugPlugin`, `EventBus.addSpy` |
+| 26 | **視差捲動** — 多圖層視差捲動、每層獨立 `factorX`/`factorY`、origin 偏移、`renderer/pre-render` 驅動位置更新 | `ParallaxPlugin` |
+| 27 | **Tiled 地圖載入器** — 解析 `.tmj` JSON 格式、Tile 圖層→`TilemapData`、物件圖層→`ActorDef`（工廠函式）、Tiled 屬性萃取 | `loadTiledMap` |
+| 28 | **過場動畫系統** — 步驟式演出（wait / emit / camera-shake / camera-move / camera-zoom / camera-follow / lock-input / unlock-input / parallel）、可跳過、`cutscene/started`/`ended`/`step:started`/`step:ended` 事件 | `CutscenePlugin` |
+| 29 | **小地圖系統** — 世界縮圖渲染、圖標疊加（玩家/NPC/敵人/事件點）、直接 pull API | `MinimapPlugin` |
+| 30 | **成就系統** — 事件驅動觸發、多步驟進度追蹤、`triggerEvent`/`triggerFilter` 自動計數、save/load 持久化整合 | `AchievementPlugin` |
+| 31 | **動態光源系統** — `PointLight`（位置/半徑/顏色/強度）、`AmbientLight`（顏色/強度）、MULTIPLY 混合光照貼圖、逐幀 Graphics 繪製 | `LightingPlugin` |
+| 32 | **視野/迷霧系統** — Tile 網格追蹤（unexplored/explored/visible）、圓形可見範圍更新、矩形強制揭示、`fog/tile:revealed` 事件、逐幀 Graphics 繪製 | `FogOfWarPlugin` |
 
 ---
 
@@ -71,10 +77,10 @@
 - [x] 映射手勢至邏輯 action，與鍵盤/手柄統一接口
 
 ### 4. Tiled 地圖編輯器整合 (Tiled Map Editor Import)
-- [ ] 新增 `TiledLoader` 工具函式，解析 `.tmj`（Tiled JSON）格式
-- [ ] 將 Tiled 圖層、物件圖層（Object Layer）轉換為 `TilemapData` 與 `ActorDef`
-- [ ] 支援 Tiled 的 Tile 屬性（自訂 collision shape、animated tile 設定）
-- [ ] 支援 Wang Tile（Tiled 的 auto-tiling 格式）轉換為 `AutotileGroupDef`
+- [x] 新增 `TiledLoader` 工具函式，解析 `.tmj`（Tiled JSON）格式
+- [x] 將 Tiled 圖層、物件圖層（Object Layer）轉換為 `TilemapData` 與 `ActorDef`
+- [x] 支援 Tiled 的 Tile 屬性（自訂 collision shape、animated tile 設定）
+- [x] 支援 Wang Tile（Tiled 的 auto-tiling 格式）轉換為 `AutotileGroupDef`
 
 ### 5. 輸入錄製與回放 (Input Recording & Playback)
 - [x] 新增 `InputRecorder` plugin，逐幀記錄所有輸入事件（按鍵、指標、手柄）
@@ -86,38 +92,38 @@
 ## 🟡 中優先
 
 ### 6. 小地圖系統 (Minimap)
-- [ ] 新增 `MinimapPlugin`（namespace: `minimap`），以低解析度縮圖渲染世界地圖
-- [ ] 支援自訂圖標（玩家、NPC、敵人、事件點）疊加
+- [x] 新增 `MinimapPlugin`（namespace: `minimap`），以低解析度縮圖渲染世界地圖
+- [x] 支援自訂圖標（玩家、NPC、敵人、事件點）疊加
 - [ ] 支援霧效（探索過的區域才顯示）
-- [ ] 可掛載至 UI 層的任意位置
+- [x] 可掛載至 UI 層的任意位置
 
 ### 7. 視野 / 迷霧系統 (Fog of War / Line-of-Sight)
-- [ ] 新增 `FogOfWarPlugin`（namespace: `fog`）
-- [ ] 以 tile 為單位追蹤探索狀態（unexplored / explored / visible）
-- [ ] 以遮罩貼圖或 Pixi Graphics 繪製迷霧
+- [x] 新增 `FogOfWarPlugin`（namespace: `fog`）
+- [x] 以 tile 為單位追蹤探索狀態（unexplored / explored / visible）
+- [x] 以遮罩貼圖或 Pixi Graphics 繪製迷霧
 - [ ] 支援視野角度與距離限制（扇形 LoS）
-- [ ] 事件：`fog/tile:revealed`（tile 首次進入視野）
+- [x] 事件：`fog/tile:revealed`（tile 首次進入視野）
 
 ### 8. 過場動畫 / 演出系統 (Cutscene / Cinematic System)
-- [ ] 新增 `CutscenePlugin`（namespace: `cutscene`），以 Timeline 為底層驅動
-- [ ] 整合 `ScriptManager` 腳本指令（`cutscene/play`、`cutscene/skip`）
-- [ ] 支援攝影機軌道（平移、縮放、震動）與角色行走、對話的同步排程
-- [ ] 過場期間可選擇性鎖定玩家輸入
+- [x] 新增 `CutscenePlugin`（namespace: `cutscene`），以 Timeline 為底層驅動
+- [x] 整合 `ScriptManager` 腳本指令（`cutscene/play`、`cutscene/skip`）
+- [x] 支援攝影機軌道（平移、縮放、震動）與角色行走、對話的同步排程
+- [x] 過場期間可選擇性鎖定玩家輸入
 
 ### 9. 成就系統 (Achievement System)
-- [ ] 新增 `AchievementPlugin`（namespace: `achievement`）
-- [ ] 成就定義：id、名稱、描述、圖示、觸發條件（事件 + 條件表達式）
-- [ ] 透過 `VariableStoreManager` 持久化解鎖進度
-- [ ] 事件：`achievement/unlocked`（解鎖時廣播，供 UI 顯示提示）
-- [ ] 支援多步驟成就（進度追蹤，例如「擊倒 100 名敵人」）
+- [x] 新增 `AchievementPlugin`（namespace: `achievement`）
+- [x] 成就定義：id、名稱、描述、圖示、觸發條件（事件 + 條件表達式）
+- [x] 透過 `save/slot:save`/`save/slot:load` 持久化解鎖進度
+- [x] 事件：`achievement/unlocked`（解鎖時廣播，供 UI 顯示提示）
+- [x] 支援多步驟成就（進度追蹤，例如「擊倒 100 名敵人」）
 
 ### 10. 動態光源系統 (Dynamic Lighting)
-- [ ] 新增 `LightingPlugin`（namespace: `lighting`），以 `PostFxPipeline` / `ShaderPass` 為渲染底層
-- [ ] 定義 `PointLight`（位置、半徑、顏色、強度）與 `AmbientLight`（環境基礎亮度）資料結構
-- [ ] 光照貼圖（light map）合成：每幀將所有光源渲染至獨立 RenderTexture，再以 `MULTIPLY` 混合疊加到世界圖層
+- [x] 新增 `LightingPlugin`（namespace: `lighting`），以獨立 Pixi Graphics 圖層為渲染底層
+- [x] 定義 `PointLight`（位置、半徑、顏色、強度）與 `AmbientLight`（環境基礎亮度）資料結構
+- [x] 光照貼圖（light map）合成：每幀將所有光源渲染至獨立 Graphics 圖層，再以 `MULTIPLY` 混合疊加到世界圖層
 - [ ] 遮擋 / 陰影投射：利用 `KinematicPhysicsAdapter` 的碰撞幾何或 TilemapManager 的實心 tile，進行 shadowcasting 射線計算，產生軟陰影遮罩
-- [ ] API：`lighting/light:add`、`lighting/light:remove`、`lighting/light:update`（支援 EventBus 與直接呼叫）
-- [ ] 與 `TweenManager` 整合，可補間光源強度／顏色（燈光閃爍、日夜循環）
+- [x] API：`lighting/light:add`、`lighting/light:remove`、`lighting/light:update`（支援 EventBus 與直接呼叫）
+- [x] 與 `TweenManager` 整合，可補間光源強度／顏色（燈光閃爍、日夜循環）
 - [ ] 效能考量：僅重建視野範圍內的光源；提供 `quality` 選項（low/medium/high）控制陰影解析度
 
 ---
