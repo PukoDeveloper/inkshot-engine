@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { EventBus } from '../src/core/EventBus.js';
-import { LocalizationManager } from '../src/plugins/LocalizationManager.js';
+import { LocalizationManager } from '../src/plugins/data/LocalizationManager.js';
 import type { Core } from '../src/core/Core.js';
 import type {
   I18nLoadOutput,

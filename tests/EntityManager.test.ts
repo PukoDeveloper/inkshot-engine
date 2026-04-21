@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventBus } from '../src/core/EventBus.js';
-import { EntityManager } from '../src/plugins/EntityManager.js';
+import { EntityManager } from '../src/plugins/entity/EntityManager.js';
 import type { Entity, EntityQueryOutput, EntityCreateOutput } from '../src/types/entity.js';
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventBus } from '../src/core/EventBus.js';
-import { DebugPlugin } from '../src/plugins/DebugPlugin.js';
+import { DebugPlugin } from '../src/plugins/debug/DebugPlugin.js';
 import type { Core } from '../src/core/Core.js';
 import type {
   DebugEventLogGetOutput,

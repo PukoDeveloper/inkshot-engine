@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventBus } from '../src/core/EventBus.js';
-import { GameStateManager } from '../src/plugins/GameStateManager.js';
+import { GameStateManager } from '../src/plugins/gameplay/GameStateManager.js';
 import type { Core } from '../src/core/Core.js';
 import type { GameStateGetOutput, GamePhase } from '../src/types/game.js';
 import type { SaveSlotLoadOutput } from '../src/types/save.js';

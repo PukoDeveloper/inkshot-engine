@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventBus } from '../src/core/EventBus.js';
-import { EntityManager } from '../src/plugins/EntityManager.js';
-import { KinematicPhysicsAdapter } from '../src/plugins/KinematicPhysicsAdapter.js';
+import { EntityManager } from '../src/plugins/entity/EntityManager.js';
+import { KinematicPhysicsAdapter } from '../src/plugins/physics/KinematicPhysicsAdapter.js';
 import { CollisionLayer } from '../src/types/physics.js';
 import type {
   PhysicsMoveOutput,

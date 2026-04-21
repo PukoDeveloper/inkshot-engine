@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventBus } from '../src/core/EventBus.js';
-import { EntityManager } from '../src/plugins/EntityManager.js';
-import { PathfindingManager } from '../src/plugins/PathfindingManager.js';
+import { EntityManager } from '../src/plugins/entity/EntityManager.js';
+import { PathfindingManager } from '../src/plugins/world/PathfindingManager.js';
 import type { PathfindingFindOutput } from '../src/types/pathfinding.js';
 import type { Core } from '../src/core/Core.js';
 

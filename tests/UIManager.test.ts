@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventBus } from '../src/core/EventBus.js';
-import { UIManager } from '../src/plugins/UIManager.js';
+import { UIManager } from '../src/plugins/ui/UIManager.js';
 import type { Core } from '../src/core/Core.js';
 import type {
   UIWidget,

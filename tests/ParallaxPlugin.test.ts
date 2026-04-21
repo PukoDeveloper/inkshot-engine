@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventBus } from '../src/core/EventBus.js';
-import { ParallaxPlugin } from '../src/plugins/ParallaxPlugin.js';
+import { ParallaxPlugin } from '../src/plugins/world/ParallaxPlugin.js';
 import type { Core } from '../src/core/Core.js';
 import type {
   ParallaxLayerAddOutput,

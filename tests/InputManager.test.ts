@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventBus } from '../src/core/EventBus.js';
-import { InputManager } from '../src/plugins/InputManager.js';
+import { InputManager } from '../src/plugins/input/InputManager.js';
 import type { Core } from '../src/core/Core.js';
 import type {
   InputKeyDownParams,

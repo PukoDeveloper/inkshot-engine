@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventBus } from '../src/core/EventBus.js';
-import { SpriteAnimator } from '../src/plugins/SpriteAnimator.js';
+import { SpriteAnimator } from '../src/plugins/entity/SpriteAnimator.js';
 import type { Entity } from '../src/types/entity.js';
 import type { Texture } from 'pixi.js';
 

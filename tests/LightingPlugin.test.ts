@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventBus } from '../src/core/EventBus.js';
-import { LightingPlugin } from '../src/plugins/LightingPlugin.js';
+import { LightingPlugin } from '../src/plugins/world/LightingPlugin.js';
 import type { Core } from '../src/core/Core.js';
 import type {
   LightAddOutput,

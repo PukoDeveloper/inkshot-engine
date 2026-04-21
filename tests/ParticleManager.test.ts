@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventBus } from '../src/core/EventBus.js';
-import { ParticleManager } from '../src/plugins/ParticleManager.js';
-import type { ParticleDisplay, ParticleLayer } from '../src/plugins/ParticleManager.js';
+import { ParticleManager } from '../src/plugins/world/ParticleManager.js';
+import type { ParticleDisplay, ParticleLayer } from '../src/plugins/world/ParticleManager.js';
 import type {
   ParticleConfig,
   ParticleEmitOutput,

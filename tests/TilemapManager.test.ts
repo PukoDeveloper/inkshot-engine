@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventBus } from '../src/core/EventBus.js';
-import { TilemapManager } from '../src/plugins/TilemapManager.js';
+import { TilemapManager } from '../src/plugins/tilemap/TilemapManager.js';
 import type { Core } from '../src/core/Core.js';
 import type { TilemapData, TilemapLoadOutput, TilemapGetTileOutput } from '../src/types/tilemap.js';
 

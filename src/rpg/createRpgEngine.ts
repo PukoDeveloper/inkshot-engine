@@ -3,26 +3,26 @@ import type { EngineOptions, EngineInstance } from '../createEngine.js';
 import type { EnginePlugin } from '../types/plugin.js';
 
 // Core plugins already in the engine
-import { AudioManager } from '../plugins/AudioManager.js';
-import { ResourceManager } from '../plugins/ResourceManager.js';
-import { DataManager } from '../plugins/DataManager.js';
-import { InputManager } from '../plugins/InputManager.js';
-import { GameStateManager } from '../plugins/GameStateManager.js';
-import { SceneManager } from '../plugins/SceneManager.js';
-import { EntityManager } from '../plugins/EntityManager.js';
-import { TilemapManager } from '../plugins/TilemapManager.js';
-import { TweenManager } from '../plugins/TweenManager.js';
-import { TimerManager } from '../plugins/TimerManager.js';
-import { UIManager } from '../plugins/UIManager.js';
+import { AudioManager } from '../plugins/audio/AudioManager.js';
+import { ResourceManager } from '../plugins/data/ResourceManager.js';
+import { DataManager } from '../plugins/data/DataManager.js';
+import { InputManager } from '../plugins/input/InputManager.js';
+import { GameStateManager } from '../plugins/gameplay/GameStateManager.js';
+import { SceneManager } from '../plugins/scene/SceneManager.js';
+import { EntityManager } from '../plugins/entity/EntityManager.js';
+import { TilemapManager } from '../plugins/tilemap/TilemapManager.js';
+import { TweenManager } from '../plugins/animation/TweenManager.js';
+import { TimerManager } from '../plugins/gameplay/TimerManager.js';
+import { UIManager } from '../plugins/ui/UIManager.js';
 import { SaveManager } from '../plugins/save/SaveManager.js';
 import { LocalStorageSaveAdapter } from '../plugins/save/LocalStorageSaveAdapter.js';
-import { LocalizationManager } from '../plugins/LocalizationManager.js';
-import { ParticleManager } from '../plugins/ParticleManager.js';
-import { PathfindingManager } from '../plugins/PathfindingManager.js';
-import { AchievementPlugin } from '../plugins/AchievementPlugin.js';
-import { LightingPlugin } from '../plugins/LightingPlugin.js';
-import { FogOfWarPlugin } from '../plugins/FogOfWarPlugin.js';
-import { MinimapPlugin } from '../plugins/MinimapPlugin.js';
+import { LocalizationManager } from '../plugins/data/LocalizationManager.js';
+import { ParticleManager } from '../plugins/world/ParticleManager.js';
+import { PathfindingManager } from '../plugins/world/PathfindingManager.js';
+import { AchievementPlugin } from '../plugins/gameplay/AchievementPlugin.js';
+import { LightingPlugin } from '../plugins/world/LightingPlugin.js';
+import { FogOfWarPlugin } from '../plugins/world/FogOfWarPlugin.js';
+import { MinimapPlugin } from '../plugins/ui/MinimapPlugin.js';
 
 // RPG plugins
 import { VariableStoreManager } from '../plugins/rpg/VariableStoreManager.js';

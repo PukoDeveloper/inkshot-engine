@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { loadTiledMap } from '../src/plugins/TiledLoader.js';
-import type { TiledMap } from '../src/plugins/TiledLoader.js';
+import { loadTiledMap } from '../src/plugins/tilemap/TiledLoader.js';
+import type { TiledMap } from '../src/plugins/tilemap/TiledLoader.js';
 
 // ---------------------------------------------------------------------------
 // Fixtures

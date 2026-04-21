@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventBus } from '../src/core/EventBus.js';
-import { EntityManager } from '../src/plugins/EntityManager.js';
-import { RapierPhysicsAdapter } from '../src/plugins/RapierPhysicsAdapter.js';
+import { EntityManager } from '../src/plugins/entity/EntityManager.js';
+import { RapierPhysicsAdapter } from '../src/plugins/physics/RapierPhysicsAdapter.js';
 import type {
   RapierLib,
   RapierRigidBody,
@@ -9,7 +9,7 @@ import type {
   RapierRigidBodyDesc,
   RapierColliderDesc,
   RapierWorld,
-} from '../src/plugins/RapierPhysicsAdapter.js';
+} from '../src/plugins/physics/RapierPhysicsAdapter.js';
 import { CollisionLayer } from '../src/types/physics.js';
 import type {
   PhysicsMoveOutput,

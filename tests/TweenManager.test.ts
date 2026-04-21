@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventBus } from '../src/core/EventBus.js';
-import { Tween, TweenManager, Easing } from '../src/plugins/TweenManager.js';
+import { Tween, TweenManager, Easing } from '../src/plugins/animation/TweenManager.js';
 import type { Core } from '../src/core/Core.js';
 
 // ---------------------------------------------------------------------------

@@ -1,5 +1,5 @@
 // Settings system
-export { SettingsManager } from './plugins/SettingsManager.js';
+export { SettingsManager } from './plugins/data/SettingsManager.js';
 export type {
   SettingsManagerOptions,
   SettingsSetParams,
@@ -13,7 +13,7 @@ export type {
 } from './types/settings.js';
 
 // Audio system
-export { AudioManager } from './plugins/AudioManager.js';
+export { AudioManager } from './plugins/audio/AudioManager.js';
 export type {
   AudioCategory,
   AudioLoadParams,
@@ -37,10 +37,10 @@ export type {
 } from './types/audio.js';
 
 // Asset system
-export { ResourceManager } from './plugins/ResourceManager.js';
+export { ResourceManager } from './plugins/data/ResourceManager.js';
 
 // Data system
-export { DataManager } from './plugins/DataManager.js';
+export { DataManager } from './plugins/data/DataManager.js';
 export type {
   DataLoadParams,
   DataLoadOutput,
@@ -53,7 +53,7 @@ export type {
 } from './types/data.js';
 
 // Localisation system
-export { LocalizationManager } from './plugins/LocalizationManager.js';
+export { LocalizationManager } from './plugins/data/LocalizationManager.js';
 export type {
   LocaleData,
   I18nLoadParams,
@@ -96,8 +96,8 @@ export type { WorkerBridgeOptions } from './core/WorkerBridge.js';
 export type { WorkerTask, WorkerResult } from './types/worker.js';
 
 // Input system
-export { InputManager } from './plugins/InputManager.js';
-export { InputRecorder } from './plugins/InputRecorder.js';
+export { InputManager } from './plugins/input/InputManager.js';
+export { InputRecorder } from './plugins/input/InputRecorder.js';
 export type {
   InputKeyDownParams,
   InputKeyUpParams,
@@ -138,7 +138,7 @@ export type {
 } from './types/input.js';
 
 // Game state system
-export { GameStateManager } from './plugins/GameStateManager.js';
+export { GameStateManager } from './plugins/gameplay/GameStateManager.js';
 export type {
   GamePhase,
   GameStateSetParams,
@@ -183,9 +183,9 @@ export type {
 } from './types/save.js';
 
 // Scene system
-export { SceneManager } from './plugins/SceneManager.js';
-export { LoadingScreen } from './plugins/LoadingScreen.js';
-export type { LoadingScreenOptions } from './plugins/LoadingScreen.js';
+export { SceneManager } from './plugins/scene/SceneManager.js';
+export { LoadingScreen } from './plugins/ui/LoadingScreen.js';
+export type { LoadingScreenOptions } from './plugins/ui/LoadingScreen.js';
 export type {
   SceneDescriptor,
   SceneRegisterParams,
@@ -195,9 +195,9 @@ export type {
 } from './types/scene.js';
 
 // Physics system (unified adapter interface + kinematic built-in backend)
-export { KinematicPhysicsAdapter } from './plugins/KinematicPhysicsAdapter.js';
-export type { KinematicPhysicsAdapterOptions } from './plugins/KinematicPhysicsAdapter.js';
-export { MatterPhysicsAdapter } from './plugins/MatterPhysicsAdapter.js';
+export { KinematicPhysicsAdapter } from './plugins/physics/KinematicPhysicsAdapter.js';
+export type { KinematicPhysicsAdapterOptions } from './plugins/physics/KinematicPhysicsAdapter.js';
+export { MatterPhysicsAdapter } from './plugins/physics/MatterPhysicsAdapter.js';
 export type {
   MatterLib,
   MatterBody,
@@ -205,8 +205,8 @@ export type {
   MatterEngine,
   MatterBounds,
   MatterPhysicsAdapterOptions,
-} from './plugins/MatterPhysicsAdapter.js';
-export { RapierPhysicsAdapter } from './plugins/RapierPhysicsAdapter.js';
+} from './plugins/physics/MatterPhysicsAdapter.js';
+export { RapierPhysicsAdapter } from './plugins/physics/RapierPhysicsAdapter.js';
 export type {
   RapierLib,
   RapierRigidBody,
@@ -215,7 +215,7 @@ export type {
   RapierColliderDesc,
   RapierWorld,
   RapierPhysicsAdapterOptions,
-} from './plugins/RapierPhysicsAdapter.js';
+} from './plugins/physics/RapierPhysicsAdapter.js';
 export { CollisionLayer } from './types/physics.js';
 export type {
   PhysicsAdapter,
@@ -249,8 +249,8 @@ export type {
 } from './types/physics.js';
 
 // Entity system
-export { EntityManager } from './plugins/EntityManager.js';
-export { SpriteAnimator } from './plugins/SpriteAnimator.js';
+export { EntityManager } from './plugins/entity/EntityManager.js';
+export { SpriteAnimator } from './plugins/entity/SpriteAnimator.js';
 export type {
   Entity,
   EntityDescriptor,
@@ -272,7 +272,7 @@ export type { EngineOptions, EngineInstance } from './createEngine.js';
 
 
 // Tilemap system
-export { TilemapManager } from './plugins/TilemapManager.js';
+export { TilemapManager } from './plugins/tilemap/TilemapManager.js';
 export { AutotileBit } from './types/tilemap.js';
 export type {
   TilesetDef,
@@ -294,8 +294,8 @@ export type {
 } from './types/tilemap.js';
 
 // Tilemap editor plugin
-export { TilemapEditorPlugin } from './plugins/TilemapEditorPlugin.js';
-export { TilemapEditorOverlayPlugin } from './plugins/TilemapEditorOverlayPlugin.js';
+export { TilemapEditorPlugin } from './plugins/tilemap/TilemapEditorPlugin.js';
+export { TilemapEditorOverlayPlugin } from './plugins/tilemap/TilemapEditorOverlayPlugin.js';
 export type {
   MapEditorTool,
   MapEditorTileEdit,
@@ -315,10 +315,10 @@ export type {
 } from './types/mapeditor.js';
 
 // Tween system
-export { TweenManager, Tween, Easing } from './plugins/TweenManager.js';
-export type { EasingFn, TweenOptions, Advanceable } from './plugins/TweenManager.js';
-export { Timeline } from './plugins/Timeline.js';
-export type { TimelineOptions } from './plugins/Timeline.js';
+export { TweenManager, Tween, Easing } from './plugins/animation/TweenManager.js';
+export type { EasingFn, TweenOptions, Advanceable } from './plugins/animation/TweenManager.js';
+export { Timeline } from './plugins/animation/Timeline.js';
+export type { TimelineOptions } from './plugins/animation/Timeline.js';
 export type { TweenToParams, TweenToOutput, TweenKillParams, TweenFinishedParams } from './types/tween.js';
 
 // Types
@@ -336,8 +336,8 @@ export type {
 export type { EnginePlugin, PluginSource } from './types/plugin.js';
 
 // Particle system
-export { ParticleManager } from './plugins/ParticleManager.js';
-export type { ParticleDisplay, ParticleLayer, ParticleManagerOptions } from './plugins/ParticleManager.js';
+export { ParticleManager } from './plugins/world/ParticleManager.js';
+export type { ParticleDisplay, ParticleLayer, ParticleManagerOptions } from './plugins/world/ParticleManager.js';
 export type {
   ParticleConfig,
   ParticleEmitParams,
@@ -392,7 +392,7 @@ export type {
 } from './types/rendering.js';
 
 // Timer / Scheduler system
-export { TimerManager } from './plugins/TimerManager.js';
+export { TimerManager } from './plugins/gameplay/TimerManager.js';
 export type {
   TimerOnceParams,
   TimerIntervalParams,
@@ -405,8 +405,8 @@ export type {
 } from './types/timer.js';
 
 // Pathfinding system
-export { PathfindingManager } from './plugins/PathfindingManager.js';
-export type { PathfindingManagerOptions } from './plugins/PathfindingManager.js';
+export { PathfindingManager } from './plugins/world/PathfindingManager.js';
+export type { PathfindingManagerOptions } from './plugins/world/PathfindingManager.js';
 export type {
   PathfindingFindParams,
   PathfindingFindOutput,
@@ -415,7 +415,7 @@ export type {
 } from './types/pathfinding.js';
 
 // UI system
-export { UIManager } from './plugins/UIManager.js';
+export { UIManager } from './plugins/ui/UIManager.js';
 export type {
   UIWidget,
   UIWidgetFactory,
@@ -547,7 +547,7 @@ export type {
 } from './types/dialogue.js';
 
 // Debug / Dev Tools
-export { DebugPlugin } from './plugins/DebugPlugin.js';
+export { DebugPlugin } from './plugins/debug/DebugPlugin.js';
 export type {
   DebugPluginOptions,
   DebugEventEntry,
@@ -558,7 +558,7 @@ export type {
 } from './types/debug.js';
 
 // Lighting system
-export { LightingPlugin } from './plugins/LightingPlugin.js';
+export { LightingPlugin } from './plugins/world/LightingPlugin.js';
 export type {
   PointLight,
   AmbientLight,
@@ -574,8 +574,8 @@ export type {
 } from './types/lighting.js';
 
 // Parallax system
-export { ParallaxPlugin } from './plugins/ParallaxPlugin.js';
-export type { ParallaxContainer } from './plugins/ParallaxPlugin.js';
+export { ParallaxPlugin } from './plugins/world/ParallaxPlugin.js';
+export type { ParallaxContainer } from './plugins/world/ParallaxPlugin.js';
 export type {
   ParallaxLayerDef,
   ParallaxPluginOptions,
@@ -589,7 +589,7 @@ export type {
 } from './types/parallax.js';
 
 // Tiled map loader
-export { loadTiledMap } from './plugins/TiledLoader.js';
+export { loadTiledMap } from './plugins/tilemap/TiledLoader.js';
 export type {
   TiledMap,
   TiledLayer,
@@ -603,10 +603,10 @@ export type {
   TiledAnimationFrame,
   TiledLoaderOptions,
   TiledLoaderOutput,
-} from './plugins/TiledLoader.js';
+} from './plugins/tilemap/TiledLoader.js';
 
 // Cutscene system
-export { CutscenePlugin } from './plugins/CutscenePlugin.js';
+export { CutscenePlugin } from './plugins/gameplay/CutscenePlugin.js';
 export type {
   CutsceneDef,
   CutsceneStep,
@@ -633,7 +633,7 @@ export type {
 } from './types/cutscene.js';
 
 // Minimap system
-export { MinimapPlugin } from './plugins/MinimapPlugin.js';
+export { MinimapPlugin } from './plugins/ui/MinimapPlugin.js';
 export type {
   MinimapConfig,
   MinimapIcon,
@@ -647,7 +647,7 @@ export type {
 } from './types/minimap.js';
 
 // Achievement system
-export { AchievementPlugin } from './plugins/AchievementPlugin.js';
+export { AchievementPlugin } from './plugins/gameplay/AchievementPlugin.js';
 export type {
   AchievementDef,
   AchievementState,
@@ -662,7 +662,7 @@ export type {
 } from './types/achievement.js';
 
 // Fog of War system
-export { FogOfWarPlugin } from './plugins/FogOfWarPlugin.js';
+export { FogOfWarPlugin } from './plugins/world/FogOfWarPlugin.js';
 export type {
   FogTileState,
   FogConfig,
