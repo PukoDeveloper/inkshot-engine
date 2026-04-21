@@ -9,6 +9,7 @@ import type {
   PathfindingWeightSetParams,
   PathfindingCacheClearParams,
 } from '../types/pathfinding.js';
+import { WorkerBridge } from '../core/WorkerBridge.js';
 
 // ---------------------------------------------------------------------------
 // Internal types
@@ -99,6 +100,26 @@ export interface PathfindingManagerOptions {
    * - `8` — cardinal + diagonal (default).
    */
   directions?: 4 | 8;
+  /**
+   * URL of the compiled pathfinding Worker script
+   * (`src/workers/pathfinding.worker.ts` / its built equivalent).
+   *
+   * When provided, `pathfinding/find:async` offloads A* computation to the
+   * Worker, keeping the main thread free.  The synchronous
+   * `pathfinding/find` event is **not** affected and continues to run on the
+   * main thread for full backwards compatibility.
+   *
+   * When omitted, `pathfinding/find:async` falls back to the same synchronous
+   * A* implementation used by `pathfinding/find`.
+   *
+   * **Vite / bundler usage**
+   * ```ts
+   * new PathfindingManager({
+   *   workerUrl: new URL('../workers/pathfinding.worker.ts', import.meta.url),
+   * })
+   * ```
+   */
+  workerUrl?: string | URL;
 }
 
 /**
@@ -125,6 +146,7 @@ export interface PathfindingManagerOptions {
  * | Event                      | Async? | Description                                  |
  * |----------------------------|--------|----------------------------------------------|
  * | `pathfinding/find`         | ✗ sync | Run A* from `from` to `to` (world px)        |
+ * | `pathfinding/find:async`   | ✓ async| Run A* — offloads to Worker when `workerUrl` is set |
  * | `pathfinding/weight:set`   | ✗ sync | Override movement cost for a tile value      |
  * | `pathfinding/cache:clear`  | ✗ sync | Manually clear the path cache                |
  *
@@ -144,15 +166,19 @@ export interface PathfindingManagerOptions {
  *   ],
  * });
  *
- * // After a tilemap is loaded and physics/tilemap:set has fired…
+ * // Synchronous (main thread):
  * const { output } = core.events.emitSync<PathfindingFindParams, PathfindingFindOutput>(
  *   'pathfinding/find',
  *   { from: { x: 32, y: 32 }, to: { x: 160, y: 96 } },
  * );
+ * if (output.found) console.log('Path:', output.path);
  *
- * if (output.found) {
- *   console.log('Path:', output.path, 'Cost:', output.cost);
- * }
+ * // Async / Worker-offloaded:
+ * const { output } = await core.events.emit<PathfindingFindParams, PathfindingFindOutput>(
+ *   'pathfinding/find:async',
+ *   { from: { x: 32, y: 32 }, to: { x: 160, y: 96 } },
+ * );
+ * if (output.found) console.log('Path (async):', output.path);
  * ```
  */
 export class PathfindingManager implements EnginePlugin {
@@ -192,9 +218,19 @@ export class PathfindingManager implements EnginePlugin {
   /** Cached A* results keyed by `"fromRow,fromCol→toRow,toCol"`. */
   private readonly _cache = new Map<string, PathfindingFindOutput>();
 
+  /** Worker bridge for async pathfinding.  `null` when no `workerUrl` was supplied. */
+  private _bridge: WorkerBridge<Record<string, unknown>, PathfindingFindOutput> | null = null;
+
+  /**
+   * `true` once the Worker has been initialised with the current cost grid.
+   * While `false`, `pathfinding/find:async` falls back to the synchronous A*.
+   */
+  private _workerReady = false;
+
   constructor(options: PathfindingManagerOptions = {}) {
     this._options = {
       directions: options.directions ?? 8,
+      workerUrl: options.workerUrl ?? '',
     };
   }
 
@@ -206,10 +242,19 @@ export class PathfindingManager implements EnginePlugin {
     this._core = core;
     const { events } = core;
 
+    // Spin up the Worker bridge if a URL was provided.
+    if (this._options.workerUrl) {
+      this._bridge = new WorkerBridge<Record<string, unknown>, PathfindingFindOutput>(
+        this._options.workerUrl,
+      );
+    }
+
     // Rebuild cost grid whenever the tile collision map changes.
     events.on<PhysicsTilemapSetParams>(this.namespace, 'physics/tilemap:set', (params) => {
       this._buildGrid(params);
       this._cache.clear();
+      // Sync the new grid to the Worker (fire-and-forget; _workerReady gates async calls).
+      this._syncGridToWorker();
     });
 
     // O(1) update when a single tile is changed at runtime (e.g. door opening).
@@ -223,10 +268,17 @@ export class PathfindingManager implements EnginePlugin {
       if (this._tileValues[params.row] !== undefined) {
         this._tileValues[params.row]![params.col] = params.tileId;
       }
+      const newCost = this._cellCost(params.tileId, this._tileShapes);
       if (this._grid[params.row] !== undefined) {
-        this._grid[params.row]![params.col] = this._cellCost(params.tileId, this._tileShapes);
+        this._grid[params.row]![params.col] = newCost;
       }
       this._cache.clear();
+      // Inform the Worker of the single-cell update (fire-and-forget).
+      if (this._bridge && this._workerReady) {
+        this._bridge
+          .run('tile:update', { row: params.row, col: params.col, cost: newCost })
+          .catch(() => { /* ignore */ });
+      }
     });
 
     events.on<PathfindingFindParams, PathfindingFindOutput>(
@@ -250,6 +302,8 @@ export class PathfindingManager implements EnginePlugin {
         if (this._tileSize > 0) {
           this._rebuildGridFromCached();
           this._cache.clear();
+          // Full grid changed — re-sync to Worker.
+          this._syncGridToWorker();
         }
       },
     );
@@ -259,6 +313,46 @@ export class PathfindingManager implements EnginePlugin {
       'pathfinding/cache:clear',
       () => {
         this._cache.clear();
+        // Also clear the Worker's internal cache.
+        if (this._bridge && this._workerReady) {
+          this._bridge.run('cache:clear', {}).catch(() => { /* ignore */ });
+        }
+      },
+    );
+
+    // Async variant: offloads to Worker when available, otherwise falls back
+    // to the synchronous main-thread A* implementation.
+    events.on<PathfindingFindParams, PathfindingFindOutput>(
+      this.namespace,
+      'pathfinding/find:async',
+      async (params, output) => {
+        let result: PathfindingFindOutput;
+
+        if (this._bridge && this._workerReady) {
+          // Collect dynamic obstacles on the main thread (entity/query requires it).
+          const dynamicObstacleCells = params.includeDynamicObstacles
+            ? this._buildDynamicObstacleCells(params.tagFilter)
+            : [];
+
+          result = await this._bridge.run('find', {
+            params: {
+              from:                params.from,
+              to:                  params.to,
+              fallbackToNearest:   params.fallbackToNearest,
+              smoothPath:          params.smoothPath,
+              maxIterations:       params.maxIterations,
+            },
+            dynamicObstacleCells,
+          } as Record<string, unknown>);
+        } else {
+          // Fallback: run synchronously on the main thread.
+          result = this._find(params);
+        }
+
+        output.found = result.found;
+        output.path  = result.path;
+        output.cost  = result.cost;
+        if (result.nearest !== undefined) output.nearest = result.nearest;
       },
     );
   }
@@ -274,6 +368,10 @@ export class PathfindingManager implements EnginePlugin {
     this._cols = 0;
     this._tileSize = 0;
     this._core = null;
+    // Shut down the Worker.
+    this._bridge?.terminate();
+    this._bridge = null;
+    this._workerReady = false;
   }
 
   // ---------------------------------------------------------------------------
@@ -286,6 +384,84 @@ export class PathfindingManager implements EnginePlugin {
    */
   getCellCost(row: number, col: number): number | undefined {
     return this._grid[row]?.[col];
+  }
+
+  // ---------------------------------------------------------------------------
+  // Private: Worker synchronisation
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Serialise the current cost grid as a `Float32Array` and send it to the
+   * Worker via the `init` message type.  The method is fire-and-forget; once
+   * the Worker acknowledges it sets `_workerReady = true`.
+   *
+   * A `Float32Array` is used so that values `> Float32.MAX` (i.e. `Infinity`)
+   * round-trip correctly through `postMessage` — `Infinity` is preserved by
+   * the structured-clone algorithm.
+   */
+  private _syncGridToWorker(): void {
+    if (!this._bridge || this._rows === 0 || this._cols === 0) return;
+
+    this._workerReady = false;
+
+    // Build a flat row-major Float32Array from the 2-D grid.
+    const flat = new Float32Array(this._rows * this._cols);
+    for (let r = 0; r < this._rows; r++) {
+      for (let c = 0; c < this._cols; c++) {
+        flat[r * this._cols + c] = this._grid[r]![c]!;
+      }
+    }
+
+    // Transfer the underlying ArrayBuffer to the Worker (zero-copy).
+    this._bridge
+      .run(
+        'init',
+        {
+          grid: flat,
+          rows: this._rows,
+          cols: this._cols,
+          tileSize: this._tileSize,
+          directions: this._options.directions,
+        } as unknown as Record<string, unknown>,
+        [flat.buffer],
+      )
+      .then(() => {
+        this._workerReady = true;
+      })
+      .catch(() => {
+        // If the Worker fails to initialise, keep _workerReady = false so
+        // find:async silently falls back to sync A*.
+      });
+  }
+
+  /**
+   * Collect entity tile positions for the Worker's dynamic-obstacle set.
+   *
+   * Returns an array of `[row, col]` pairs.  This must run on the main thread
+   * because `entity/query` requires EventBus access.
+   */
+  private _buildDynamicObstacleCells(tagFilter?: string[]): Array<[number, number]> {
+    const cells: Array<[number, number]> = [];
+    if (!this._core || this._tileSize === 0) return cells;
+
+    const queryParams: EntityQueryParams =
+      tagFilter && tagFilter.length > 0 ? { tags: tagFilter } : {};
+
+    const { output } = this._core.events.emitSync<EntityQueryParams, EntityQueryOutput>(
+      'entity/query',
+      queryParams,
+    );
+
+    const ts = this._tileSize;
+    for (const entity of (output.entities ?? [])) {
+      const row = Math.floor(entity.position.y / ts);
+      const col = Math.floor(entity.position.x / ts);
+      if (this._inBounds(row, col)) {
+        cells.push([row, col]);
+      }
+    }
+
+    return cells;
   }
 
   // ---------------------------------------------------------------------------
