@@ -1405,13 +1405,14 @@ Must be registered **after** `KinematicPhysicsAdapter` (or any active `physics` 
 
 #### Event Contract
 
-| Event                     | Async? | Description |
-|---------------------------|--------|-------------|
-| `pathfinding/find`        | ✗ sync | Run A* from `from` to `to` (world pixels); returns `path[]`, `cost`, optional `nearest` |
-| `pathfinding/weight:set`  | ✗ sync | Override movement cost for a specific tile value |
-| `pathfinding/cache:clear` | ✗ sync | Manually invalidate the path cache |
+| Event                      | Async? | Description |
+|----------------------------|--------|-------------|
+| `pathfinding/find`         | ✗ sync | Run A* from `from` to `to` (world pixels); returns `path[]`, `cost`, optional `nearest` |
+| `pathfinding/find:async`   | ✓ async | Same parameters as `pathfinding/find`; offloads A* to a Web Worker when `workerUrl` is set, otherwise falls back to the synchronous implementation |
+| `pathfinding/weight:set`   | ✗ sync | Override movement cost for a specific tile value |
+| `pathfinding/cache:clear`  | ✗ sync | Manually invalidate the path cache |
 
-#### `pathfinding/find` parameters
+#### `pathfinding/find` / `pathfinding/find:async` parameters
 
 | Parameter                 | Type       | Default    | Description |
 |---------------------------|------------|------------|-------------|
@@ -1422,6 +1423,13 @@ Must be registered **after** `KinematicPhysicsAdapter` (or any active `physics` 
 | `fallbackToNearest`       | `boolean`  | `false`    | When the goal tile is impassable, BFS outward to the nearest passable cell; actual target returned in `output.nearest` |
 | `smoothPath`              | `boolean`  | `false`    | Apply string-pulling (line-of-sight) to remove staircase waypoints from diagonal paths |
 | `maxIterations`           | `number`   | `10 000`   | Abort A* after this many iterations |
+
+#### Constructor options
+
+| Option       | Type           | Default | Description |
+|--------------|----------------|---------|-------------|
+| `directions` | `4 \| 8`       | `8`     | Movement directions — cardinal only (`4`) or cardinal + diagonal (`8`) |
+| `workerUrl`  | `string \| URL` | —      | URL of the compiled `pathfinding.worker` script.  When provided, `pathfinding/find:async` offloads A* to that Worker; the synchronous `pathfinding/find` is unaffected.  Omit entirely for main-thread-only mode. |
 
 #### Usage
 
@@ -1478,6 +1486,27 @@ core.events.emitSync('pathfinding/weight:set', { tileId: 4, cost: Infinity });
 
 // ⑥ Manual cache invalidation (e.g. after a script-driven layout change)
 core.events.emitSync('pathfinding/cache:clear', {});
+
+// ⑦ Worker-offloaded async pathfinding (Vite / bundler project)
+//    Pass workerUrl so PathfindingManager creates a WorkerBridge automatically.
+const { core: workerCore } = await createEngine({
+  plugins: [
+    new EntityManager(),
+    new KinematicPhysicsAdapter(),
+    new TilemapManager(),
+    new PathfindingManager({
+      workerUrl: new URL('./workers/pathfinding.worker.js', import.meta.url),
+    }),
+  ],
+});
+
+// emitSync 'pathfinding/find' still works unchanged (main thread).
+// Use 'pathfinding/find:async' to offload to the Worker:
+const { output: asyncOut } = await workerCore.events.emit<PathfindingFindParams, PathfindingFindOutput>(
+  'pathfinding/find:async',
+  { from: player.position, to: target.position },
+);
+if (asyncOut.found) followPath(asyncOut.path);
 ```
 
 ---
