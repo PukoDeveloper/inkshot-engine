@@ -106,6 +106,7 @@ describe('loadRpgData – meta', () => {
   it('parses title, version, locale, initialGold', () => {
     const out = loadRpgData(FULL);
     expect(out.gameTitle).toBe('Quest of Heroes');
+    expect(out.version).toBe('1.0.0');
     expect(out.locale).toBe('en');
     expect(out.initialGold).toBe(150);
   });

@@ -70,6 +70,7 @@ export function loadRpgData(gameData: RpgGameData): RpgDataOutput {
 
   // ── Meta ──────────────────────────────────────────────────────────────────
   const gameTitle         = meta.title           ?? '';
+  const version           = meta.version         ?? '';
   const locale            = meta.locale          ?? 'en';
   const initialGold       = meta.initialGold     ?? 0;
   const initialVariables  = { ...(meta.initialVariables ?? {}) };
@@ -108,6 +109,7 @@ export function loadRpgData(gameData: RpgGameData): RpgDataOutput {
 
   return {
     gameTitle,
+    version,
     locale,
     initialGold,
     initialVariables,

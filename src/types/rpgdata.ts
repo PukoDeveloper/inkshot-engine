@@ -249,6 +249,8 @@ export interface RpgGameData {
 export interface RpgDataOutput {
   /** Parsed game title (empty string if omitted). */
   gameTitle: string;
+  /** Arbitrary version string from metadata (empty string if omitted). */
+  version: string;
   /** Detected or specified locale code. */
   locale: string;
   /** Starting gold amount. */
