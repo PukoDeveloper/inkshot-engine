@@ -653,3 +653,161 @@ export type {
   FogStateOutput,
   FogTileRevealedParams,
 } from './types/fog.js';
+
+// ── RPG Systems ───────────────────────────────────────────────────────────────
+export { StatsSystem } from './plugins/rpg/StatsSystem.js';
+export type {
+  StatMap,
+  StatProfileDef,
+  ModifierMode,
+  StatModifier,
+  StatusEffectDef,
+  StatsProfileDefineParams,
+  StatsModifierAddParams,
+  StatsModifierRemoveParams,
+  StatsComputeParams,
+  StatsComputeOutput,
+  StatsBaseSetParams,
+  StatsBaseGetParams,
+  StatsBaseGetOutput,
+  StatsStatusApplyParams,
+  StatsStatusRemoveParams,
+  StatsStatusListParams,
+  StatsStatusListOutput,
+  StatsChangedParams,
+  StatsStatusAppliedParams,
+  StatsStatusExpiredParams,
+} from './types/stats.js';
+
+export { InventorySystem } from './plugins/rpg/InventorySystem.js';
+export type {
+  ItemCategory,
+  ItemDef,
+  InventorySlot,
+  EquipSlot,
+  InventoryItemDefineParams,
+  InventoryAddParams,
+  InventoryAddOutput,
+  InventoryRemoveParams,
+  InventoryRemoveOutput,
+  InventoryUseParams,
+  InventoryUseOutput,
+  InventoryEquipParams,
+  InventoryEquipOutput,
+  InventoryUnequipParams,
+  InventoryUnequipOutput,
+  InventoryListParams,
+  InventoryListOutput,
+  InventoryHasParams,
+  InventoryHasOutput,
+  InventoryItemAddedParams,
+  InventoryItemRemovedParams,
+  InventoryItemUsedParams,
+  InventoryEquippedParams,
+  InventoryUnequippedParams,
+} from './types/inventory.js';
+
+export { ShopSystem } from './plugins/rpg/ShopSystem.js';
+export type {
+  ShopEntry,
+  ShopDef,
+  ShopDefineParams,
+  ShopOpenParams,
+  ShopOpenOutput,
+  ShopBuyParams,
+  ShopBuyOutput,
+  ShopSellParams,
+  ShopSellOutput,
+  ShopCloseParams,
+  ShopOpenedParams,
+  ShopBoughtParams,
+  ShopSoldParams,
+  ShopClosedParams,
+} from './types/shop.js';
+
+export { ExperienceSystem } from './plugins/rpg/ExperienceSystem.js';
+export type {
+  ExpCurveFn,
+  ExpCurveDef,
+  ExpCurveDefineParams,
+  ExpGainParams,
+  ExpGainOutput,
+  ExpSetParams,
+  ExpGetParams,
+  ExpGetOutput,
+  ExpLevelUpParams,
+  ExpGainedParams,
+} from './types/exp.js';
+
+export { BattleSystem } from './plugins/rpg/BattleSystem.js';
+export type {
+  BattlePhase,
+  BattleSide,
+  BattleCombatant,
+  BattleActionKind,
+  BattleAction,
+  BattleState,
+  BattleStartParams,
+  BattleStartOutput,
+  BattleActionParams,
+  BattleResolveParams,
+  BattleResolveOutput,
+  BattleEndParams,
+  BattleStateGetParams,
+  BattleStateGetOutput,
+  BattleStartedParams,
+  BattleTurnStartParams,
+  BattleActionResolvedParams,
+  BattleEndedParams,
+  BattleCombatantDefeatedParams,
+} from './types/battle.js';
+
+export { RpgMenuSystem } from './plugins/rpg/RpgMenuSystem.js';
+export type {
+  RpgMenuPage,
+  RpgMenuSystemOptions,
+  RpgMenuOpenParams,
+  RpgMenuCloseParams,
+  RpgMenuPageSetParams,
+  RpgMenuStateGetOutput,
+  RpgMenuPartySetParams,
+  RpgMenuOpenedParams,
+  RpgMenuClosedParams,
+  RpgMenuPageChangedParams,
+} from './types/rpgmenu.js';
+
+// ── RPG factory + bundle ───────────────────────────────────────────────────────
+export {
+  buildRpgPluginBundle,
+  RPG_PLUGIN_BUNDLE,
+  createRpgEngine,
+} from './rpg/createRpgEngine.js';
+export type { RpgEngineOptions, RpgEngineInstance } from './rpg/createRpgEngine.js';
+
+// ── RPG Maker importer ─────────────────────────────────────────────────────────
+export {
+  importRpgMakerData,
+  parseActors,
+  parseClasses,
+  parseItems,
+  parseStates,
+  parseCommonEvents,
+  parseMap,
+  parseSystem,
+} from './rpg/importer/index.js';
+export type {
+  RpgMakerVersion,
+  RmActor,
+  RmClass,
+  RmItem,
+  RmWeapon,
+  RmArmor,
+  RmState,
+  RmCommonEvent,
+  RmEventCommand,
+  RmMap,
+  RmEvent,
+  RmSystem,
+  RpgImporterOptions,
+  RpgImporterOutput,
+} from './types/rpgimporter.js';
