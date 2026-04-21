@@ -817,18 +817,26 @@ export class MatterPhysicsAdapter implements EnginePlugin {
   // ---------------------------------------------------------------------------
 
   /**
-   * After each Matter engine step, pull body positions back into entity.position.
-   * This keeps `entity.position` as the authoritative logical coordinate.
+   * After each Matter engine step, pull body positions back into entity.position
+   * for **dynamic** (non-BODY-layer) bodies only.
+   *
+   * BODY-layer bodies are kinematic — their position is authoritative from
+   * `physics/move`.  Syncing them here would overwrite the resolved position
+   * with whatever Matter's gravity/integration produced.
    */
   private _syncPositions(): void {
     if (!this._core) return;
     const entityMap = this._getAllEntities();
 
     for (const [entityId, body] of this._bodies) {
-      const entity = entityMap.get(entityId);
-      if (!entity) continue;
       const collider = this._colliders.get(entityId);
       if (!collider) continue;
+
+      // Only sync dynamic bodies — kinematic BODY bodies are moved via physics/move.
+      if (collider.layer & CollisionLayer.BODY) continue;
+
+      const entity = entityMap.get(entityId);
+      if (!entity) continue;
 
       // Reverse the offset applied when creating the body.
       const ox = collider.shape.offsetX ?? 0;

@@ -389,6 +389,36 @@ describe('MatterPhysicsAdapter', () => {
       expect(entity.position.x).toBe(20);
       expect(entity.position.y).toBe(30);
     });
+
+    it('does NOT overwrite entity.position for BODY-layer (kinematic) bodies after core/update', () => {
+      // Regression test: BODY-layer bodies are kinematic — their position is
+      // set by physics/move, not by Matter's integrator.  If _syncPositions
+      // incorrectly syncs them, gravity/physics integration would overwrite the
+      // resolved kinematic position every frame.
+      const { core, em, Matter } = createSetup();
+      const entity = em.create({ id: 'kinematic', position: { x: 50, y: 50 } });
+
+      core.events.emitSync('physics/body:add', {
+        entityId: entity.id,
+        shape: { type: 'rect', width: 16, height: 16 },
+        layer: CollisionLayer.BODY,
+      });
+
+      // Simulate Matter physics moving the body (e.g. gravity applied).
+      Matter.Engine.update.mockImplementation(() => {
+        const body = Matter._bodies.find(b => b.label === entity.id);
+        if (body) {
+          // Gravity would push the body centre down.
+          body.position.y += 10;
+        }
+      });
+
+      core.events.emitSync('core/update', { dt: 16, elapsed: 16 });
+
+      // entity.position must NOT be overwritten by the physics-drifted body.
+      expect(entity.position.x).toBe(50);
+      expect(entity.position.y).toBe(50);
+    });
   });
 
   describe('query', () => {
