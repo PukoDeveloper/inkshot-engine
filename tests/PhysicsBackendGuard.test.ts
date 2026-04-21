@@ -1,6 +1,8 @@
+// @vitest-environment jsdom
 import { describe, it, expect } from 'vitest';
 import type { EnginePlugin } from '../src/types/plugin.js';
 import type { Core } from '../src/core/Core.js';
+import { validatePhysicsBackends } from '../src/createEngine.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -13,22 +15,6 @@ function makePhysicsPlugin(suffix = ''): EnginePlugin {
     init(_core: Core) {},
     ...(suffix ? { _label: suffix } : {}),
   } as EnginePlugin;
-}
-
-/**
- * Inline re-implementation of createEngine's dual-backend guard for unit
- * testing without requiring a full Pixi/DOM setup.
- *
- * This mirrors exactly the check in createEngine.ts.
- */
-function validatePhysicsBackends(plugins: EnginePlugin[]): void {
-  const physicsPlugins = plugins.filter(p => p.namespace === 'physics');
-  if (physicsPlugins.length > 1) {
-    throw new Error(
-      `[createEngine] More than one plugin with namespace "physics" was registered ` +
-      `(${physicsPlugins.length} found). Only a single physics backend may be active at a time.`,
-    );
-  }
 }
 
 // ---------------------------------------------------------------------------

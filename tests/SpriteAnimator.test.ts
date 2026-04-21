@@ -14,17 +14,19 @@ function texStub(): Texture {
 }
 
 function createEntityStub(id: string): Entity {
-  // Simulate a Sprite-like display (has .texture).
+  // Track children by label so that getChildByLabel returns the same sprite
+  // after addChild, allowing SpriteAnimator to update its texture in-place
+  // rather than creating a new sprite every frame.
+  const childrenByLabel = new Map<string, unknown>();
+
   const display = {
     x: 0, y: 0, label: '', texture: null as unknown,
-    // getChildByLabel must exist for the Container fallback path.
-    getChildByLabel: () => null,
-    addChild: vi.fn(),
+    getChildByLabel: (label: string) => childrenByLabel.get(label) ?? null,
+    addChild: vi.fn((child: { label?: string }) => {
+      if (child?.label) childrenByLabel.set(child.label, child);
+      return child;
+    }),
   };
-
-  // Mark as Sprite instance for the `instanceof Sprite` check in SpriteAnimator.
-  // We override the check by making display.constructor.name === 'Sprite'.
-  // Instead, we'll use the Container fallback path (getChildByLabel).
 
   return {
     id,
@@ -134,13 +136,24 @@ describe('SpriteAnimator', () => {
       // Frame 0 applied on play() — addChild called once.
       expect(addChild).toHaveBeenCalledTimes(1);
 
+      // Override the texture property on the specific child sprite instance so
+      // we can track exactly what value was assigned, bypassing Pixi's internal
+      // texture validation which rejects our plain stub objects.
+      const childSprite = addChild.mock.calls[0]![0] as { texture: unknown };
+      let trackedTexture: unknown = undefined;
+      Object.defineProperty(childSprite, 'texture', {
+        get: () => trackedTexture,
+        set: (v: unknown) => { trackedTexture = v; },
+        configurable: true,
+      });
+
       // 1 tick → still frame 0 (elapsed = 1, frameDuration = 2)
       tick(core, 1);
+      expect(trackedTexture).toBeUndefined(); // texture setter not yet called
+
       // 2nd tick → advance to frame 1 (elapsed wraps)
       tick(core, 1);
-
-      // addChild is called once initially; subsequent frames update texture
-      // on the same child sprite. We verify via a different route below.
+      expect(trackedTexture).toBe(f1);
     });
 
     it('loops back to frame 0 for looping animations', () => {
@@ -151,11 +164,24 @@ describe('SpriteAnimator', () => {
       const entity = createEntityStub('e1');
       animator.play(entity, 'walk');
 
+      // Capture the child sprite so we can track texture changes.
+      const addChild = entity.display.addChild as ReturnType<typeof vi.fn>;
+      const childSprite = addChild.mock.calls[0]![0] as import('pixi.js').Sprite;
+
       // tick 1 → frame 1, tick 2 → frame 0 (loop)
       tick(core, 3);
 
       // Should still be playing (looping).
       expect(animator.isPlaying(entity)).toBe(true);
+      // After 3 ticks with frameDuration=1: frame 1 → frame 0 → frame 1
+      // The texture after tick 3 is f1 (odd number of advances from f0).
+      // More importantly, verify the loop happened by checking addChild
+      // was called only once (texture updates happen in-place on the same sprite).
+      expect(addChild).toHaveBeenCalledTimes(1);
+      // After an even number of advances the texture returns to f0;
+      // tick 2 triggered the loop back — verify with 4 ticks total.
+      tick(core, 1);
+      expect(childSprite.texture).toBe(f0);
     });
 
     it('finishes non-looping animation and emits animator/finished', () => {

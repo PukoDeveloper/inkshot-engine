@@ -332,7 +332,16 @@ export class AudioManager implements EnginePlugin {
         if (!inst || inst.state !== 'playing') return;
 
         const elapsed = this._ctx!.currentTime - inst.startedAt;
-        inst.offset += elapsed;
+        if (inst.loop) {
+          const buffer = this._buffers.get(inst.key);
+          if (buffer && buffer.duration > 0) {
+            inst.offset = (inst.offset + elapsed) % buffer.duration;
+          } else {
+            inst.offset += elapsed;
+          }
+        } else {
+          inst.offset += elapsed;
+        }
         // Mark paused BEFORE stopping so `onended` does not overwrite the state.
         inst.state = 'paused';
         try {

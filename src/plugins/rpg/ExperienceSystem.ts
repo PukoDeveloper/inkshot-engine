@@ -132,7 +132,9 @@ export class ExperienceSystem implements EnginePlugin {
       const maxLevel = curve?.maxLevel ?? 99;
       const toNext = state.level >= maxLevel
         ? 0
-        : this._expForLevel(curve!, state.level + 1) - state.totalExp;
+        : curve
+          ? this._expForLevel(curve, state.level + 1) - state.totalExp
+          : 0;
       output.totalExp = state.totalExp;
       output.level = state.level;
       output.toNextLevel = Math.max(0, toNext);

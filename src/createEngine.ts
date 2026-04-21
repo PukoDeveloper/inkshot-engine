@@ -85,6 +85,28 @@ export interface EngineInstance {
 }
 
 // ---------------------------------------------------------------------------
+// Physics backend guard (exported for testing)
+// ---------------------------------------------------------------------------
+
+/**
+ * Validates that at most one physics-backend plugin is present in the resolved
+ * plugin list.  Throws if more than one plugin with namespace `"physics"` is
+ * found.
+ *
+ * @internal Exported so that unit tests can call this directly without
+ *           spinning up a full Pixi application.
+ */
+export function validatePhysicsBackends(plugins: EnginePlugin[]): void {
+  const physicsPlugins = plugins.filter(p => p.namespace === 'physics');
+  if (physicsPlugins.length > 1) {
+    throw new Error(
+      `[createEngine] More than one plugin with namespace "physics" was registered ` +
+      `(${physicsPlugins.length} found). Only a single physics backend may be active at a time.`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
 
@@ -130,13 +152,7 @@ export async function createEngine(options: EngineOptions = {}): Promise<EngineI
   }
 
   // Guard: at most one physics backend may be registered.
-  const physicsPlugins = resolved.filter(p => p.namespace === 'physics');
-  if (physicsPlugins.length > 1) {
-    throw new Error(
-      `[createEngine] More than one plugin with namespace "physics" was registered ` +
-      `(${physicsPlugins.length} found). Only a single physics backend may be active at a time.`,
-    );
-  }
+  validatePhysicsBackends(resolved);
 
   // ── 2. Initialize core (creates Pixi app, mounts canvas) ──────────────────
   const core = new Core();

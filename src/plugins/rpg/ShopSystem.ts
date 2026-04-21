@@ -146,8 +146,10 @@ export class ShopSystem implements EnginePlugin {
 
       const shop = this._shops.get(p.shopId)!;
       const qty = p.quantity ?? 1;
+      const entry = shop.entries.find((e) => e.itemId === p.itemId);
       const itemDef = this._getItemDef(core, p.itemId);
-      const sellPrice = Math.floor((itemDef?.price ?? 0) * (shop.sellRatio ?? 0.5)) * qty;
+      const basePrice = entry?.price ?? itemDef?.price ?? 0;
+      const sellPrice = Math.floor(basePrice * (shop.sellRatio ?? 0.5)) * qty;
 
       const { output: hasOut } = core.events.emitSync<
         { actorId: string; itemId: string; quantity: number },

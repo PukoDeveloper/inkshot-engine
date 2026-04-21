@@ -106,7 +106,9 @@ describe('AchievementPlugin', () => {
       core.events.emitSync('achievement/unlock', { id: 'al' });
       core.events.emitSync('achievement/progress', { id: 'al', amount: 99 });
       const { output } = core.events.emitSync<object, AchievementGetOutput>('achievement/get', { id: 'al' });
-      expect(output.achievement!.progress).toBeLessThanOrEqual(5);
+      // Manual unlock sets progress to threshold to keep state coherent;
+      // subsequent progress calls on an already-unlocked achievement are ignored.
+      expect(output.achievement!.progress).toBe(5);
     });
   });
 

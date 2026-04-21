@@ -178,6 +178,8 @@ export class DialogueManager implements EnginePlugin {
       s.speaker          = '';
       s.portrait         = undefined;
 
+      events.emitSync<DialogueNodeParams>('dialogue/node', { speaker: '', portrait: undefined });
+
       events.emitSync<DialogueChoicesParams>('dialogue/choices', {
         choices: s.choices,
       });
@@ -335,7 +337,7 @@ export class DialogueManager implements EnginePlugin {
         { key: string; args?: Record<string, string> },
         { value: string }
       >('i18n/t', { key: i18nKey, args: i18nArgs });
-      return output.value ?? i18nKey;
+      return output.value ?? raw ?? fallback;
     }
     return raw ?? fallback;
   }
