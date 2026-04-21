@@ -1,5 +1,5 @@
-import type { Core } from '../core/Core.js';
-import type { EnginePlugin } from '../types/plugin.js';
+import type { Core } from '../../core/Core.js';
+import type { EnginePlugin } from '../../types/plugin.js';
 import type {
   SlotData,
   GlobalSaveData,
@@ -11,7 +11,7 @@ import type {
   SaveSlotDeleteOutput,
   SaveGlobalSaveOutput,
   SaveGlobalLoadOutput,
-} from '../types/save.js';
+} from '../../types/save.js';
 
 // ---------------------------------------------------------------------------
 // Types

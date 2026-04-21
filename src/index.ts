@@ -136,9 +136,9 @@ export { EventBus } from './core/EventBus.js';
 export type { EventSpy } from './core/EventBus.js';
 
 // Save system
-export { SaveManager } from './plugins/SaveManager.js';
-export { LocalStorageSaveAdapter } from './plugins/LocalStorageSaveAdapter.js';
-export type { StorageLike, LocalStorageSaveAdapterOptions } from './plugins/LocalStorageSaveAdapter.js';
+export { SaveManager } from './plugins/save/SaveManager.js';
+export { LocalStorageSaveAdapter } from './plugins/save/LocalStorageSaveAdapter.js';
+export type { StorageLike, LocalStorageSaveAdapterOptions } from './plugins/save/LocalStorageSaveAdapter.js';
 export type {
   SlotMeta,
   SlotData,

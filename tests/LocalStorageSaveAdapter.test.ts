@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { EventBus } from '../src/core/EventBus.js';
-import { SaveManager } from '../src/plugins/SaveManager.js';
+import { SaveManager } from '../src/plugins/save/SaveManager.js';
 import {
   LocalStorageSaveAdapter,
   type StorageLike,
-} from '../src/plugins/LocalStorageSaveAdapter.js';
+} from '../src/plugins/save/LocalStorageSaveAdapter.js';
 import type { Core } from '../src/core/Core.js';
 import type {
   SaveSlotGetOutput,
