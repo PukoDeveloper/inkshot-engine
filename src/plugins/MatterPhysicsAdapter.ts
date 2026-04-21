@@ -476,12 +476,15 @@ export class MatterPhysicsAdapter implements EnginePlugin {
   ): MatterBody {
     const ox = shape.offsetX ?? 0;
     const oy = shape.offsetY ?? 0;
+    // (cx, cy) is the top-left corner of the shape in world space.
     const cx = px + ox;
     const cy = py + oy;
 
     if (shape.type === 'rect') {
       const hw = shape.width / 2;
       const hh = shape.height / 2;
+      // Matter.js Bodies.rectangle(x, y, w, h) centres the body at (x, y).
+      // We add half-extents to convert from top-left to centre coordinates.
       return this._Matter.Bodies.rectangle(cx + hw, cy + hh, shape.width, shape.height, {
         isStatic,
         label,
@@ -748,7 +751,9 @@ export class MatterPhysicsAdapter implements EnginePlugin {
       const entityBodies = this._bodies;
       for (const [eid, b] of entityBodies) {
         if (b === hitBody || b.id === hitBody.id) {
-          const aabb = getShapeAABB(this._colliders.get(eid)!.shape, hitBody.position.x, hitBody.position.y);
+          const collider = this._colliders.get(eid);
+          if (!collider) break;
+          const aabb = getShapeAABB(collider.shape, hitBody.position.x, hitBody.position.y);
           const t = rayVsAABB(origin.x, origin.y, ndx, ndy, aabb.left, aabb.top, aabb.right, aabb.bottom);
           if (t !== null && t < bestDist) {
             bestDist = t;

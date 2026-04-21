@@ -18,11 +18,9 @@ import type { Core } from '../src/core/Core.js';
 // Mock Matter.js library
 // ---------------------------------------------------------------------------
 
-let _bodyIdCounter = 0;
-
-function makeMockBody(x: number, y: number, isStatic: boolean, label?: string): MatterBody {
+function makeMockBody(bodyIdCounter: { value: number }, x: number, y: number, isStatic: boolean, label?: string): MatterBody {
   return {
-    id: ++_bodyIdCounter,
+    id: ++bodyIdCounter.value,
     position: { x, y },
     velocity: { x: 0, y: 0 },
     isStatic,
@@ -31,6 +29,7 @@ function makeMockBody(x: number, y: number, isStatic: boolean, label?: string): 
 }
 
 function createMockMatter(): MatterLib & { _bodies: MatterBody[]; _engine: MatterEngine } {
+  const bodyIdCounter = { value: 0 };
   const worldComposite: MatterComposite & { bodies: MatterBody[] } = { bodies: [] };
   const engine: MatterEngine = { world: worldComposite };
 
@@ -66,10 +65,10 @@ function createMockMatter(): MatterLib & { _bodies: MatterBody[]; _engine: Matte
     },
     Bodies: {
       rectangle: vi.fn((x: number, y: number, _w: number, _h: number, opts?: { isStatic?: boolean; label?: string }) =>
-        makeMockBody(x, y, opts?.isStatic ?? false, opts?.label),
+        makeMockBody(bodyIdCounter, x, y, opts?.isStatic ?? false, opts?.label),
       ),
       circle: vi.fn((x: number, y: number, _r: number, opts?: { isStatic?: boolean; label?: string }) =>
-        makeMockBody(x, y, opts?.isStatic ?? false, opts?.label),
+        makeMockBody(bodyIdCounter, x, y, opts?.isStatic ?? false, opts?.label),
       ),
     },
     Body: {
@@ -127,7 +126,6 @@ function createCoreStub() {
 }
 
 function createSetup() {
-  _bodyIdCounter = 0;
   const { core } = createCoreStub();
   const em = new EntityManager();
   const Matter = createMockMatter();

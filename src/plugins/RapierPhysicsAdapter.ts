@@ -728,12 +728,13 @@ export class RapierPhysicsAdapter implements EnginePlugin {
     let tileHit = false;
 
     if (typeof this._world.castShape === 'function') {
-      const shape = this._RAPIER.ColliderDesc.ball(0.5) as unknown as import('../types/physics.js').ColliderShape;
+      // Use a tiny ball as the sweep shape for the ray query.
+      const sweepShape = this._RAPIER.ColliderDesc.ball(0.5);
       const hit = this._world.castShape(
         origin,
         0,
         { x: ndx, y: ndy },
-        shape as unknown as Parameters<RapierWorld['castShape']>[3],
+        sweepShape as unknown as Parameters<RapierWorld['castShape']>[3],
         maxDistance,
         false,
       );

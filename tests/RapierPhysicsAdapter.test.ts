@@ -25,9 +25,6 @@ import type { Core } from '../src/core/Core.js';
 // Mock Rapier library
 // ---------------------------------------------------------------------------
 
-let _handleCounter = 0;
-let _allBodies: MockBody[] = [];
-
 interface MockBody extends RapierRigidBody {
   _pos: { x: number; y: number };
   _vel: { x: number; y: number };
@@ -41,13 +38,11 @@ interface MockCollider extends RapierCollider {
 }
 
 function makeBodyDesc(isFixed: boolean, isKinematic: boolean): RapierRigidBodyDesc {
-  let tx = 0;
-  let ty = 0;
   const desc: RapierRigidBodyDesc & { _isFixed: boolean; _isKinematic: boolean; _tx: number; _ty: number } = {
     _isFixed: isFixed,
     _isKinematic: isKinematic,
-    _tx: tx,
-    _ty: ty,
+    _tx: 0,
+    _ty: 0,
     setTranslation(x: number, y: number) {
       this._tx = x;
       this._ty = y;
@@ -67,6 +62,7 @@ function makeColliderDesc(): RapierColliderDesc {
 }
 
 function createMockWorld(): RapierWorld & { _bodies: MockBody[] } {
+  const handleCounter = { value: 0 };
   const bodies: MockBody[] = [];
 
   return {
@@ -76,7 +72,7 @@ function createMockWorld(): RapierWorld & { _bodies: MockBody[] } {
 
     createRigidBody(desc: RapierRigidBodyDesc & Record<string, unknown>): RapierRigidBody {
       const body: MockBody = {
-        handle: ++_handleCounter,
+        handle: ++handleCounter.value,
         _pos: { x: (desc._tx as number) ?? 0, y: (desc._ty as number) ?? 0 },
         _vel: { x: 0, y: 0 },
         _colliders: [],
@@ -88,13 +84,12 @@ function createMockWorld(): RapierWorld & { _bodies: MockBody[] } {
         applyImpulse: vi.fn(),
       };
       bodies.push(body);
-      _allBodies.push(body);
       return body;
     },
 
     createCollider(desc: RapierColliderDesc, parent?: RapierRigidBody): RapierCollider {
       const collider: MockCollider = {
-        handle: ++_handleCounter,
+        handle: ++handleCounter.value,
         _pos: { x: 0, y: 0 },
         _parentBody: parent as MockBody | undefined,
         translation() { return { ...this._pos }; },
@@ -135,8 +130,6 @@ function createMockWorld(): RapierWorld & { _bodies: MockBody[] } {
 }
 
 function createMockRapier(): RapierLib & { _worldInstance: ReturnType<typeof createMockWorld> } {
-  _handleCounter = 0;
-  _allBodies = [];
   const worldInstance = createMockWorld();
 
   return {
