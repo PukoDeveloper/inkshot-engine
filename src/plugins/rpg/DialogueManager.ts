@@ -1,5 +1,5 @@
-import type { Core } from '../core/Core.js';
-import type { EnginePlugin } from '../types/plugin.js';
+import type { Core } from '../../core/Core.js';
+import type { EnginePlugin } from '../../types/plugin.js';
 import type {
   DialogueShowTextParams,
   DialogueShowChoicesParams,
@@ -14,8 +14,8 @@ import type {
   DialogueAdvancedParams,
   DialogueChoiceMadeParams,
   DialogueEndedParams,
-} from '../types/dialogue.js';
-import type { CoreUpdateParams } from '../types/rendering.js';
+} from '../../types/dialogue.js';
+import type { CoreUpdateParams } from '../../types/rendering.js';
 import {
   parseDialogueMarkup,
   buildTextSegments,

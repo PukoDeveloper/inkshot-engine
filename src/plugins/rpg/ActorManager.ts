@@ -1,6 +1,6 @@
-import type { Core } from '../core/Core.js';
-import type { EnginePlugin } from '../types/plugin.js';
-import type { ScriptEndedParams } from '../types/script.js';
+import type { Core } from '../../core/Core.js';
+import type { EnginePlugin } from '../../types/plugin.js';
+import type { ScriptEndedParams } from '../../types/script.js';
 import type {
   ActorDef,
   ActorInstance,
@@ -21,7 +21,7 @@ import type {
   ActorScriptStartedParams,
   ActorScriptEndedParams,
   ActorStateChangedParams,
-} from '../types/actor.js';
+} from '../../types/actor.js';
 
 // ---------------------------------------------------------------------------
 // Internal types

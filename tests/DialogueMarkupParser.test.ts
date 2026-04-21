@@ -3,7 +3,7 @@ import {
   parseDialogueMarkup,
   buildTextSegments,
   getSpeedAtIndex,
-} from '../src/plugins/DialogueMarkupParser.js';
+} from '../src/plugins/rpg/DialogueMarkupParser.js';
 
 // ---------------------------------------------------------------------------
 // parseDialogueMarkup

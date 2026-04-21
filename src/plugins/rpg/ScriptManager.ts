@@ -1,5 +1,5 @@
-import type { Core } from '../core/Core.js';
-import type { EnginePlugin } from '../types/plugin.js';
+import type { Core } from '../../core/Core.js';
+import type { EnginePlugin } from '../../types/plugin.js';
 import type {
   ScriptDef,
   ScriptContext,
@@ -14,7 +14,8 @@ import type {
   ScriptEndedParams,
   ScriptStepParams,
   ScriptErrorParams,
-} from '../types/script.js';
+} from '../../types/script.js';
+import type { GameStateGetOutput } from '../../types/game.js';
 
 // ---------------------------------------------------------------------------
 // Internal types
@@ -699,6 +700,16 @@ export class ScriptManager implements EnginePlugin {
 
     // ── say: show a dialogue line and wait for the player to advance ───────
     this._commands.set('say', (ctx) => {
+      // Lock player input during dialogue if the game is currently in the
+      // 'playing' phase.  The state is restored once the player advances.
+      const { output: stateOut } = ctx.core.events.emitSync<Record<string, never>, GameStateGetOutput>(
+        'game/state:get', {},
+      );
+      const lockGameState = stateOut.state === 'playing';
+      if (lockGameState) {
+        ctx.core.events.emitSync('game/state:set', { state: 'cutscene' });
+      }
+
       ctx.core.events.emitSync('dialogue/show-text', {
         text:           ctx.node.text          as string | undefined,
         speaker:        ctx.node.speaker       as string | undefined,
@@ -709,8 +720,17 @@ export class ScriptManager implements EnginePlugin {
         speakerI18nKey: ctx.node.speakerI18nKey as string | undefined,
       });
       return new Promise<void>((resolve) => {
-        const off = ctx.core.events.once(this.namespace, 'dialogue/advanced', resolve);
-        ctx.onStop(() => { off(); resolve(); });
+        let restored = false;
+        const restore = () => {
+          if (restored) return;
+          restored = true;
+          if (lockGameState) ctx.core.events.emitSync('game/state:set', { state: 'playing' });
+        };
+        const off = ctx.core.events.once(this.namespace, 'dialogue/advanced', () => {
+          restore();
+          resolve();
+        });
+        ctx.onStop(() => { off(); restore(); resolve(); });
       });
     });
 
@@ -722,21 +742,39 @@ export class ScriptManager implements EnginePlugin {
         return;
       }
       const choices = rawChoices.map((text, index) => ({ text, index }));
+
+      // Lock player input during choice selection if the game is currently in
+      // the 'playing' phase.  The state is restored once a choice is made.
+      const { output: stateOut } = ctx.core.events.emitSync<Record<string, never>, GameStateGetOutput>(
+        'game/state:get', {},
+      );
+      const lockGameState = stateOut.state === 'playing';
+      if (lockGameState) {
+        ctx.core.events.emitSync('game/state:set', { state: 'cutscene' });
+      }
+
       ctx.core.events.emitSync('dialogue/show-choices', {
         prompt:  ctx.node.prompt as string | undefined,
         choices,
       });
       return new Promise<void>((resolve) => {
+        let restored = false;
+        const restore = () => {
+          if (restored) return;
+          restored = true;
+          if (lockGameState) ctx.core.events.emitSync('game/state:set', { state: 'playing' });
+        };
         const off = ctx.core.events.once(
           this.namespace,
           'dialogue/choice:made',
           (params: { index: number }) => {
             const varName = ctx.node.var as string | undefined;
             if (varName) ctx.vars[varName] = params.index;
+            restore();
             resolve();
           },
         );
-        ctx.onStop(() => { off(); resolve(); });
+        ctx.onStop(() => { off(); restore(); resolve(); });
       });
     });
 

@@ -1,4 +1,4 @@
-import type { DialogueTextSegment } from '../types/dialogue.js';
+import type { DialogueTextSegment } from '../../types/dialogue.js';
 
 // ---------------------------------------------------------------------------
 // Public types

@@ -366,7 +366,7 @@ export type {
 } from './types/ui.js';
 
 // Actor system
-export { ActorManager } from './plugins/ActorManager.js';
+export { ActorManager } from './plugins/rpg/ActorManager.js';
 export type {
   ActorDef,
   ActorInstance,
@@ -390,8 +390,17 @@ export type {
   ActorStateChangedParams,
 } from './types/actor.js';
 
+// Player controller
+export { PlayerController } from './plugins/rpg/PlayerController.js';
+export type {
+  PlayerControllerOptions,
+  PlayerEntitySetParams,
+  PlayerMovedParams,
+  PlayerInteractParams,
+} from './types/player.js';
+
 // Variable store system
-export { VariableStoreManager } from './plugins/VariableStoreManager.js';
+export { VariableStoreManager } from './plugins/rpg/VariableStoreManager.js';
 export type {
   StoreNamespace,
   StoreSnapshot,
@@ -407,7 +416,7 @@ export type {
 } from './types/store.js';
 
 // Script system
-export { ScriptManager } from './plugins/ScriptManager.js';
+export { ScriptManager } from './plugins/rpg/ScriptManager.js';
 export type {
   ScriptNode,
   ScriptDef,
@@ -426,18 +435,18 @@ export type {
 } from './types/script.js';
 
 // Dialogue system
-export { DialogueManager } from './plugins/DialogueManager.js';
+export { DialogueManager } from './plugins/rpg/DialogueManager.js';
 export {
   parseDialogueMarkup,
   buildTextSegments,
   getSpeedAtIndex,
-} from './plugins/DialogueMarkupParser.js';
+} from './plugins/rpg/DialogueMarkupParser.js';
 export type {
   ParsedMarkup,
   ColorSpan,
   SpeedSpan,
   PauseMark,
-} from './plugins/DialogueMarkupParser.js';
+} from './plugins/rpg/DialogueMarkupParser.js';
 export type {
   DialogueTextSegment,
   DialogueShowTextParams,

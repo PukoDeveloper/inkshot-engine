@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventBus } from '../src/core/EventBus.js';
-import { ScriptManager } from '../src/plugins/ScriptManager.js';
+import { ScriptManager } from '../src/plugins/rpg/ScriptManager.js';
+import { GameStateManager } from '../src/plugins/GameStateManager.js';
 import type { Core } from '../src/core/Core.js';
 import type {
   ScriptDef,
@@ -1601,6 +1602,197 @@ describe('ScriptManager', () => {
       const msg = warnSpy.mock.calls.find((c) => String(c[0]).includes('ghost'));
       expect(msg).toBeDefined();
       warnSpy.mockRestore();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // built-in: say — game-state locking
+  // -------------------------------------------------------------------------
+
+  describe('built-in: say (game-state locking)', () => {
+    let gsm: GameStateManager;
+
+    beforeEach(() => {
+      gsm = new GameStateManager();
+      gsm.init(core);
+      core.events.emitSync('game/state:set', { state: 'playing' });
+    });
+
+    afterEach(() => {
+      gsm.destroy(core);
+    });
+
+    it('transitions to "cutscene" while waiting for dialogue/advanced', async () => {
+      core.events.emitSync('script/define', {
+        script: { id: 'say-lock', nodes: [{ cmd: 'say', text: 'Hello!' }] },
+      });
+      core.events.emitSync('script/run', { id: 'say-lock' });
+      await flushMicrotasks();
+
+      expect(gsm.state).toBe('cutscene');
+
+      // Unblock the script
+      core.events.emitSync('dialogue/advanced', {});
+      await flushMicrotasks();
+    });
+
+    it('restores "playing" state after dialogue/advanced fires', async () => {
+      core.events.emitSync('script/define', {
+        script: { id: 'say-restore', nodes: [{ cmd: 'say', text: 'Hi' }] },
+      });
+      core.events.emitSync('script/run', { id: 'say-restore' });
+      await flushMicrotasks();
+
+      core.events.emitSync('dialogue/advanced', {});
+      await flushMicrotasks();
+
+      expect(gsm.state).toBe('playing');
+    });
+
+    it('does NOT change state when say executes in a non-playing phase', async () => {
+      core.events.emitSync('game/state:set', { state: 'cutscene' });
+
+      core.events.emitSync('script/define', {
+        script: { id: 'say-no-lock', nodes: [{ cmd: 'say', text: 'Already in cutscene' }] },
+      });
+      core.events.emitSync('script/run', { id: 'say-no-lock' });
+      await flushMicrotasks();
+
+      expect(gsm.state).toBe('cutscene'); // unchanged
+
+      core.events.emitSync('dialogue/advanced', {});
+      await flushMicrotasks();
+
+      // State should remain 'cutscene' — say did not own the lock
+      expect(gsm.state).toBe('cutscene');
+    });
+
+    it('restores "playing" when the script is stopped mid-say', async () => {
+      core.events.emitSync('script/define', {
+        script: { id: 'say-stop-restore', nodes: [{ cmd: 'say', text: 'Blocking…' }] },
+      });
+      core.events.emitSync('script/run', { id: 'say-stop-restore' });
+      await flushMicrotasks();
+
+      expect(gsm.state).toBe('cutscene');
+
+      core.events.emitSync('script/stop', {});
+      await flushMicrotasks();
+
+      expect(gsm.state).toBe('playing');
+    });
+
+    it('restores "playing" for each say in a consecutive sequence', async () => {
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'say-seq',
+          nodes: [
+            { cmd: 'say', text: 'Line 1' },
+            { cmd: 'say', text: 'Line 2' },
+          ],
+        },
+      });
+      core.events.emitSync('script/run', { id: 'say-seq' });
+      await flushMicrotasks();
+      expect(gsm.state).toBe('cutscene'); // waiting for line 1
+
+      // Advance line 1
+      core.events.emitSync('dialogue/advanced', {});
+      await flushMicrotasks();
+      expect(gsm.state).toBe('cutscene'); // immediately locked by line 2
+
+      // Advance line 2
+      core.events.emitSync('dialogue/advanced', {});
+      await flushMicrotasks();
+      expect(gsm.state).toBe('playing'); // fully restored
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // built-in: choices — game-state locking
+  // -------------------------------------------------------------------------
+
+  describe('built-in: choices (game-state locking)', () => {
+    let gsm: GameStateManager;
+
+    beforeEach(() => {
+      gsm = new GameStateManager();
+      gsm.init(core);
+      core.events.emitSync('game/state:set', { state: 'playing' });
+    });
+
+    afterEach(() => {
+      gsm.destroy(core);
+    });
+
+    it('transitions to "cutscene" while waiting for dialogue/choice:made', async () => {
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'choices-lock',
+          nodes: [{ cmd: 'choices', choices: ['Yes', 'No'] }],
+        },
+      });
+      core.events.emitSync('script/run', { id: 'choices-lock' });
+      await flushMicrotasks();
+
+      expect(gsm.state).toBe('cutscene');
+
+      core.events.emitSync('dialogue/choice:made', { index: 0 });
+      await flushMicrotasks();
+    });
+
+    it('restores "playing" state after dialogue/choice:made fires', async () => {
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'choices-restore',
+          nodes: [{ cmd: 'choices', choices: ['Option A', 'Option B'] }],
+        },
+      });
+      core.events.emitSync('script/run', { id: 'choices-restore' });
+      await flushMicrotasks();
+
+      core.events.emitSync('dialogue/choice:made', { index: 1 });
+      await flushMicrotasks();
+
+      expect(gsm.state).toBe('playing');
+    });
+
+    it('does NOT change state when choices executes in a non-playing phase', async () => {
+      core.events.emitSync('game/state:set', { state: 'cutscene' });
+
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'choices-no-lock',
+          nodes: [{ cmd: 'choices', choices: ['A'] }],
+        },
+      });
+      core.events.emitSync('script/run', { id: 'choices-no-lock' });
+      await flushMicrotasks();
+
+      expect(gsm.state).toBe('cutscene'); // unchanged
+
+      core.events.emitSync('dialogue/choice:made', { index: 0 });
+      await flushMicrotasks();
+
+      expect(gsm.state).toBe('cutscene'); // choices did not own the lock
+    });
+
+    it('restores "playing" when the script is stopped mid-choices', async () => {
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'choices-stop-restore',
+          nodes: [{ cmd: 'choices', choices: ['Flee', 'Fight'] }],
+        },
+      });
+      core.events.emitSync('script/run', { id: 'choices-stop-restore' });
+      await flushMicrotasks();
+
+      expect(gsm.state).toBe('cutscene');
+
+      core.events.emitSync('script/stop', {});
+      await flushMicrotasks();
+
+      expect(gsm.state).toBe('playing');
     });
   });
 });
