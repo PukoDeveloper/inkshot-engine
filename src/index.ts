@@ -293,6 +293,26 @@ export type {
   TilemapLayerSetFilterParams,
 } from './types/tilemap.js';
 
+// Tilemap editor plugin
+export { TilemapEditorPlugin } from './plugins/TilemapEditorPlugin.js';
+export type {
+  MapEditorTool,
+  MapEditorTileEdit,
+  MapEditorCommand,
+  MapEditorOpenParams,
+  MapEditorCloseParams,
+  MapEditorToolSetParams,
+  MapEditorTileSelectParams,
+  MapEditorLayerSelectParams,
+  MapEditorExportOutput,
+  MapEditorUndoParams,
+  MapEditorRedoParams,
+  MapEditorStateOutput,
+  MapEditorOpenedParams,
+  MapEditorClosedParams,
+  MapEditorTilesChangedParams,
+} from './types/mapeditor.js';
+
 // Tween system
 export { TweenManager, Tween, Easing } from './plugins/TweenManager.js';
 export type { EasingFn, TweenOptions, Advanceable } from './plugins/TweenManager.js';
