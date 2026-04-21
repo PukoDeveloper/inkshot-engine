@@ -136,6 +136,25 @@ export type {
 // Physics system (unified adapter interface + kinematic built-in backend)
 export { KinematicPhysicsAdapter } from './plugins/KinematicPhysicsAdapter.js';
 export type { KinematicPhysicsAdapterOptions } from './plugins/KinematicPhysicsAdapter.js';
+export { MatterPhysicsAdapter } from './plugins/MatterPhysicsAdapter.js';
+export type {
+  MatterLib,
+  MatterBody,
+  MatterComposite,
+  MatterEngine,
+  MatterBounds,
+  MatterPhysicsAdapterOptions,
+} from './plugins/MatterPhysicsAdapter.js';
+export { RapierPhysicsAdapter } from './plugins/RapierPhysicsAdapter.js';
+export type {
+  RapierLib,
+  RapierRigidBody,
+  RapierCollider,
+  RapierRigidBodyDesc,
+  RapierColliderDesc,
+  RapierWorld,
+  RapierPhysicsAdapterOptions,
+} from './plugins/RapierPhysicsAdapter.js';
 export { CollisionLayer } from './types/physics.js';
 export type {
   PhysicsAdapter,

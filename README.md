@@ -21,11 +21,13 @@ Everything communicates through a shared **EventBus** — no tight coupling, no 
    - [SaveManager (`save`)](#savemanager-save)
    - [GameStateManager (`game`)](#gamestatemanager-game)
    - [SceneManager (`scene`)](#scenemanager-scene)
-   - [CollisionManager (`collision`)](#collisionmanager-collision)
+   - [KinematicPhysicsAdapter / PhysicsAdapter (`physics`)](#kinematicphysicsadapter--physicsadapter-physics)
    - [TweenManager (`tween`)](#tweenmanager-tween)
    - [ParticleManager (`particle`)](#particlemanager-particle)
    - [AudioManager (`audio`)](#audiomanager-audio)
    - [PathfindingManager (`pathfinding`)](#pathfindingmanager-pathfinding)
+   - [VariableStoreManager (`store`)](#variablestoremanager-store)
+   - [DebugPlugin (`debug`)](#debugplugin-debug)
 5. [Script System (ScriptManager)](#script-system-scriptmanager)
 6. [Actor System (ActorManager)](#actor-system-actormanager)
 7. [Renderer & Layers](#renderer--layers)
@@ -608,25 +610,36 @@ Transition effects (fade-out / fade-in) can be added by subscribing to the `befo
 
 ---
 
-### CollisionManager (`collision`)
+### KinematicPhysicsAdapter / PhysicsAdapter (`physics`)
 
-2D collision detection, movement resolution, spatial queries, and raycasting.  Must be registered **after** `EntityManager`.
+2D physics: collision detection, movement resolution, spatial queries, and raycasting.  Built around a unified `PhysicsAdapter` interface so any backend can be swapped in without changing game code.
+
+Three backends ship out of the box:
+
+| Class | Description |
+|---|---|
+| `KinematicPhysicsAdapter` | **Default.** Tile-based kinematic movement — no external dependency. |
+| `MatterPhysicsAdapter` | Rigid-body simulation via [Matter.js](https://brm.io/matter-js/) (browser-friendly). |
+| `RapierPhysicsAdapter` | High-performance rigid-body simulation via [Rapier.js](https://rapier.rs/) (WASM). |
+
+All backends expose the same `physics/*` event contract — **only one backend may be active at a time**.  `createEngine` throws if more than one `namespace = 'physics'` plugin is registered.
 
 #### Event Contract
 
 | Event | Async? | Description |
 |-------|--------|-------------|
-| `collision/collider:add` | ✗ | Attach a shape + layer mask to an entity |
-| `collision/collider:remove` | ✗ | Detach a collider from an entity |
-| `collision/tilemap:set` | ✗ | Register or replace the active tile map (see format below) |
-| `collision/move` | ✗ | Move a `BODY` entity with full collision resolution; returns `{ x, y, blockedX, blockedY }` |
-| `collision/query` | ✗ | Return entity IDs whose colliders overlap a given shape + layer mask |
-| `collision/raycast` | ✗ | Cast a ray; return the first hit entity or tile |
-| `collision/grid:snap` | ✗ | Snap pixel coordinates to the nearest tile-grid corner |
-| `collision/grid:worldToTile` | ✗ | Pixel coords → tile `{ col, row }` |
-| `collision/grid:tileToWorld` | ✗ | Tile `{ col, row }` → pixel top-left |
-| `collision/hit` | — emitted | First-frame hitbox ↔ hurtbox contact: `{ attackerId, victimId }` |
-| `collision/overlap` | — emitted | Sensor overlap begin (`entered: true`) or end (`entered: false`) |
+| `physics/body:add` | ✗ | Attach a shape + layer mask to an entity |
+| `physics/body:remove` | ✗ | Detach a collider from an entity |
+| `physics/tilemap:set` | ✗ | Register or replace the active tile map |
+| `physics/move` | ✗ | Move a `BODY` entity with full collision resolution; returns `{ x, y, blockedX, blockedY }` |
+| `physics/query` | ✗ | Return entity IDs whose colliders overlap a given shape + layer mask |
+| `physics/raycast` | ✗ | Cast a ray; return the first hit entity or tile |
+| `physics/grid:snap` | ✗ | Snap pixel coordinates to the nearest tile-grid corner |
+| `physics/grid:worldToTile` | ✗ | Pixel coords → tile `{ col, row }` |
+| `physics/grid:tileToWorld` | ✗ | Tile `{ col, row }` → pixel top-left |
+| `physics/impulse` | ✗ | Apply an impulse force (optional — ignored by kinematic backends) |
+| `physics/hit` | — emitted | First-frame hitbox ↔ hurtbox contact: `{ attackerId, victimId }` |
+| `physics/overlap` | — emitted | Sensor overlap begin (`entered: true`) or end (`entered: false`) |
 
 #### Collision Layers
 
@@ -658,12 +671,12 @@ The `tileShapes` record maps tile values to collision behaviours:
 | `'slope-se'` ◤ | Ceiling ramp descending left-to-right |
 | `'slope-sw'` ◥ | Ceiling ramp ascending left-to-right |
 
-Any custom string is supported via `CollisionManagerOptions.customShapeResolvers`.
+Custom shapes are supported via `KinematicPhysicsAdapter`'s `customShapeResolvers` constructor option.
 
 #### Usage
 
 ```ts
-import { createEngine, EntityManager, CollisionManager, CollisionLayer } from 'inkshot-engine';
+import { createEngine, EntityManager, KinematicPhysicsAdapter, CollisionLayer } from 'inkshot-engine';
 import type { TileShapeResolver } from 'inkshot-engine';
 
 // Optional: add custom tile shapes
@@ -678,12 +691,12 @@ const iceResolver: TileShapeResolver = (shape, ctx) => {
 const { core } = await createEngine({
   plugins: [
     new EntityManager(),
-    new CollisionManager({ customShapeResolvers: [iceResolver] }),
+    new KinematicPhysicsAdapter({ customShapeResolvers: [iceResolver] }),
   ],
 });
 
 // Register a tilemap
-core.events.emitSync('collision/tilemap:set', {
+core.events.emitSync('physics/tilemap:set', {
   tileSize: 16,
   layers: myTileGrid,           // number[][]  (row-major)
   tileShapes: {
@@ -695,7 +708,7 @@ core.events.emitSync('collision/tilemap:set', {
 });
 
 // Attach a BODY + HURTBOX collider to the player entity
-core.events.emitSync('collision/collider:add', {
+core.events.emitSync('physics/body:add', {
   entityId: player.id,
   shape: { type: 'rect', width: 14, height: 20, offsetX: -7, offsetY: -10 },
   layer: CollisionLayer.BODY | CollisionLayer.HURTBOX,
@@ -703,7 +716,7 @@ core.events.emitSync('collision/collider:add', {
 
 // Move with full collision resolution each fixed update
 core.events.on('myGame', 'core/update', ({ dt }) => {
-  const { output: move } = core.events.emitSync('collision/move', {
+  const { output: move } = core.events.emitSync('physics/move', {
     entityId: player.id,
     dx: velocityX * dt,
     dy: velocityY * dt,
@@ -713,7 +726,7 @@ core.events.on('myGame', 'core/update', ({ dt }) => {
 });
 
 // Hitscan attack
-const { output: ray } = core.events.emitSync('collision/raycast', {
+const { output: ray } = core.events.emitSync('physics/raycast', {
   origin: player.position,
   direction: { x: 1, y: 0 },
   maxDistance: 200,
@@ -722,12 +735,28 @@ const { output: ray } = core.events.emitSync('collision/raycast', {
 if (ray.hit && ray.entityId) applyDamage(ray.entityId, 25);
 
 // Combat callbacks
-core.events.on('combat', 'collision/hit', ({ attackerId, victimId }) => {
+core.events.on('combat', 'physics/hit', ({ attackerId, victimId }) => {
   applyDamage(victimId, 10);
 });
-core.events.on('triggers', 'collision/overlap', ({ entityAId, entityBId, entered }) => {
+core.events.on('triggers', 'physics/overlap', ({ entityAId, entityBId, entered }) => {
   if (entered) openDoor(entityAId, entityBId);
 });
+```
+
+To use a rigid-body backend instead, swap the adapter:
+
+```ts
+import { MatterPhysicsAdapter } from 'inkshot-engine';
+import Matter from 'matter-js';
+
+new MatterPhysicsAdapter(Matter);           // Matter.js
+
+// or
+import { RapierPhysicsAdapter } from 'inkshot-engine';
+import RAPIER from '@dimforge/rapier2d';
+
+const world = new RAPIER.World({ x: 0, y: 9.81 });
+new RapierPhysicsAdapter(RAPIER, world);    // Rapier WASM
 ```
 
 ---
@@ -1189,9 +1218,9 @@ core.events.on('myGame', 'core/update', () => {
 
 ### PathfindingManager (`pathfinding`)
 
-A* pathfinding on top of the collision tile map.  The cost grid is rebuilt automatically whenever `collision/tilemap:set` fires (full reload) or `tilemap/set-tile` fires (single-cell O(1) update).  A 512-entry LRU cache avoids recomputing the same path on consecutive frames.
+A* pathfinding on top of the physics tile map.  The cost grid is rebuilt automatically whenever `physics/tilemap:set` fires (full reload) or `tilemap/set-tile` fires (single-cell O(1) update).  A 512-entry LRU cache avoids recomputing the same path on consecutive frames.
 
-Must be registered **after** `CollisionManager` and `EntityManager`.
+Must be registered **after** `KinematicPhysicsAdapter` (or any active `physics` backend) and `EntityManager`.
 
 #### Event Contract
 
@@ -1217,13 +1246,13 @@ Must be registered **after** `CollisionManager` and `EntityManager`.
 
 ```ts
 import { createEngine, PathfindingManager } from 'inkshot-engine';
-import { EntityManager, CollisionManager, TilemapManager } from 'inkshot-engine';
+import { EntityManager, KinematicPhysicsAdapter, TilemapManager } from 'inkshot-engine';
 import type { PathfindingFindParams, PathfindingFindOutput } from 'inkshot-engine';
 
 const { core } = await createEngine({
   plugins: [
     new EntityManager(),
-    new CollisionManager(),
+    new KinematicPhysicsAdapter(),
     new TilemapManager(),
     new PathfindingManager(),           // 4-dir: new PathfindingManager({ directions: 4 })
   ],
@@ -1478,6 +1507,73 @@ const segments = buildTextSegments(plain, 10, colorSpans);
 
 // Get the typewriter speed at character index 12
 const speed = getSpeedAtIndex(12, speedSpans, 40);
+```
+
+---
+
+### VariableStoreManager (`store`)
+
+Namespaced two-level key-value store for persistent game state variables.  Integrates automatically with `SaveManager` so variables survive save/load without extra glue code.
+
+#### Event Contract
+
+| Event | Async? | Description |
+|-------|--------|-------------|
+| `store/set` | ✗ | Set a value: `{ ns, key, value }` |
+| `store/get` | ✗ | Get a value: `{ ns, key }` → `{ value }` |
+| `store/patch` | ✗ | Shallow-merge an object into a namespace |
+| `store/snapshot` | ✗ | Return a deep-clone of the entire store |
+| `store/restore` | ✗ | Replace the store with a previously captured snapshot |
+
+#### Usage
+
+```ts
+import { createEngine, VariableStoreManager } from 'inkshot-engine';
+
+const { core } = await createEngine({ plugins: [new VariableStoreManager()] });
+
+// Set / get
+core.events.emitSync('store/set', { ns: 'player', key: 'gold', value: 42 });
+const { output } = core.events.emitSync('store/get', { ns: 'player', key: 'gold' });
+console.log(output.value); // 42
+
+// Patch a namespace at once
+core.events.emitSync('store/patch', { ns: 'flags', data: { sawIntro: true, bossDefeated: false } });
+
+// Snapshot / restore (e.g. for save slots — happens automatically via SaveManager)
+const { output: snap } = core.events.emitSync('store/snapshot', {});
+// … later …
+core.events.emitSync('store/restore', { snapshot: snap.snapshot });
+```
+
+---
+
+### DebugPlugin (`debug`)
+
+Development-mode overlay that surfaces engine internals at a glance.  Should be loaded **last** so it can observe all other plugins.
+
+#### Features
+
+| Feature | Description |
+|---|---|
+| FPS graph | Rolling frame-time chart with a 16 ms (60 Hz) baseline |
+| Collider visualiser | Draws AABB, circle, and slope outlines colour-coded by layer (BODY/HITBOX/SENSOR) |
+| Entity inspector | Lists all live entities with their tags, position, and data |
+| Tilemap grid | Overlays tile grid with chunk boundaries and collision-tile markers |
+| EventBus log | Scrollable list of recent events; supports keyword filtering |
+| Toggle | `` ` `` (backtick) or F12 shows/hides the overlay |
+
+#### Usage
+
+```ts
+import { createEngine, DebugPlugin } from 'inkshot-engine';
+
+const { core } = await createEngine({
+  plugins: [
+    // … other plugins …
+    new DebugPlugin(),   // load last; dev-only
+  ],
+});
 ```
 
 ---

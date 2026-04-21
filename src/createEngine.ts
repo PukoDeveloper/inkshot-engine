@@ -123,22 +123,30 @@ export interface EngineInstance {
 export async function createEngine(options: EngineOptions = {}): Promise<EngineInstance> {
   const { plugins: pluginSources = [], autoStart = true, ...coreOptions } = options;
 
-  // ── 1. Initialize core (creates Pixi app, mounts canvas) ──────────────────
-  const core = new Core();
-  await core.init(coreOptions);
-
-  // ── 2. Create renderer ────────────────────────────────────────────────────
-  const renderer = new Renderer(core);
-
-  // ── 3. Load & initialize plugins ─────────────────────────────────────────
-  const loadedPlugins: EnginePlugin[] = [];
-
-  // First resolve every source (dynamic import for URL entries) so we can
-  // inspect `dependencies` declarations before starting any init() call.
+  // ── 1. Resolve plugins (before core init for fast-fail validation) ────────
   const resolved: EnginePlugin[] = [];
   for (const source of pluginSources) {
     resolved.push(await resolvePlugin(source));
   }
+
+  // Guard: at most one physics backend may be registered.
+  const physicsPlugins = resolved.filter(p => p.namespace === 'physics');
+  if (physicsPlugins.length > 1) {
+    throw new Error(
+      `[createEngine] More than one plugin with namespace "physics" was registered ` +
+      `(${physicsPlugins.length} found). Only a single physics backend may be active at a time.`,
+    );
+  }
+
+  // ── 2. Initialize core (creates Pixi app, mounts canvas) ──────────────────
+  const core = new Core();
+  await core.init(coreOptions);
+
+  // ── 3. Create renderer ────────────────────────────────────────────────────
+  const renderer = new Renderer(core);
+
+  // ── 4. Load & initialize plugins ─────────────────────────────────────────
+  const loadedPlugins: EnginePlugin[] = [];
 
   // Sort by declared dependencies (topological) so init order is correct
   // regardless of the order the caller supplied plugins.
@@ -149,7 +157,7 @@ export async function createEngine(options: EngineOptions = {}): Promise<EngineI
     loadedPlugins.push(plugin);
   }
 
-  // ── 4. Wire plugin teardown to the engine destroy lifecycle ───────────────
+  // ── 5. Wire plugin teardown to the engine destroy lifecycle ───────────────
   // When core.destroy() is called, automatically call destroy() on each plugin
   // (in reverse initialization order) so plugins can clean up their resources.
   core.events.on('createEngine', 'core/destroy', async () => {
@@ -159,7 +167,7 @@ export async function createEngine(options: EngineOptions = {}): Promise<EngineI
     renderer.destroy();
   });
 
-  // ── 5. Start the game loop (unless opted out) ─────────────────────────────
+  // ── 6. Start the game loop (unless opted out) ─────────────────────────────
   if (autoStart) {
     core.start();
   }

@@ -20,6 +20,7 @@
 | 8 | **場景管理** — 場景登錄/切換、非同步載入、`LoadingScreen` 進度顯示 | `SceneManager`, `LoadingScreen` |
 | 9 | **實體系統** — 標籤查詢、`SpriteAnimator`（影格動畫定義與播放） | `EntityManager`, `SpriteAnimator` |
 | 10 | **碰撞系統** — AABB/圓形/點形碰撞、Tile 地圖碰撞（實心/單向/斜面）、射線投射、感測器重疊事件 | `KinematicPhysicsAdapter` |
+| 25 | **物理引擎適配器** — `MatterPhysicsAdapter`（Matter.js，輕量瀏覽器後端）、`RapierPhysicsAdapter`（Rapier.js WASM，高效能剛體）；`physics/impulse` 衝力支援；物理步驟後 entity.position 同步；`createEngine` 雙後端保護 | `MatterPhysicsAdapter`, `RapierPhysicsAdapter` |
 | 11 | **Tilemap 渲染器** — 分塊渲染（10 000×10 000+ Tile）、多圖層、動畫 Tile、Auto-tiling（4/8-bit 遮罩）、碰撞自動同步 | `TilemapManager` |
 | 12 | **粒子系統** — 連續/Burst 模式、重力/風力、形狀發射（point/rect/circle）、貼圖粒子、Pre-warm、RepeatBurst、ObjectPool 整合 | `ParticleManager` |
 | 13 | **補間動畫** — 豐富緩動函式庫、yoyo/loop/repeat、delay、`Timeline` 序列/並行軌道 | `TweenManager`, `Timeline` |
@@ -53,12 +54,12 @@
 - [x] 將原 `CollisionManager` 重構為 `KinematicPhysicsAdapter`（預設後端），使用 `physics/*` 事件
 - [x] 所有跨插件事件（TilemapManager、PathfindingManager）均以 `physics/tilemap:set` 統一通訊
 - [x] 更新 `ARCHITECTURE.md` 第 10 節，正確反映 `KinematicPhysicsAdapter` 與 `physics/*` 事件，並加入自訂後端實作指南
-- [ ] 提供 [Matter.js](https://brm.io/matter-js/) 適配器（輕量，適合瀏覽器），實作 `PhysicsAdapter` 介面
-- [ ] 提供 [Rapier.js](https://rapier.rs/) WASM 適配器（高效能剛體/軟體模擬），實作 `PhysicsAdapter` 介面
-- [ ] 剛體後端：`physics/tilemap:set` 轉換為靜態剛體網格（批次建立 ChainShape/BoxBody）
-- [ ] 剛體後端：`physics/impulse` 對剛體施加衝力；`KinematicPhysicsAdapter` 可忽略此事件
-- [ ] 引擎啟動時驗證最多只有一個 `namespace = 'physics'` 的插件被登錄，避免雙重後端
-- [ ] 與 `EntityManager` 位置同步（物理步驟後更新 entity.position）
+- [x] 提供 [Matter.js](https://brm.io/matter-js/) 適配器（輕量，適合瀏覽器），實作 `PhysicsAdapter` 介面
+- [x] 提供 [Rapier.js](https://rapier.rs/) WASM 適配器（高效能剛體/軟體模擬），實作 `PhysicsAdapter` 介面
+- [x] 剛體後端：`physics/tilemap:set` 轉換為靜態剛體網格（批次建立 ChainShape/BoxBody）
+- [x] 剛體後端：`physics/impulse` 對剛體施加衝力；`KinematicPhysicsAdapter` 可忽略此事件
+- [x] 引擎啟動時驗證最多只有一個 `namespace = 'physics'` 的插件被登錄，避免雙重後端
+- [x] 與 `EntityManager` 位置同步（物理步驟後更新 entity.position）
 
 ---
 
