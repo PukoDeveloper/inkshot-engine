@@ -390,6 +390,15 @@ export type {
   ActorStateChangedParams,
 } from './types/actor.js';
 
+// Player controller
+export { PlayerController } from './plugins/PlayerController.js';
+export type {
+  PlayerControllerOptions,
+  PlayerEntitySetParams,
+  PlayerMovedParams,
+  PlayerInteractParams,
+} from './types/player.js';
+
 // Variable store system
 export { VariableStoreManager } from './plugins/VariableStoreManager.js';
 export type {
