@@ -33,19 +33,20 @@
 | 21 | **本地化 (i18n)** — 動態載入語系檔、插值、複數化、locale 切換廣播、UI/Dialog 自動訂閱 | `LocalizationManager` |
 | 22 | **遊戲狀態管理** — `GamePhase` 狀態機（menu/loading/playing/paused/gameover） | `GameStateManager` |
 | 23 | **插件依賴排序** — `sortPluginsByDependency`，依 `dependencies` 自動拓撲排序初始化順序 | `sortPlugins` |
+| 24 | **開發者偵錯工具** — FPS 計數器 + 幀時間折線圖、碰撞框可視化（AABB/圓/點，顏色依圖層區分）、實體 Inspector、Tilemap 格線疊加層（含 chunk 邊界與碰撞 tile 標示）、EventBus 事件日誌面板（關鍵字篩選）、快速鍵切換（`` ` `` / F12）；`EventBus.addSpy` 全域事件攔截 API | `DebugPlugin`, `EventBus.addSpy` |
 
 ---
 
 ## 🔴 高優先
 
 ### 1. 開發者偵錯工具 (Debug / Dev Tools Overlay)
-- [ ] 新增 `DebugPlugin`（namespace: `debug`），僅在開發模式下載入
-- [ ] FPS 計數器與幀時間折線圖（顯示 16 ms 基準線）
-- [ ] 碰撞框（Collider）可視化：繪製 AABB、圓形、斜面輪廓，顏色依圖層（BODY/HITBOX/SENSOR）區分
-- [ ] 實體 Inspector：列出所有活躍實體及其 tags、position、data
-- [ ] Tilemap 格線疊加層，標示 chunk 邊界與碰撞 tile
-- [ ] EventBus 事件日誌面板（記錄最近 N 個事件，支援關鍵字篩選）
-- [ ] 快速鍵切換 overlay 顯示/隱藏（預設 `` ` `` / F12）
+- [x] 新增 `DebugPlugin`（namespace: `debug`），僅在開發模式下載入
+- [x] FPS 計數器與幀時間折線圖（顯示 16 ms 基準線）
+- [x] 碰撞框（Collider）可視化：繪製 AABB、圓形、斜面輪廓，顏色依圖層（BODY/HITBOX/SENSOR）區分
+- [x] 實體 Inspector：列出所有活躍實體及其 tags、position、data
+- [x] Tilemap 格線疊加層，標示 chunk 邊界與碰撞 tile
+- [x] EventBus 事件日誌面板（記錄最近 N 個事件，支援關鍵字篩選）
+- [x] 快速鍵切換 overlay 顯示/隱藏（預設 `` ` `` / F12）
 
 ### 2. 物理引擎整合 (Physics Engine Adapter)
 - [x] 定義 `PhysicsAdapter` 統一介面（namespace: `physics`）— 所有後端必須實作相同的事件集
