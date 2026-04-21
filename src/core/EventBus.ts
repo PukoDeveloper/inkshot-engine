@@ -80,6 +80,14 @@ class EventControlImpl implements EventControl {
 // ---------------------------------------------------------------------------
 
 /**
+ * A function registered to observe every event dispatched on the bus.
+ *
+ * Registered via {@link EventBus.addSpy}.  Called synchronously before the
+ * first listener of each `emit` / `emitSync` call.  Must not throw.
+ */
+export type EventSpy = (event: EventName, params: unknown) => void;
+
+/**
  * Central event bus for Inkshot Engine.
  *
  * ### Event naming
@@ -105,6 +113,35 @@ class EventControlImpl implements EventControl {
 export class EventBus {
   // Key → sorted listener array (descending by priority)
   private readonly _registry = new Map<EventKey, ListenerEntry[]>();
+
+  /** Zero or more global spy functions called before every dispatch. */
+  private readonly _spies: EventSpy[] = [];
+
+  /**
+   * Register a global spy that is called synchronously before every event
+   * dispatch (`emit` **and** `emitSync`).
+   *
+   * Spies are called with the base event name and the raw params object.
+   * They are invoked before any phase listeners run and must not throw.
+   *
+   * @returns A function that unregisters the spy when called.
+   *
+   * @example
+   * ```ts
+   * const unspy = core.events.addSpy((event, params) => {
+   *   console.log('[event]', event, params);
+   * });
+   * // later:
+   * unspy();
+   * ```
+   */
+  addSpy(fn: EventSpy): () => void {
+    this._spies.push(fn);
+    return () => {
+      const idx = this._spies.indexOf(fn);
+      if (idx !== -1) this._spies.splice(idx, 1);
+    };
+  }
 
   // ---------------------------------------------------------------------------
   // Public API – registration
@@ -180,6 +217,7 @@ export class EventBus {
     params: P,
     seed?: Partial<O>,
   ): Promise<DispatchResult<O>> {
+    for (const spy of this._spies) spy(event, params);
     const output = (seed ? { ...seed } : {}) as O;
     const control = new EventControlImpl();
 
@@ -216,6 +254,7 @@ export class EventBus {
     params: P,
     seed?: Partial<O>,
   ): DispatchResult<O> {
+    for (const spy of this._spies) spy(event, params);
     const output = (seed ? { ...seed } : {}) as O;
     const control = new EventControlImpl();
 

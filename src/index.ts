@@ -95,6 +95,7 @@ export type {
 
 // Event Bus
 export { EventBus } from './core/EventBus.js';
+export type { EventSpy } from './core/EventBus.js';
 
 // Save system
 export { SaveManager } from './plugins/SaveManager.js';
@@ -434,3 +435,14 @@ export type {
   DialogueChoiceMadeParams,
   DialogueEndedParams,
 } from './types/dialogue.js';
+
+// Debug / Dev Tools
+export { DebugPlugin } from './plugins/DebugPlugin.js';
+export type {
+  DebugPluginOptions,
+  DebugEventEntry,
+  DebugOverlayToggleParams,
+  DebugOverlayVisibleOutput,
+  DebugEventLogFilterParams,
+  DebugEventLogGetOutput,
+} from './types/debug.js';
