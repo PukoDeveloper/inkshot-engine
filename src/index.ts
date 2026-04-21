@@ -76,6 +76,11 @@ export type {
 export { Core } from './core/Core.js';
 export type { CoreOptions } from './core/Core.js';
 
+// Worker bridge (generic Web Worker offloading utility)
+export { WorkerBridge } from './core/WorkerBridge.js';
+export type { WorkerBridgeOptions } from './core/WorkerBridge.js';
+export type { WorkerTask, WorkerResult } from './types/worker.js';
+
 // Input system
 export { InputManager } from './plugins/InputManager.js';
 export { InputRecorder } from './plugins/InputRecorder.js';

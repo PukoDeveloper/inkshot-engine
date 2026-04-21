@@ -136,9 +136,9 @@
 - [ ] 隨機種子管理（確保可重現的生成結果）
 
 ### 11. Web Worker 支援 (Web Worker Offloading)
-- [ ] 將 `PathfindingManager` 的 A* 計算移至 Worker，避免主執行緒卡頓
-- [ ] 提供通用 `WorkerBridge`，讓任意 plugin 可將耗時運算 offload 至 Worker
-- [ ] Worker 回傳結果後透過 EventBus 廣播，保持架構一致
+- [x] 將 `PathfindingManager` 的 A* 計算移至 Worker，避免主執行緒卡頓（`pathfinding/find:async` + `workerUrl` 選項；`pathfinding/find` 同步 API 維持不變）
+- [x] 提供通用 `WorkerBridge`，讓任意 plugin 可將耗時運算 offload 至 Worker（`src/core/WorkerBridge.ts`，泛型雙向 postMessage 橋接，支援 Transferable 零拷貝、maxConcurrent 限流、terminate 清理）
+- [x] Worker 回傳結果後透過 EventBus 廣播，保持架構一致（`pathfinding/find:async` handler 在 WorkerBridge.run() resolve 後寫入 EventBus output，語義與 `emit()` 完全一致）
 
 ---
 
