@@ -295,6 +295,7 @@ export type {
 
 // Tilemap editor plugin
 export { TilemapEditorPlugin } from './plugins/TilemapEditorPlugin.js';
+export { TilemapEditorOverlayPlugin } from './plugins/TilemapEditorOverlayPlugin.js';
 export type {
   MapEditorTool,
   MapEditorTileEdit,
