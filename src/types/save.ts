@@ -10,6 +10,12 @@ export interface SlotMeta {
   readonly createdAt: number;
   /** Unix timestamp (ms) when the slot data was last modified. */
   updatedAt: number;
+  /**
+   * Save-data schema version stamped by {@link SaveMigrationPlugin} when
+   * the slot is persisted.  Absent on slots that were created before
+   * migration support was added (treated as version `0`).
+   */
+  version?: number;
 }
 
 /**
@@ -31,6 +37,12 @@ export interface GlobalSaveData {
   data: Record<string, unknown>;
   /** Unix timestamp (ms) when the global data was last modified. */
   updatedAt: number;
+  /**
+   * Save-data schema version stamped by {@link SaveMigrationPlugin} when
+   * the global data is persisted.  Absent on data written before migration
+   * support was added (treated as version `0`).
+   */
+  version?: number;
 }
 
 // ---------------------------------------------------------------------------
