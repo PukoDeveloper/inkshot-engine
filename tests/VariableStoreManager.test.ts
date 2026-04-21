@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { EventBus } from '../src/core/EventBus.js';
 import { SaveManager } from '../src/plugins/SaveManager.js';
-import { ScriptManager } from '../src/plugins/ScriptManager.js';
-import { VariableStoreManager } from '../src/plugins/VariableStoreManager.js';
+import { ScriptManager } from '../src/plugins/rpg/ScriptManager.js';
+import { VariableStoreManager } from '../src/plugins/rpg/VariableStoreManager.js';
 import type { Core } from '../src/core/Core.js';
 import type {
   StoreGetOutput,

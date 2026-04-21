@@ -1,21 +1,21 @@
-import type { Core } from '../core/Core.js';
-import type { EnginePlugin } from '../types/plugin.js';
-import type { InputActionTriggeredParams } from '../types/input.js';
-import type { CoreUpdateParams } from '../types/rendering.js';
+import type { Core } from '../../core/Core.js';
+import type { EnginePlugin } from '../../types/plugin.js';
+import type { InputActionTriggeredParams } from '../../types/input.js';
+import type { CoreUpdateParams } from '../../types/rendering.js';
 import type {
   Entity,
   EntityQueryOutput,
   EntityCreatedParams,
   EntityDestroyedParams,
-} from '../types/entity.js';
-import type { GameStateGetOutput } from '../types/game.js';
-import type { PhysicsMoveParams, PhysicsMoveOutput } from '../types/physics.js';
+} from '../../types/entity.js';
+import type { GameStateGetOutput } from '../../types/game.js';
+import type { PhysicsMoveParams, PhysicsMoveOutput } from '../../types/physics.js';
 import type {
   PlayerControllerOptions,
   PlayerEntitySetParams,
   PlayerMovedParams,
   PlayerInteractParams,
-} from '../types/player.js';
+} from '../../types/player.js';
 
 // ---------------------------------------------------------------------------
 // PlayerController

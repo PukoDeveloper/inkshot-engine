@@ -1,5 +1,5 @@
-import type { Core } from '../core/Core.js';
-import type { EnginePlugin } from '../types/plugin.js';
+import type { Core } from '../../core/Core.js';
+import type { EnginePlugin } from '../../types/plugin.js';
 import type {
   StoreNamespace,
   StoreSnapshot,
@@ -12,13 +12,13 @@ import type {
   StoreClearNamespaceParams,
   StoreSnapshotOutput,
   StoreRestoreParams,
-} from '../types/store.js';
+} from '../../types/store.js';
 import type {
   SaveSlotSaveParams,
   SaveSlotSaveOutput,
   SaveSlotLoadOutput,
-} from '../types/save.js';
-import type { ScriptRegisterCommandParams } from '../types/script.js';
+} from '../../types/save.js';
+import type { ScriptRegisterCommandParams } from '../../types/script.js';
 
 // ---------------------------------------------------------------------------
 // VariableStoreManager

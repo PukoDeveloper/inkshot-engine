@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventBus } from '../src/core/EventBus.js';
-import { ScriptManager } from '../src/plugins/ScriptManager.js';
+import { ScriptManager } from '../src/plugins/rpg/ScriptManager.js';
 import { GameStateManager } from '../src/plugins/GameStateManager.js';
 import type { Core } from '../src/core/Core.js';
 import type {

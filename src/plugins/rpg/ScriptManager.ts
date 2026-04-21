@@ -1,5 +1,5 @@
-import type { Core } from '../core/Core.js';
-import type { EnginePlugin } from '../types/plugin.js';
+import type { Core } from '../../core/Core.js';
+import type { EnginePlugin } from '../../types/plugin.js';
 import type {
   ScriptDef,
   ScriptContext,
@@ -14,8 +14,8 @@ import type {
   ScriptEndedParams,
   ScriptStepParams,
   ScriptErrorParams,
-} from '../types/script.js';
-import type { GameStateGetOutput } from '../types/game.js';
+} from '../../types/script.js';
+import type { GameStateGetOutput } from '../../types/game.js';
 
 // ---------------------------------------------------------------------------
 // Internal types
