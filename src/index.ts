@@ -584,15 +584,6 @@ export type {
   TiledLoaderOutput,
 } from './plugins/TiledLoader.js';
 
-// RPG Maker MV/MZ map loader
-export { resolveRpgMakerTileset, loadRpgMakerMap } from './plugins/RpgMakerLoader.js';
-export type {
-  RpgMakerMap,
-  RpgMakerTileset,
-  RpgMakerLoaderOptions,
-  RpgMakerLoaderOutput,
-} from './plugins/RpgMakerLoader.js';
-
 // Cutscene system
 export { CutscenePlugin } from './plugins/CutscenePlugin.js';
 export type {
@@ -793,30 +784,15 @@ export {
 } from './rpg/createRpgEngine.js';
 export type { RpgEngineOptions, RpgEngineInstance } from './rpg/createRpgEngine.js';
 
-// ── RPG Maker importer ─────────────────────────────────────────────────────────
-export {
-  importRpgMakerData,
-  parseActors,
-  parseClasses,
-  parseItems,
-  parseStates,
-  parseCommonEvents,
-  parseMap,
-  parseSystem,
-} from './rpg/importer/index.js';
+// ── RPG data loader ────────────────────────────────────────────────────────────
+export { loadRpgData } from './rpg/data/index.js';
 export type {
-  RpgMakerVersion,
-  RmActor,
-  RmClass,
-  RmItem,
-  RmWeapon,
-  RmArmor,
-  RmState,
-  RmCommonEvent,
-  RmEventCommand,
-  RmMap,
-  RmEvent,
-  RmSystem,
-  RpgImporterOptions,
-  RpgImporterOutput,
-} from './types/rpgimporter.js';
+  RpgGameData,
+  RpgDataOutput,
+  RpgGameMeta,
+  RpgClassDef,
+  RpgActorEntry,
+  RpgTriggerEntry,
+  RpgItemEntry,
+  RpgStatusEffectEntry,
+} from './types/rpgdata.js';
