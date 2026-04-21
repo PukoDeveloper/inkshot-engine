@@ -295,17 +295,17 @@ describe('IndexedDBSaveAdapter', () => {
     it('stops responding to save events after destroy', async () => {
       const localIDB = createMockIDBStore();
       const adapter = new IndexedDBSaveAdapter({ idbStore: localIDB });
-      const core3 = createStubCore();
-      const sm3 = new SaveManager();
-      sm3.init(core3);
-      await adapter.init(core3);
+      const destroyTestCore = createStubCore();
+      const destroyTestSaveManager = new SaveManager();
+      destroyTestSaveManager.init(destroyTestCore);
+      await adapter.init(destroyTestCore);
 
-      core3.events.emitSync('save/slot:set', { id: 'x', patch: { a: 1 } });
-      adapter.destroy(core3);
+      destroyTestCore.events.emitSync('save/slot:set', { id: 'x', patch: { a: 1 } });
+      adapter.destroy(destroyTestCore);
 
       // After destroy, save should not write to IDB.
       localIDB.data.clear();
-      await core3.events.emit('save/slot:save', { id: 'x' });
+      await destroyTestCore.events.emit('save/slot:save', { id: 'x' });
       expect(localIDB.data.get('slots')?.has('x')).toBeFalsy();
     });
   });

@@ -408,20 +408,20 @@ describe('SaveMigrationPlugin', () => {
         currentVersion: 1,
         migrations: [],
       });
-      const core3 = createStubCore();
-      const sm3 = new SaveManager();
-      const storage3 = createMockStorage();
-      const adapter3 = new LocalStorageSaveAdapter({ storage: storage3 });
-      sm3.init(core3);
-      adapter3.init(core3);
-      migrator.init(core3);
-      migrator.destroy(core3);
+      const destroyTestCore = createStubCore();
+      const destroyTestSaveManager = new SaveManager();
+      const destroyTestStorage = createMockStorage();
+      const destroyTestAdapter = new LocalStorageSaveAdapter({ storage: destroyTestStorage });
+      destroyTestSaveManager.init(destroyTestCore);
+      destroyTestAdapter.init(destroyTestCore);
+      migrator.init(destroyTestCore);
+      migrator.destroy(destroyTestCore);
 
-      core3.events.emitSync('save/slot:set', { id: 'y', patch: { a: 1 } });
-      await core3.events.emit('save/slot:save', { id: 'y' });
+      destroyTestCore.events.emitSync('save/slot:set', { id: 'y', patch: { a: 1 } });
+      await destroyTestCore.events.emit('save/slot:save', { id: 'y' });
 
       // After destroy, version is NOT stamped (migration plugin is inactive)
-      const raw = JSON.parse(storage3.store['inkshot:slot:y']!) as {
+      const raw = JSON.parse(destroyTestStorage.store['inkshot:slot:y']!) as {
         meta: { version?: number };
       };
       expect(raw.meta.version).toBeUndefined();
