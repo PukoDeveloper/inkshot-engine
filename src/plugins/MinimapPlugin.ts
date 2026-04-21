@@ -14,6 +14,7 @@ import type {
   MinimapIconsOutput,
   MinimapInitParams,
 } from '../types/minimap.js';
+import type { FogConfig, FogGetTileOutput, FogGetTileParams, FogStateOutput } from '../types/fog.js';
 
 // ---------------------------------------------------------------------------
 // ID generation
@@ -79,12 +80,16 @@ export class MinimapPlugin implements EnginePlugin {
 
   private _gfx: Graphics | null = null;
   private _container: Container | null = null;
+  /** Stored during `init` so that `_draw` can query other plugins. */
+  private _core: Core | null = null;
 
   // ---------------------------------------------------------------------------
   // EnginePlugin lifecycle
   // ---------------------------------------------------------------------------
 
   init(core: Core): void {
+    this._core = core;
+
     // ── EventBus API ─────────────────────────────────────────────────────
     core.events.on('minimap', 'minimap/init', (p: MinimapInitParams) => {
       this._config = { ...p.config };
@@ -140,7 +145,7 @@ export class MinimapPlugin implements EnginePlugin {
 
     // ── Redraw every render frame ─────────────────────────────────────────
     core.events.on('minimap', 'renderer/pre-render', (_p: RendererPreRenderParams) => {
-      this._draw();
+      this._draw(core);
     });
   }
 
@@ -151,6 +156,7 @@ export class MinimapPlugin implements EnginePlugin {
     }
     this._icons.clear();
     this._config = null;
+    this._core = null;
     core.events.removeNamespace('minimap');
   }
 
@@ -192,7 +198,7 @@ export class MinimapPlugin implements EnginePlugin {
   // Private — rendering
   // ---------------------------------------------------------------------------
 
-  private _draw(): void {
+  private _draw(core: Core): void {
     if (!this._gfx || !this._config) return;
 
     const cfg = this._config;
@@ -215,8 +221,62 @@ export class MinimapPlugin implements EnginePlugin {
     const scaleX = cfg.width / cfg.worldWidth;
     const scaleY = cfg.height / cfg.worldHeight;
 
-    // Icons.
+    // ── Optional fog-of-war overlay ──────────────────────────────────────
+    // Query FogOfWarPlugin if it is active.  We use emitSync so that if the
+    // 'fog' namespace is not registered the output is simply an empty object
+    // (config will be undefined/null) and we skip fog rendering gracefully.
+    const { output: fogState } = core.events.emitSync<object, Partial<FogStateOutput>>(
+      'fog/state',
+      {},
+    );
+    const fogCfg: FogConfig | null = fogState.config ?? null;
+
+    if (fogCfg) {
+      // Draw a per-tile exploration overlay on the minimap.
+      const exploredColor = cfg.fogExploredColor ?? 0x334455;
+      const exploredAlpha = cfg.fogExploredAlpha ?? 0.6;
+      const visibleColor = cfg.fogVisibleColor ?? 0x4488aa;
+      const visibleAlpha = cfg.fogVisibleAlpha ?? 0.9;
+
+      const tileW = fogCfg.tileWidth;
+      const tileH = fogCfg.tileHeight;
+
+      for (let row = 0; row < fogCfg.mapHeight; row++) {
+        for (let col = 0; col < fogCfg.mapWidth; col++) {
+          const { output: tileOut } = core.events.emitSync<FogGetTileParams, FogGetTileOutput>(
+            'fog/get-tile',
+            { col, row },
+          );
+          if (tileOut.state === 'unexplored') continue;
+
+          // World-space tile rectangle → minimap rectangle.
+          const mx = cfg.x + col * tileW * scaleX;
+          const my = cfg.y + row * tileH * scaleY;
+          const mw = tileW * scaleX;
+          const mh = tileH * scaleY;
+
+          if (tileOut.state === 'visible') {
+            gfx.rect(mx, my, mw, mh).fill({ color: visibleColor, alpha: visibleAlpha });
+          } else {
+            // 'explored'
+            gfx.rect(mx, my, mw, mh).fill({ color: exploredColor, alpha: exploredAlpha });
+          }
+        }
+      }
+    }
+
+    // Icons — skip icons whose world tile is unexplored when fog is active.
     for (const icon of this._icons.values()) {
+      if (fogCfg) {
+        const tileCol = Math.floor(icon.x / fogCfg.tileWidth);
+        const tileRow = Math.floor(icon.y / fogCfg.tileHeight);
+        const { output: tileOut } = core.events.emitSync<FogGetTileParams, FogGetTileOutput>(
+          'fog/get-tile',
+          { col: tileCol, row: tileRow },
+        );
+        if (tileOut.state === 'unexplored') continue;
+      }
+
       const mx = cfg.x + icon.x * scaleX;
       const my = cfg.y + icon.y * scaleY;
       gfx.circle(mx, my, icon.radius ?? 3).fill({ color: icon.color ?? 0xffffff });

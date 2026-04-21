@@ -24,6 +24,27 @@ export interface MinimapConfig {
   backgroundAlpha?: number;
   /** Optional border colour. Default `0x888888`. */
   borderColor?: number;
+  /**
+   * Fill colour used on the minimap for **explored** (but not currently
+   * visible) tiles when `FogOfWarPlugin` is active.
+   * Default `0x334455`.
+   */
+  fogExploredColor?: number;
+  /**
+   * Fill alpha for explored tiles on the minimap.
+   * Default `0.6`.
+   */
+  fogExploredAlpha?: number;
+  /**
+   * Fill colour for **visible** (currently in the observer's range) tiles.
+   * Default `0x4488aa`.
+   */
+  fogVisibleColor?: number;
+  /**
+   * Fill alpha for visible tiles on the minimap.
+   * Default `0.9`.
+   */
+  fogVisibleAlpha?: number;
 }
 
 /**
