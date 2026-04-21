@@ -25,6 +25,19 @@ export type {
 // Asset system
 export { ResourceManager } from './plugins/ResourceManager.js';
 
+// Data system
+export { DataManager } from './plugins/DataManager.js';
+export type {
+  DataLoadParams,
+  DataLoadOutput,
+  DataGetParams,
+  DataGetOutput,
+  DataGetAllParams,
+  DataGetAllOutput,
+  DataUnloadParams,
+  DataUnloadOutput,
+} from './types/data.js';
+
 // Localisation system
 export { LocalizationManager } from './plugins/LocalizationManager.js';
 export type {

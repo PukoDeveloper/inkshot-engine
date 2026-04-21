@@ -299,11 +299,106 @@ All relative paths are automatically resolved against `core.dataRoot` (set via `
 
 ---
 
-## 6. Localisation System (LocalizationManager)
+## 6. Data System (DataManager)
+
+The `DataManager` is a built-in `EnginePlugin` (namespace `data`) that loads and manages typed **JSON data collections** — items, skills, enemies, quests, and any other plain-data JSON files your game needs.  Unlike `ResourceManager` (which handles binary/texture assets through Pixi.js), `DataManager` is dedicated to structured game data that is stored in memory and queried by explicit collection name.
+
+### 6.1 Core Concept — Named Collections
+
+Every data file is assigned an **explicit collection name** when loaded.  This name is the sole key used to isolate and retrieve data:
+
+```
+collection: 'items'   → /assets/data/items.json   → { sword: {...}, shield: {...} }
+collection: 'skills'  → /assets/data/skills.json  → { fireball: {...}, heal: {...} }
+collection: 'enemies' → /assets/data/enemies.json → { goblin: {...}, dragon: {...} }
+```
+
+Within each collection, every top-level key in the JSON file becomes an **entry ID**.  Entries in different collections are fully isolated — a `data/get` on `'items'` will never return a result from `'skills'`, even if both have an entry with the same key.
+
+### 6.2 Event Contract
+
+| Event          | Async?          | Description |
+|----------------|-----------------|-------------|
+| `data/load`    | ✓ async         | Load a named collection from a JSON file or inline object; merges into any existing collection with the same name |
+| `data/get`     | ✗ `emitSync`    | Retrieve a single entry by `{ collection, id }` |
+| `data/getAll`  | ✗ `emitSync`    | Retrieve all entries in a named collection as a plain object |
+| `data/unload`  | ✗ `emitSync`    | Remove a named collection from memory |
+
+### 6.3 JSON File Format
+
+A data collection file must be a JSON **object** whose top-level keys are entry IDs:
+
+```json
+{
+  "sword":  { "name": "Iron Sword",  "atk": 15, "price": 100 },
+  "shield": { "name": "Iron Shield", "def": 10, "price": 80  }
+}
+```
+
+### 6.4 Merging — Split Files and DLC
+
+Multiple `data/load` calls with the **same collection name** merge their entries; later keys overwrite earlier ones.  This is ideal for:
+
+- Loading a base file plus a DLC/patch file into the same logical collection.
+- Splitting large collections across multiple files for organisation.
+
+```ts
+// Base items
+await core.events.emit('data/load', { collection: 'items', file: 'data/items.json' });
+
+// DLC: new entries are added; overlapping IDs are overwritten
+await core.events.emit('data/load', { collection: 'items', file: 'data/dlc-items.json' });
+```
+
+### 6.5 Basic Usage
+
+```ts
+import { createEngine, DataManager } from 'inkshot-engine';
+
+const { core } = await createEngine({
+  dataRoot: '/assets/',
+  plugins: [
+    new DataManager(),
+    {
+      namespace: 'myGame',
+      async init(c) {
+        // Load different data types from different paths
+        await c.events.emit('data/load', { collection: 'items',   file: 'data/items.json' });
+        await c.events.emit('data/load', { collection: 'skills',  file: 'data/skills.json' });
+        await c.events.emit('data/load', { collection: 'enemies', file: 'data/enemies.json' });
+      },
+    },
+  ],
+});
+
+// Retrieve a single entry (synchronous — never triggers a network request)
+const { output } = core.events.emitSync('data/get', { collection: 'items', id: 'sword' });
+if (output.found) {
+  const item = output.data as { name: string; atk: number };
+  console.log(item.name, item.atk); // "Iron Sword", 15
+}
+
+// Retrieve all entries in a collection
+const { output: all } = core.events.emitSync('data/getAll', { collection: 'skills' });
+for (const [id, skill] of Object.entries(all.entries)) {
+  console.log(id, skill);
+}
+
+// Release a collection when it is no longer needed (e.g. scene exit)
+core.events.emitSync('data/unload', { collection: 'enemies' });
+```
+
+### 6.6 `dataRoot` Integration
+
+All relative `file` paths are automatically resolved against `core.dataRoot`.  Absolute URLs and root-anchored paths are forwarded unchanged — the same rule as `ResourceManager`.
+
+---
+
+## 7. Localisation System (LocalizationManager)
 
 The `LocalizationManager` is a built-in `EnginePlugin` (namespace `i18n`) that loads JSON translation files, manages the active locale, and exposes translation and string-interpolation through the event bus.
 
-### 6.1 Translation File Format
+### 7.1 Translation File Format
 
 Locale files are plain JSON objects.  Both flat and nested structures are accepted; nested keys are accessed with **dot-notation** in all events:
 
@@ -319,7 +414,7 @@ Locale files are plain JSON objects.  Both flat and nested structures are accept
 
 `"menu.start"` → `"Start Game"`, `"hud.gold"` (with `vars: { amount: '250' }`) → `"Gold: 250"`.
 
-### 6.2 Event Contract
+### 7.2 Event Contract
 
 | Event              | Async? | Description |
 |--------------------|--------|-------------|
@@ -330,7 +425,7 @@ Locale files are plain JSON objects.  Both flat and nested structures are accept
 | `i18n/interpolate` | ✗ `emitSync` | Replace `{namespace:key}` tokens in a free-form string |
 | `i18n/get-locales` | ✗ `emitSync` | List all loaded locales and the currently active one |
 
-### 6.3 Basic Usage
+### 7.3 Basic Usage
 
 ```ts
 import { createEngine, LocalizationManager } from 'inkshot-engine';
@@ -362,7 +457,7 @@ const { output: o } = core.events.emitSync('i18n/t', {
 hud.text = o.value; // "Gold: 250"
 ```
 
-### 6.4 Token Interpolation
+### 7.4 Token Interpolation
 
 `i18n/interpolate` processes strings containing `{namespace:key}` tokens.  `LocalizationManager` resolves `{i18n:key}` tokens in the **`before`** phase (priority `1000`) and exposes a `replace` helper on `output` for other plugins to use:
 
@@ -389,7 +484,7 @@ i18n/interpolate-before  →  i18n/interpolate  →  i18n/interpolate-after
      and resolves {i18n:*}
 ```
 
-### 6.5 Reacting to Locale Changes
+### 7.5 Reacting to Locale Changes
 
 Subscribe to `i18n/changed` to re-render any text that depends on the locale:
 
@@ -402,13 +497,13 @@ core.events.on('ui', 'i18n/changed', ({ locale }) => {
 
 ---
 
-## 7. Audio System (AudioManager)
+## 8. Audio System (AudioManager)
 
 The `AudioManager` is a built-in `EnginePlugin` (namespace `audio`) that provides
 audio playback using the browser-native **Web Audio API** — no external
 audio library is needed.
 
-### 7.1 Architecture
+### 8.1 Architecture
 
 Each `audio/play` call creates one **playback instance** with:
 
@@ -427,7 +522,7 @@ The `AudioContext` is **lazy-initialised** on the first `audio/load` or
 `audio/play` call.  This defers creation until after a user gesture, which
 satisfies browser autoplay policies.
 
-### 7.2 Pause / Resume
+### 8.2 Pause / Resume
 
 `AudioBufferSourceNode` cannot be paused natively.  Pausing is simulated by:
 
@@ -439,7 +534,7 @@ For **spatial** instances the new source is reconnected through the existing `Pa
 (`newSource.connect(inst.pannerNode ?? inst.gainNode)`) so that all spatial position,
 distance model, and roll-off settings are fully preserved across pause/resume cycles.
 
-### 7.3 Event Contract
+### 8.3 Event Contract
 
 | Event                   | Async? | Description |
 |-------------------------|--------|-------------|
@@ -456,7 +551,7 @@ distance model, and roll-off settings are fully preserved across pause/resume cy
 | `audio/listener:update` | ✗ sync | Update the spatial listener position (typically driven by the camera) |
 | `audio/source:move`     | ✗ sync | Reposition a spatial audio source at runtime; warns if the instance has no `PannerNode` |
 
-### 7.4 Basic Usage
+### 8.4 Basic Usage
 
 ```ts
 import { createEngine, AudioManager } from 'inkshot-engine';
@@ -509,7 +604,7 @@ core.events.emitSync('audio/stop',   { instanceId: 'bgm' });
 core.events.emitSync('audio/unload', { key: 'bgm:town' });
 ```
 
-### 7.5 Spatial Audio
+### 8.5 Spatial Audio
 
 Pass a `position` to `audio/play` to create a positional sound source routed through a
 `PannerNode`.  Drive the listener with `audio/listener:update` (typically from the camera) so
@@ -552,11 +647,11 @@ calls immediately visible during development.
 
 ---
 
-## 8. Scene System (SceneManager)
+## 9. Scene System (SceneManager)
 
 The `SceneManager` is a built-in `EnginePlugin` (namespace `scene`) that manages the registration and lifecycle of game **scenes** — the primary units of level, room, or screen in the game.
 
-### 8.1 Scene Descriptor
+### 9.1 Scene Descriptor
 
 A scene is any object that satisfies the `SceneDescriptor` interface.  Class-based or plain-object scenes are equally valid.
 
@@ -581,7 +676,7 @@ const mainMenuScene: SceneDescriptor = {
 | `enter(core)` | ✓ | Called when the scene becomes active.  Load assets, spawn entities, set up listeners. |
 | `exit(core)` | ✗ | Called when the scene is about to be replaced.  Unload assets, remove listeners. |
 
-### 8.2 Event Contract
+### 9.2 Event Contract
 
 | Event            | Async? | Description |
 |------------------|--------|-------------|
@@ -599,7 +694,7 @@ scene/load-before  →  scene/load  →  scene/load-after
                            enters new scene
 ```
 
-### 8.3 Usage
+### 9.3 Usage
 
 ```ts
 import { createEngine, SceneManager } from 'inkshot-engine';
@@ -656,7 +751,7 @@ const { output } = core.events.emitSync('scene/current', {});
 console.log(output.key); // 'level-1'
 ```
 
-### 8.4 Adding Transition Effects
+### 9.4 Adding Transition Effects
 
 Because `scene/load` fires a `before` → `main` → `after` pipeline, screen transitions can be added without modifying `SceneManager`:
 
@@ -673,11 +768,11 @@ core.events.on('transitions', 'scene/load', async () => {
 
 ---
 
-## 9. Game Flow Design
+## 10. Game Flow Design
 
 This section describes the recommended end-to-end game flow using the built-in plugin suite.
 
-### 9.1 High-Level Phases
+### 10.1 High-Level Phases
 
 ```
 Engine starts
@@ -702,7 +797,7 @@ Engine starts
 
 `GameStateManager` owns the phase labels; `SceneManager` drives the actual content transitions.  The two are **independent** — a `SceneManager` transition does not automatically change the `GameStateManager` phase; scenes are responsible for calling `game/state:set` themselves in their `enter` / `exit` hooks.
 
-### 9.2 Recommended Plugin Initialisation Order
+### 10.2 Recommended Plugin Initialisation Order
 
 Because each built-in plugin declares its `dependencies`, `createEngine` automatically sorts them into the correct sequence.  The order in the `plugins` array no longer needs to be manually maintained:
 
@@ -726,7 +821,7 @@ createEngine({
 });
 ```
 
-### 9.3 Full Startup Sequence
+### 10.3 Full Startup Sequence
 
 ```
 createEngine()
@@ -754,7 +849,7 @@ createEngine()
                                       → emits core/tick every frame
 ```
 
-### 9.4 Scene Transition Sequence
+### 10.4 Scene Transition Sequence
 
 When `scene/load` is emitted the following steps happen in order:
 
@@ -771,7 +866,7 @@ scene/load emitted
     └── AFTER phase  (e.g. fade-in transition)
 ```
 
-### 9.5 Save / Load Integration
+### 10.5 Save / Load Integration
 
 The `GameStateManager` automatically transitions to `'playing'` and emits `game/started` after a successful `save/slot:load`.  Pair this with `scene/load` in your own handler to restore the correct scene:
 
@@ -785,11 +880,11 @@ core.events.on('myGame', 'game/started', async () => {
 
 ---
 
-## 10. Physics System (KinematicPhysicsAdapter / PhysicsAdapter)
+## 11. Physics System (KinematicPhysicsAdapter / PhysicsAdapter)
 
 The physics system provides 2D collision detection, movement resolution, spatial queries, and raycasting.  It is built around a **unified `PhysicsAdapter` interface** (namespace `physics`) so that any backend — kinematic, rigid-body, or custom — can be swapped in without changing a single line of game code.
 
-### 10.1 Architecture
+### 11.1 Architecture
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -809,7 +904,7 @@ All physics events live under the `physics` namespace.  Only **one** physics bac
 
 **Colliders stored per entity.** When a collider is attached via `physics/body:add` the active backend stores it internally (keyed by entity ID).  There are no changes to the `Entity` interface.  Colliders are automatically cleaned up when their owning entity is destroyed (`entity/destroyed`).
 
-### 10.2 Collider Shapes
+### 11.2 Collider Shapes
 
 | Shape    | Required fields     | Description                        |
 |----------|---------------------|------------------------------------|
@@ -819,7 +914,7 @@ All physics events live under the `physics` namespace.  Only **one** physics bac
 
 All shapes accept optional `offsetX` / `offsetY` fields, relative to the entity's logical position.
 
-### 10.3 Collision Layers
+### 11.3 Collision Layers
 
 Use `CollisionLayer` constants and combine with bitwise `|`:
 
@@ -836,7 +931,7 @@ const layer = CollisionLayer.BODY | CollisionLayer.HURTBOX;
 | `HURTBOX` |   4 | Receives damage (character body)                             |
 | `SENSOR`  |   8 | Overlap detection without physical blocking                  |
 
-### 10.4 Event Contract
+### 11.4 Event Contract
 
 All physics backends **must** handle these events:
 
@@ -865,7 +960,7 @@ Notification events **emitted** by the active backend:
 | `physics/hit`      | Fired on the **first frame** a hitbox contacts a hurtbox; `{ attackerId, victimId }` |
 | `physics/overlap`  | Fired when a sensor overlap begins (`entered: true`) or ends (`entered: false`) |
 
-### 10.5 Movement Resolution
+### 11.5 Movement Resolution
 
 `physics/move` resolves axes **independently** (X first, then Y) to prevent corner-cutting:
 
@@ -877,7 +972,7 @@ Notification events **emitted** by the active backend:
 
 The `blockedX` / `blockedY` flags let game code react (e.g. zero out velocity when hitting a floor or wall).
 
-### 10.6 Tilemap Format
+### 11.6 Tilemap Format
 
 ```ts
 core.events.emitSync('physics/tilemap:set', {
@@ -897,7 +992,7 @@ core.events.emitSync('physics/tilemap:set', {
 
 Internally the manager builds an O(1) `Map<"row,col", string>` lookup so per-frame tile checking adds negligible overhead regardless of map size.
 
-### 10.7 Tile Shapes
+### 11.7 Tile Shapes
 
 The `tileShapes` record maps tile values to a `TileCollisionShape` string (or any custom string handled by a registered resolver):
 
@@ -913,7 +1008,7 @@ The `tileShapes` record maps tile values to a `TileCollisionShape` string (or an
 
 Any tile value absent from the `tileShapes` record (or mapped to `'empty'`) is treated as passable.
 
-### 10.8 Custom Tile Shape Resolvers
+### 11.8 Custom Tile Shape Resolvers
 
 For tile shapes not covered by the built-in set, pass `customShapeResolvers` to the `KinematicPhysicsAdapter` constructor:
 
@@ -970,14 +1065,14 @@ The `TileShapeContext` supplied to each resolver contains:
 
 Resolvers are tried in registration order.  The first non-`null` result wins.  If all resolvers return `null`, the tile is treated as passable.
 
-### 10.9 Pixel Mode vs Grid Mode
+### 11.9 Pixel Mode vs Grid Mode
 
 | `movementMode` | Behaviour |
 |---|---|
 | `'pixel'` (default) | Free sub-pixel movement; collision resolution snaps to tile boundaries only when blocked. |
 | `'grid'` | Same resolution, but the entity is additionally snapped to the nearest tile corner after each `physics/move`. Useful for strict tile-locked movement (e.g. puzzle RPGs). |
 
-### 10.10 Ranged Weapons
+### 11.10 Ranged Weapons
 
 Two composable patterns — no changes to the physics backend needed for either:
 
@@ -985,7 +1080,7 @@ Two composable patterns — no changes to the physics backend needed for either:
 
 **Physical projectiles (arrows, fireballs):** spawn a projectile entity tagged `['projectile']` with a `circle` collider on the `HITBOX` layer.  The active physics backend automatically emits `physics/hit` on the first frame it overlaps a `HURTBOX` entity.
 
-### 10.11 Usage
+### 11.11 Usage
 
 ```ts
 import { createEngine, EntityManager, KinematicPhysicsAdapter, CollisionLayer } from 'inkshot-engine';
@@ -1060,7 +1155,7 @@ core.events.on('triggers', 'physics/overlap', ({ entityAId, entityBId, entered }
 });
 ```
 
-### 10.12 Recommended Plugin Order
+### 11.12 Recommended Plugin Order
 
 `KinematicPhysicsAdapter` must be registered **after** `EntityManager` because it uses
 `entity/query` to read entity positions at runtime:
@@ -1082,7 +1177,7 @@ createEngine({
 });
 ```
 
-### 10.13 Implementing a Custom Physics Backend
+### 11.13 Implementing a Custom Physics Backend
 
 Any class that implements `EnginePlugin` with `namespace = 'physics'` is a valid physics backend.  Implement the `PhysicsAdapter` marker interface and register handlers for all required events:
 
@@ -1175,7 +1270,7 @@ createEngine({
 
 ---
 
-## 11. File & Module Conventions
+## 12. File & Module Conventions
 
 | Path | Purpose |
 |---|---|
@@ -1226,11 +1321,11 @@ Rules:
 
 ---
 
-## 12. Tween & Timeline System (TweenManager)
+## 13. Tween & Timeline System (TweenManager)
 
 The `TweenManager` is a built-in `EnginePlugin` (namespace `tween`) that drives **property-based animations** on arbitrary JavaScript objects.  It subscribes to `core/tick` and advances every registered animation each frame.
 
-### 12.1 Architecture
+### 13.1 Architecture
 
 ```
 core/tick
@@ -1248,7 +1343,7 @@ TweenManager._onTick(dt)
 
 Both implement the `Advanceable` interface (`advance(dt: number): boolean`) so they can be used interchangeably by `TweenManager`.
 
-### 12.2 Tween Options
+### 13.2 Tween Options
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
@@ -1263,7 +1358,7 @@ Both implement the `Advanceable` interface (`advance(dt: number): boolean`) so t
 | `onUpdate` | `(t: number) => void` | — | Called every tick with the eased progress `[0, 1]` |
 | `onComplete` | `() => void` | — | Called when the tween finishes (not called for `loop: true`) |
 
-### 12.3 Tween State API
+### 13.3 Tween State API
 
 ```ts
 tween.isPlaying    // true when running (not paused, killed, or done)
@@ -1280,7 +1375,7 @@ tween.seek(ms)     // jump playhead to timeMs [0, duration]; captures from-value
 tween.seekProgress(v) // jump to a normalised position [0, 1]
 ```
 
-### 12.4 Timeline Builder API
+### 13.4 Timeline Builder API
 
 | Method | Description |
 |--------|-------------|
@@ -1301,7 +1396,7 @@ All methods accept an optional `at` field:
 | `'+=N'` | Cursor + `N` ms (insert gap) |
 | `'-=N'` | Cursor − `N` ms (overlap) |
 
-### 12.5 Timeline Options
+### 13.5 Timeline Options
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
@@ -1310,7 +1405,7 @@ All methods accept an optional `at` field:
 | `repeat` | `number` | `0` | Extra plays after the first (`-1` = infinite) |
 | `repeatDelay` | `number` | `0` | Gap in ms between each repeat cycle |
 
-### 12.6 Timeline State API
+### 13.6 Timeline State API
 
 ```ts
 tl.isPlaying     // true when running
@@ -1330,7 +1425,7 @@ tl.seek(ms)             // jump playhead; tweens fast-forward silently, callback
 tl.seekProgress(v)      // normalised seek [0, 1]
 ```
 
-### 12.7 EventBus Contract
+### 13.7 EventBus Contract
 
 | Event | Direction | Description |
 |-------|-----------|-------------|
@@ -1338,7 +1433,7 @@ tl.seekProgress(v)      // normalised seek [0, 1]
 | `tween/kill` | ✗ `emitSync` | Stop tweens by `id`, `target`, or `{ all: true }` |
 | `tween/finished` | — emitted | Fired by `TweenManager` when a tween/timeline completes naturally; payload: `{ id?, target? }` |
 
-### 12.8 Usage Examples
+### 13.8 Usage Examples
 
 ```ts
 import { createEngine, TweenManager, Tween, Timeline, Easing } from 'inkshot-engine';
@@ -1400,7 +1495,7 @@ tl.seek(tl.duration / 2);
 tl.playbackRate = 3;
 ```
 
-### 12.9 Integration with SceneManager
+### 13.9 Integration with SceneManager
 
 A common pattern is to kill all running tweens when transitioning scenes:
 
@@ -1428,11 +1523,11 @@ const level1: SceneDescriptor = {
 
 ---
 
-## 13. Particle System (ParticleManager)
+## 14. Particle System (ParticleManager)
 
 The `ParticleManager` is a built-in `EnginePlugin` (namespace `particle`) that drives a 2D particle simulation.  It integrates with `ObjectPool` to reuse display objects and avoid garbage-collection pressure.
 
-### 13.1 Architecture
+### 14.1 Architecture
 
 ```
 core/update  (fixed tick)
@@ -1452,7 +1547,7 @@ ParticleManager._update(dt)
 
 Each emitter owns an `ObjectPool<ParticleDisplay>`.  When a particle dies its display object is returned to the pool; when a new particle is spawned the pool is checked first before allocating.
 
-### 13.2 Emission Modes
+### 14.2 Emission Modes
 
 | Mode | Trigger | `particle/complete` |
 |---|---|---|
@@ -1460,7 +1555,7 @@ Each emitter owns an `ObjectPool<ParticleDisplay>`.  When a particle dies its di
 | **Continuous** (default) | Emits at `rate` per second until `duration` elapses or `stop()` is called | ✓ fired after `duration` expires **and** last particle dies (natural end only) |
 | **Repeat burst** (`repeatBurst: true`) | Burst cycles indefinitely; `repeatInterval` ms between cycles | ✗ not fired between cycles |
 
-### 13.3 Pre-warm
+### 14.3 Pre-warm
 
 Setting `preWarm > 0` fast-forwards the simulation by that many milliseconds immediately after the emitter is created.  The engine uses 16 ms steps (60 fps cadence) so the state is physically accurate.  Use this to make continuous effects (fire, smoke) appear mid-stream when a scene opens:
 
@@ -1475,7 +1570,7 @@ core.events.emitSync('particle/emit', {
 });
 ```
 
-### 13.4 Spawn Shapes
+### 14.4 Spawn Shapes
 
 | `spawnShape` | Description |
 |---|---|
@@ -1483,7 +1578,7 @@ core.events.emitSync('particle/emit', {
 | `'rect'` | Uniform random offset within `[−w/2, w/2] × [−h/2, h/2]` |
 | `'circle'` | Uniform random offset within a disc (`√random` for area-uniform distribution) |
 
-### 13.5 Event Contract
+### 14.5 Event Contract
 
 | Event | Async? | Description |
 |---|---|---|
@@ -1497,7 +1592,7 @@ core.events.emitSync('particle/emit', {
 | `particle/count` | ✗ `emitSync` | Query `{ emitterCount, particleCount }` |
 | `particle/complete` | — emitted | Fired when an emitter ends **naturally** |
 
-### 13.6 Direct API
+### 14.6 Direct API
 
 ```ts
 import { createEngine, ParticleManager } from 'inkshot-engine';
@@ -1545,7 +1640,7 @@ core.events.on('vfx', 'particle/complete', ({ id }) => console.log(`${id} done`)
 core.events.emitSync('particle/clear', {});   // clear all
 ```
 
-### 13.7 Custom Display Factory
+### 14.7 Custom Display Factory
 
 For tests or non-Pixi environments pass a `createDisplay` factory:
 
@@ -1563,13 +1658,13 @@ The default factory creates a `Sprite` (when `config.texture` is set) or a small
 
 ---
 
-## 14. Pathfinding System (PathfindingManager)
+## 15. Pathfinding System (PathfindingManager)
 
 The `PathfindingManager` is a built-in `EnginePlugin` (namespace `pathfinding`) that provides
 tile-based A* navigation.  It depends on both the active physics backend (for the tile grid) and
 `EntityManager` (for optional dynamic obstacles).
 
-### 14.1 Architecture
+### 15.1 Architecture
 
 ```
 physics/tilemap:set    ──► _buildGrid()         rebuild full cost grid
@@ -1589,7 +1684,7 @@ pathfinding/find       ──► _find(params)          A* search → path[]
   use on large open maps.  The cache is fully cleared on `physics/tilemap:set` and on
   `tilemap/set-tile` (which also updates the affected grid cell in O(1)).
 
-### 14.2 A* Details
+### 15.2 A* Details
 
 | Setting | Value |
 |---------|-------|
@@ -1602,7 +1697,7 @@ pathfinding/find       ──► _find(params)          A* search → path[]
 teleport into a solid), `_find` returns `found: false` immediately instead of running A*
 outward from an unreachable origin.
 
-### 14.3 Event Contract
+### 15.3 Event Contract
 
 | Event                     | Async? | Description |
 |---------------------------|--------|-------------|
@@ -1610,7 +1705,7 @@ outward from an unreachable origin.
 | `pathfinding/weight:set`  | ✗ sync | Override the movement cost for a tile value |
 | `pathfinding/cache:clear` | ✗ sync | Manually invalidate the path cache |
 
-### 14.4 `pathfinding/find` Parameters
+### 15.4 `pathfinding/find` Parameters
 
 | Parameter                 | Type       | Default    | Description |
 |---------------------------|------------|------------|-------------|
@@ -1622,14 +1717,14 @@ outward from an unreachable origin.
 | `smoothPath`              | `boolean`  | `false`    | String-pull (Bresenham LoS) post-pass to remove staircase waypoints from diagonal paths |
 | `maxIterations`           | `number`   | `10 000`   | Abort A* after this many iterations to protect against pathological inputs |
 
-### 14.5 Constructor Options
+### 15.5 Constructor Options
 
 ```ts
 new PathfindingManager({ directions: 4 | 8 })
 // directions — 4: cardinal only; 8: cardinal + diagonal (default)
 ```
 
-### 14.6 Usage
+### 15.6 Usage
 
 ```ts
 import { createEngine, EntityManager, KinematicPhysicsAdapter, TilemapManager, PathfindingManager } from 'inkshot-engine';
@@ -1685,7 +1780,7 @@ core.events.emitSync('pathfinding/weight:set', { tileId: 4, cost: Infinity }); /
 core.events.emitSync('pathfinding/cache:clear', {});
 ```
 
-### 14.7 Automatic Grid Synchronisation
+### 15.7 Automatic Grid Synchronisation
 
 The grid is kept in sync with two event sources:
 
@@ -1700,13 +1795,13 @@ needed.
 
 ---
 
-## 15. UI Widget System (UIManager)
+## 16. UI Widget System (UIManager)
 
 The `UIManager` is a built-in `EnginePlugin` (namespace `ui`) that provides a flexible,
 event-driven widget layer.  Widgets live on the `ui` render layer and are identified by a
 developer-assigned string id.
 
-### 15.1 Architecture
+### 16.1 Architecture
 
 ```
 ui/register   ──► _factories.set(type, factory)
@@ -1725,7 +1820,7 @@ ui/get        ──► returns widget reference (pull pattern)
   `UIManager` queries the viewport bounds via `renderer/layer` and positions the widget
   relative to the chosen edge/corner.
 
-### 15.2 Built-in Widget Types
+### 16.2 Built-in Widget Types
 
 | Type          | Description |
 |---------------|-------------|
@@ -1739,7 +1834,7 @@ ui/get        ──► returns widget reference (pull pattern)
 | `stack`       | Linear layout container with configurable axis and spacing |
 | `dialoguebox` | Dialogue rendering widget (see §15) |
 
-### 15.3 Event Contract
+### 16.3 Event Contract
 
 | Event        | Async? | Description |
 |--------------|--------|-------------|
@@ -1760,7 +1855,7 @@ ui/get        ──► returns widget reference (pull pattern)
 | `ui/hidden`    | After `widget.hide()` is called |
 | `ui/destroyed` | After a widget is destroyed and removed |
 
-### 15.4 Custom Widget Registration
+### 16.4 Custom Widget Registration
 
 ```ts
 core.events.emitSync('ui/register', {
@@ -1779,7 +1874,7 @@ core.events.emitSync('ui/register', {
 });
 ```
 
-### 15.5 Usage
+### 16.5 Usage
 
 ```ts
 import { createEngine, UIManager } from 'inkshot-engine';
@@ -1799,14 +1894,14 @@ core.events.emitSync('ui/update', { id: 'hp',    value: 0.5 });
 
 ---
 
-## 16. Dialogue System (DialogueManager)
+## 17. Dialogue System (DialogueManager)
 
 The `DialogueManager` is a built-in `EnginePlugin` (namespace `dialogue`) that handles the
 **presentation layer** of a dialogue box: typewriter animation, inline-markup styling, player
 input forwarding, and choice display.  All flow control (branching, conditions, tree traversal)
 belongs to the external script system, which drives `DialogueManager` by emitting command events.
 
-### 16.1 Architecture
+### 17.1 Architecture
 
 ```
 dialogue/show-text     ──► parseDialogueMarkup() → session reset + DialogueNodeParams
@@ -1821,7 +1916,7 @@ dialogue/end           ──► dialogue/ended
 dialogue/state:get     ──► pull: { active, text, textDone, choices }
 ```
 
-### 16.2 Inline Markup
+### 17.2 Inline Markup
 
 The text string supplied to `dialogue/show-text` may contain square-bracket tags that are
 parsed by `DialogueMarkupParser` before the typewriter starts.
@@ -1839,7 +1934,7 @@ which representation to use.
 **ReDoS safety** — the parser regex `[^\]\[]+` forbids nested brackets inside tags, ensuring
 the regex engine backtracks in O(n) time even on adversarial input.
 
-### 16.3 Typewriter Loop
+### 17.3 Typewriter Loop
 
 Each `core/update` tick, the loop processes accumulated milliseconds one character at a time:
 
@@ -1858,7 +1953,7 @@ while remainingMs > 0 and not done:
 This design means `dialogue/advance` (skip) simply sets `charIndex = len`, clears
 `pauseRemainingMs`, and emits the final tick.
 
-### 16.4 Event Contract
+### 17.4 Event Contract
 
 | Event                   | Async? | Description |
 |-------------------------|--------|-------------|
@@ -1881,7 +1976,7 @@ This design means `dialogue/advance` (skip) simply sets `charIndex = len`, clear
 | `dialogue/choice:made` | `{ index }` | Player confirmed a choice |
 | `dialogue/ended`       | `{}` | Session ends |
 
-### 16.5 `DialogueTextSegment`
+### 17.5 `DialogueTextSegment`
 
 ```ts
 interface DialogueTextSegment {
@@ -1894,7 +1989,7 @@ interface DialogueTextSegment {
 The built-in `dialoguebox` widget renders them as `<span style="color:…">…</span>` HTML via
 PixiJS `HTMLText`.  Custom renderers can consume `segments` directly.
 
-### 16.6 `parseDialogueMarkup` — Public API
+### 17.6 `parseDialogueMarkup` — Public API
 
 ```ts
 import { parseDialogueMarkup, buildTextSegments, getSpeedAtIndex } from 'inkshot-engine';
@@ -1915,7 +2010,7 @@ const segs = buildTextSegments(result.plain, 7, result.colorSpans);
 const speed = getSpeedAtIndex(2, result.speedSpans, 40);  // → 20
 ```
 
-### 16.7 Usage
+### 17.7 Usage
 
 ```ts
 import { createEngine, UIManager, DialogueManager } from 'inkshot-engine';
@@ -1954,11 +2049,11 @@ core.events.on('script', 'dialogue/choice:made', ({ index }) => {
 
 ---
 
-## 17. Script System (ScriptManager)
+## 18. Script System (ScriptManager)
 
 `ScriptManager` drives data-defined behaviours as ordered lists of command nodes.
 
-### 17.1 Architecture
+### 18.1 Architecture
 
 Scripts are registered with `script/define` and started with `script/run`.  Each
 run is isolated by an `instanceId`; different IDs execute **concurrently** in
@@ -1970,7 +2065,7 @@ script/run  instanceId: 'guard-2'      ──wait──────────�
 script/run  instanceId: 'cutscene'           ──say─►end
 ```
 
-### 17.2 Built-in Commands
+### 18.2 Built-in Commands
 
 | Command         | Key fields                                                   | Description                                                           |
 |-----------------|--------------------------------------------------------------|-----------------------------------------------------------------------|
@@ -1992,7 +2087,7 @@ script/run  instanceId: 'cutscene'           ──say─►end
 | `wait-instance` | `instanceId`                                                 | Suspend until a named instance finishes                               |
 | `stop-instance` | `instanceId`                                                 | Stop another running instance                                         |
 
-### 17.3 `wait-event` with Timeout
+### 18.3 `wait-event` with Timeout
 
 The optional `timeout` / `timeoutJump` fields let a script give up waiting after
 a deadline:
@@ -2007,7 +2102,7 @@ next node.  If the timeout fires first:
 - If `timeoutJump` is provided, execution jumps to that label.
 - Otherwise execution falls through to the next node.
 
-### 17.4 Event Contract
+### 18.4 Event Contract
 
 | Event                     | Direction | Description                                     |
 |---------------------------|-----------|-------------------------------------------------|
@@ -2023,18 +2118,18 @@ next node.  If the timeout fires first:
 
 ---
 
-## 18. Actor System (ActorManager)
+## 19. Actor System (ActorManager)
 
 `ActorManager` manages game characters whose behaviour is driven by a trigger
 table and a set of scripts.
 
-### 18.1 Concepts
+### 19.1 Concepts
 
 - **ActorDef** — Blueprint declaring scripts, triggers, and initial state.
 - **ActorInstance** — A live copy with its own independent `state` store.
 - **TriggerDef** — Binds an event to a script run on the actor.
 
-### 18.2 Trigger Modes
+### 19.2 Trigger Modes
 
 | Mode | Lane | Typical use |
 |------|------|-------------|
@@ -2044,13 +2139,13 @@ table and a set of scripts.
 `blocking` supports `priority` (preempts lower-priority scripts) and `onEnd`
 (`'restore'` re-launches the preempted script after the blocking script ends).
 
-### 18.3 `actor/spawned` Trigger Behaviour
+### 19.3 `actor/spawned` Trigger Behaviour
 
 Triggers with `event: 'actor/spawned'` are fired **directly** on the newly
 spawned instance at spawn time, **not** via the event bus.  This ensures that
 existing instances are never affected when a new instance is spawned.
 
-### 18.4 State Management
+### 19.4 State Management
 
 | Event                | Description                                                                 |
 |----------------------|-----------------------------------------------------------------------------|
@@ -2070,7 +2165,7 @@ core.events.emitSync('actor/state:patch', {
 // → emits actor/state:patched once with { patch, previous }
 ```
 
-### 18.5 Full Event Contract
+### 19.5 Full Event Contract
 
 | Event                   | Direction | Description                                            |
 |-------------------------|-----------|--------------------------------------------------------|
@@ -2091,7 +2186,7 @@ core.events.emitSync('actor/state:patch', {
 
 ---
 
-## 19. TypeScript Style
+## 20. TypeScript Style
 
 - **Strict mode** is enabled.  All code must pass `tsc --strict` without error.
 - Prefer `interface` over `type` for object shapes; use `type` for unions, aliases, and mapped types.
@@ -2102,7 +2197,7 @@ core.events.emitSync('actor/state:patch', {
 
 ---
 
-## 20. Coding Style
+## 21. Coding Style
 
 - 2-space indentation, single quotes, trailing commas (enforced by the project's formatter).
 - Prefer `async/await` over raw Promises.
@@ -2117,7 +2212,7 @@ core.events.emitSync('actor/state:patch', {
 
 ---
 
-## 21. Lifecycle Summary
+## 22. Lifecycle Summary
 
 ```
 createEngine(options)

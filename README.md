@@ -15,6 +15,7 @@ Everything communicates through a shared **EventBus** — no tight coupling, no 
    - [Plugin System](#plugin-system)
 4. [Built-in Plugins](#built-in-plugins)
    - [ResourceManager (`assets`)](#resourcemanager-assets)
+   - [DataManager (`data`)](#datamanager-data)
    - [LocalizationManager (`i18n`)](#localizationmanager-i18n)
    - [InputManager (`input`)](#inputmanager-input)
    - [TimerManager (`timer`)](#timermanager-timer)
@@ -222,6 +223,79 @@ await core.events.emit('assets/unload', { bundle: 'scene:town' });
 ```
 
 Relative paths are resolved against `core.dataRoot`.  Absolute URLs and root-anchored paths (`/assets/…`) are forwarded unchanged.
+
+---
+
+### DataManager (`data`)
+
+Loads and manages typed **JSON data collections** — items, skills, enemies, quests, and any other plain-data JSON files your game needs.  Each collection is identified by an **explicit name** so different data types never collide, regardless of the file paths used.
+
+#### Event Contract
+
+| Event | Async? | Description |
+|-------|--------|-------------|
+| `data/load` | ✓ | Load a named collection from a JSON file (`file`) or an inline object (`entries`); merges into any existing collection |
+| `data/get` | ✗ `emitSync` | Retrieve a single entry by collection name + entry ID |
+| `data/getAll` | ✗ `emitSync` | Retrieve all entries in a collection |
+| `data/unload` | ✗ `emitSync` | Remove a collection from memory |
+
+#### Usage
+
+```ts
+import { createEngine, DataManager } from 'inkshot-engine';
+
+const { core } = await createEngine({
+  dataRoot: '/assets/',
+  plugins: [
+    new DataManager(),
+    {
+      namespace: 'myGame',
+      async init(c) {
+        // Load different data types from different paths
+        await c.events.emit('data/load', { collection: 'items',   file: 'data/items.json' });
+        await c.events.emit('data/load', { collection: 'skills',  file: 'data/skills.json' });
+        await c.events.emit('data/load', { collection: 'enemies', file: 'data/enemies.json' });
+      },
+    },
+  ],
+});
+
+// Retrieve a single entry (synchronous)
+const { output } = core.events.emitSync('data/get', { collection: 'items', id: 'sword' });
+if (output.found) console.log(output.data); // { name: 'Iron Sword', atk: 15, ... }
+
+// Retrieve all entries in a collection
+const { output: all } = core.events.emitSync('data/getAll', { collection: 'skills' });
+for (const [id, skill] of Object.entries(all.entries)) {
+  console.log(id, skill);
+}
+
+// Merge additional entries into an existing collection (e.g. DLC content)
+await core.events.emit('data/load', {
+  collection: 'items',
+  file: 'data/dlc-items.json',
+});
+
+// Load inline data (useful for hardcoded config or tests)
+await core.events.emit('data/load', {
+  collection: 'config',
+  entries: { difficulty: { default: 'normal' }, version: { major: 1 } },
+});
+
+// Release a collection when it is no longer needed
+core.events.emitSync('data/unload', { collection: 'enemies' });
+```
+
+Each collection's JSON file must be a plain object whose **top-level keys are entry IDs**:
+
+```json
+{
+  "sword":  { "name": "Iron Sword",  "atk": 15, "price": 100 },
+  "shield": { "name": "Iron Shield", "def": 10, "price": 80  }
+}
+```
+
+Multiple `data/load` calls with the same `collection` name **merge** their entries (newer keys win), enabling split files or DLC additions without replacing the whole collection.
 
 ---
 
