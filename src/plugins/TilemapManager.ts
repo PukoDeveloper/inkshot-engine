@@ -436,6 +436,12 @@ export class TilemapManager implements EnginePlugin {
 
     for (const def of defs) {
       const baseTexture = Assets.get<Texture>(def.textureKey);
+      if (!baseTexture) {
+        throw new Error(
+          `[TilemapManager] Texture "${def.textureKey}" has not been loaded. ` +
+          `Load it via assets/load before calling tilemap/load.`,
+        );
+      }
       const { tileWidth, tileHeight } = def;
       const spacing = def.spacing ?? 0;
       const margin = def.margin ?? 0;

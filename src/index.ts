@@ -584,6 +584,15 @@ export type {
   TiledLoaderOutput,
 } from './plugins/TiledLoader.js';
 
+// RPG Maker MV/MZ map loader
+export { resolveRpgMakerTileset, loadRpgMakerMap } from './plugins/RpgMakerLoader.js';
+export type {
+  RpgMakerMap,
+  RpgMakerTileset,
+  RpgMakerLoaderOptions,
+  RpgMakerLoaderOutput,
+} from './plugins/RpgMakerLoader.js';
+
 // Cutscene system
 export { CutscenePlugin } from './plugins/CutscenePlugin.js';
 export type {

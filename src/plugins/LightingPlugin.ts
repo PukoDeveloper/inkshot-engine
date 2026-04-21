@@ -1,4 +1,4 @@
-import { Graphics, BlendMode } from 'pixi.js';
+import { Graphics } from 'pixi.js';
 import type { Container } from 'pixi.js';
 import type { Core } from '../core/Core.js';
 import type { EnginePlugin } from '../types/plugin.js';
@@ -117,7 +117,7 @@ export class LightingPlugin implements EnginePlugin {
 
     if (this._layer) {
       // MULTIPLY blending on the whole layer darkens areas not covered by lights.
-      (this._layer as unknown as { blendMode: string }).blendMode = BlendMode.MULTIPLY;
+      (this._layer as unknown as { blendMode: string }).blendMode = 'multiply';
       this._gfx = new Graphics();
       this._layer.addChild(this._gfx as unknown as Parameters<typeof this._layer.addChild>[0]);
     }

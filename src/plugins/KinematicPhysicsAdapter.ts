@@ -334,7 +334,7 @@ function rayVsAABB(
 export class KinematicPhysicsAdapter implements EnginePlugin {
   readonly namespace = 'physics' as const;
   /** Must be initialised after EntityManager so `entity/query` is available. */
-  readonly dependencies = ['entity'] as const;
+  readonly dependencies = ['entityManager'] as const;
   private _core: Core | null = null;
 
   private readonly _options: KinematicPhysicsAdapterOptions;

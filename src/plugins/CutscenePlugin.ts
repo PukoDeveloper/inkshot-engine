@@ -288,11 +288,12 @@ export class CutscenePlugin implements EnginePlugin {
           core.events.emitSync('camera/follow', { target: null });
         } else {
           // Retrieve the entity's position object and pass it as a follow target.
-          const entityOut: { entities?: { position: { x: number; y: number } }[] } = {};
-          core.events.emitSync('entity/query', { tags: [] }, entityOut);
+          const { output: entityOut } = core.events.emitSync<
+            { tags: string[] },
+            { entities?: { id: string; position: { x: number; y: number } }[] }
+          >('entity/query', { tags: [] });
           const found = (entityOut.entities ?? []).find(
-            (e: { id?: string; position: { x: number; y: number } }) =>
-              (e as unknown as { id: string }).id === step.entityId,
+            (e) => e.id === step.entityId,
           );
           core.events.emitSync('camera/follow', { target: found?.position ?? null });
         }

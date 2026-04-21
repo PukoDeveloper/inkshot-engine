@@ -131,6 +131,16 @@ export class StatsSystem implements EnginePlugin {
       output.effectIds = [...(this._statuses.get(p.actorId)?.keys() ?? [])];
     });
 
+    // Re-broadcast stats/changed when the actor's level changes so that any
+    // system that derives values from both level and stats stays in sync.
+    core.events.on<{ actorId: string; level: number; curveId: string }>(
+      this.namespace,
+      'stats/base:level-changed',
+      (p) => {
+        this._emitChanged(core, p.actorId);
+      },
+    );
+
     // Drive status effect timers and tick damage from the update loop.
     core.events.on<CoreUpdateParams>(this.namespace, 'core/update', (p) => {
       this._tickStatuses(core, p.dt);

@@ -183,8 +183,8 @@ export interface PathfindingManagerOptions {
  */
 export class PathfindingManager implements EnginePlugin {
   readonly namespace = 'pathfinding';
-  /** Must be initialised after CollisionManager (for tilemap data) and EntityManager. */
-  readonly dependencies = ['collision', 'entity'] as const;
+  /** Must be initialised after EntityManager (entity queries used at runtime). */
+  readonly dependencies = ['entityManager'] as const;
 
   /** Sentinel cost value used to flag completely impassable cells. */
   static readonly IMPASSABLE = IMPASSABLE;

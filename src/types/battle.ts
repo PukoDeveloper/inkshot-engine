@@ -39,6 +39,7 @@ export interface BattleAction {
 // ---------------------------------------------------------------------------
 
 export type BattlePhase = 'idle' | 'acting' | 'resolving' | 'end';
+export type BattleSide = 'party' | 'enemy';
 
 /** Snapshot of the current battle state. */
 export interface BattleState {

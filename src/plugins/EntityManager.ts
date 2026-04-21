@@ -77,7 +77,7 @@ export class EntityManager implements EnginePlugin {
     this._worldLayer = result.output.layer;
     // Enable child z-index sorting so Y-sort entities render in the correct
     // painter order without requiring manual re-ordering of the child list.
-    this._worldLayer.sortableChildren = true;
+    if (this._worldLayer) this._worldLayer.sortableChildren = true;
 
     // Sync entity positions each fixed update.
     core.events.on(this.namespace, 'core/update', this._onUpdate, { priority: -10 });

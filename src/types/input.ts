@@ -611,7 +611,7 @@ export interface InputRecorderStartParams {
  */
 export interface InputRecorderStopOutput {
   /** The completed recording.  `null` if no recording was in progress. */
-  readonly recording: InputRecording | null;
+  recording: InputRecording | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -692,7 +692,7 @@ export interface InputRecorderLoadParams {
  */
 export interface InputRecorderLoadOutput {
   /** The loaded recording, or `null` if no recording was found for that key. */
-  readonly recording: InputRecording | null;
+  recording: InputRecording | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -707,14 +707,14 @@ export interface InputRecorderLoadOutput {
  */
 export interface InputRecorderStateOutput {
   /** Current operational state of the recorder. */
-  readonly state: 'idle' | 'recording' | 'playing' | 'paused';
+  state: 'idle' | 'recording' | 'playing' | 'paused';
   /**
    * Current frame counter.
    * During recording: the number of frames captured so far.
    * During playback / paused: the current playback frame.
    * When idle: `0`.
    */
-  readonly frame: number;
+  frame: number;
 }
 
 // ---------------------------------------------------------------------------

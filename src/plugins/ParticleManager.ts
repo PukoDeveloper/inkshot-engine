@@ -268,7 +268,7 @@ export class ParticleManager implements EnginePlugin {
     const result = core.events.emitSync('renderer/layer', { name: 'fx' }) as {
       output: { layer: ParticleLayer };
     };
-    this._fxLayer = result.output.layer;
+    this._fxLayer = result.output.layer ?? this._fxLayer;
 
     // Advance all emitters on every fixed tick.
     core.events.on(this.namespace, 'core/update', (params: { dt: number }) => {
