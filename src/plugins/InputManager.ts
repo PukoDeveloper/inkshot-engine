@@ -962,22 +962,22 @@ export class InputManager implements EnginePlugin {
     const scale = this._pinchRotateState.initialDist > 0
       ? currentDist / this._pinchRotateState.initialDist
       : 1;
-    const pinchdelta = this._pinchRotateState.lastDist > 0
+    const pinchDelta = this._pinchRotateState.lastDist > 0
       ? currentDist / this._pinchRotateState.lastDist
       : 1;
     this._pinchRotateState.lastDist = currentDist;
 
     events.emitSync<InputGesturePinchParams, Record<string, never>>(
       'input/gesture:pinch',
-      { scale, delta: pinchdelta, centerX, centerY },
+      { scale, delta: pinchDelta, centerX, centerY },
     );
 
     // Trigger directional pinch actions when the per-frame delta crosses the
     // threshold, then release immediately (instantaneous action pulse).
-    if (pinchdelta > InputManager.PINCH_OUT_THRESHOLD) {
+    if (pinchDelta > InputManager.PINCH_OUT_THRESHOLD) {
       this._triggerActions(events, 'Gesture:pinch:out', 'pressed');
       this._triggerActions(events, 'Gesture:pinch:out', 'released');
-    } else if (pinchdelta < InputManager.PINCH_IN_THRESHOLD) {
+    } else if (pinchDelta < InputManager.PINCH_IN_THRESHOLD) {
       this._triggerActions(events, 'Gesture:pinch:in', 'pressed');
       this._triggerActions(events, 'Gesture:pinch:in', 'released');
     }

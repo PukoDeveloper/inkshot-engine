@@ -265,7 +265,6 @@ export class InputRecorder implements EnginePlugin {
 
     // Subscribe to each observable input event.
     for (const eventName of RECORDED_EVENTS) {
-      const frameAtRegistration = this._engineFrame; // captured in closure
       const unsubscribe = core.events.on(
         this.namespace,
         eventName,
@@ -280,9 +279,6 @@ export class InputRecorder implements EnginePlugin {
         // Use 'after' phase so we capture only the final, settled state.
         { phase: 'after' },
       );
-      // frameAtRegistration is used only to reference the variable and prevent
-      // a lint warning about unused closures; it has no functional effect here.
-      void frameAtRegistration;
       this._recordingUnsubscribers.push(unsubscribe);
     }
   }
