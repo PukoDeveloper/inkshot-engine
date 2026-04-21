@@ -44,6 +44,12 @@
 | 32 | **視野/迷霧系統** — Tile 網格追蹤（unexplored/explored/visible）、圓形可見範圍更新、矩形強制揭示、`fog/tile:revealed` 事件、逐幀 Graphics 繪製 | `FogOfWarPlugin` |
 | 33 | **Web Worker 橋接** — 通用 `WorkerBridge`（泛型雙向 postMessage、Transferable 零拷貝、maxConcurrent 限流、terminate 清理）；`PathfindingManager` A* 移至 Worker（`pathfinding/find:async`），主執行緒同步 API 不變 | `WorkerBridge` |
 | 34 | **存檔後端擴充** — `IndexedDBSaveAdapter`（適合大型存檔/二進位資料）；`SaveMigrationPlugin` 存檔版本遷移工具（migration chain，自動升級舊格式） | `IndexedDBSaveAdapter`, `SaveMigrationPlugin` |
+| 35 | **遊戲設定管理** — `SettingsManager`（namespace: `settings`）統一管理玩家偏好設定；schema 由開發者透過 `defaults` 自訂；與 `InputManager` 整合支援按鍵重綁定（`bridges.inputBindings`）；與 `LocalizationManager` 整合（`bridges.locale`）；透過 `SaveManager` 全域存檔持久化 | `SettingsManager` |
+| 36 | **JSON 資料集合管理** — `DataManager`（namespace: `data`）載入並管理具型別的 JSON 資料集合（items、skills、enemies 等）；`data/load`（非同步，支援 file 路徑或 inline entries）、`data/get`、`data/getAll`、`data/unload`；多次載入同名集合時自動合併（新鍵覆蓋） | `DataManager` |
+| 37 | **RPG 系統套件** — 完整回合制 RPG 子系統，包含：`StatsSystem`（基礎數值、加法/乘法修正器、狀態異常含持續時間與 tick 傷害）、`InventorySystem`（per-actor 物品堆疊與裝備欄位）、`ExperienceSystem`（可設定的 EXP 曲線、升級通知）、`BattleSystem`（多並行戰鬥場次、acting/resolving 相位流程、傷害公式）、`ShopSystem`（買賣物品、gold 透過 VariableStore 管理）、`PlayerController`（輸入 action → 物理移動，標籤自動偵測玩家實體）、`RpgMenuSystem`（暫停選單狀態機、頁面導航、按鍵綁定） | `StatsSystem`, `InventorySystem`, `ExperienceSystem`, `BattleSystem`, `ShopSystem`, `PlayerController`, `RpgMenuSystem` |
+| 38 | **RPG 引擎一鍵啟動** — `createRpgEngine()`（單一呼叫啟動含完整 RPG 插件套件的引擎並回傳具型別的 `rpg` 命名空間）；`buildRpgPluginBundle()`（回傳有序插件陣列，適用手動組合）；`RPG_PLUGIN_BUNDLE`（模組載入期快照） | `createRpgEngine`, `buildRpgPluginBundle` |
+| 39 | **RPG 資料載入器** — `loadRpgData(RpgGameData)`：將宣告式 JSON 格式的遊戲資料（classes、actors、items、statusEffects、scripts 等）轉換為引擎原生定義物件（ActorDef、ExpCurveDef、StatProfileDef、ItemDef…），可直接注入各插件系統；支援 `meta`（標題/版本/locale/initialGold/initialVariables） | `loadRpgData`, `RpgDataLoader` |
+| 40 | **Tilemap 視覺編輯器** — `TilemapEditorPlugin`（namespace: `mapeditor`）：瀏覽器內嵌完整 Tile 編輯工作流，支援 Pencil / Eraser / Flood Fill（BFS）/ Rect Fill / Rect Select（含複製貼上）；Undo/Redo 命令堆疊（最多 100 步）；Export 深度 clone；攝影機空間座標轉換。`TilemapEditorOverlayPlugin`：格線疊加、選取矩形、游標高亮等視覺 overlay | `TilemapEditorPlugin`, `TilemapEditorOverlayPlugin` |
 
 ---
 
@@ -64,12 +70,6 @@
 - [ ] 提供 Simplex/Perlin Noise 工具函式（地形生成、隨機材質）
 - [ ] BSP（Binary Space Partitioning）地下城生成器
 - [ ] 隨機種子管理（確保可重現的生成結果）
-
-### 4. 遊戲設定管理 (Game Settings Manager)
-- [x] 新增 `SettingsManager` plugin（namespace: `settings`），統一管理玩家偏好設定（解析度、音量、按鍵綁定、語言等），schema 完全由開發者透過 `defaults` 選項自訂
-- [x] 與 `InputManager` 整合，支援按鍵重綁定並即時生效（`bridges.inputBindings` 橋接，預設開啟）
-- [x] 與 `LocalizationManager` 整合，locale 切換可由設定系統觸發（`bridges.locale` 橋接，預設開啟）
-- [x] 透過 `SaveManager` 持久化（全域存檔槽），支援 `settings/save` / `settings/load`
 
 ---
 
