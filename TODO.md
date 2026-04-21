@@ -110,6 +110,15 @@
 - [ ] 事件：`achievement/unlocked`（解鎖時廣播，供 UI 顯示提示）
 - [ ] 支援多步驟成就（進度追蹤，例如「擊倒 100 名敵人」）
 
+### 10. 動態光源系統 (Dynamic Lighting)
+- [ ] 新增 `LightingPlugin`（namespace: `lighting`），以 `PostFxPipeline` / `ShaderPass` 為渲染底層
+- [ ] 定義 `PointLight`（位置、半徑、顏色、強度）與 `AmbientLight`（環境基礎亮度）資料結構
+- [ ] 光照貼圖（light map）合成：每幀將所有光源渲染至獨立 RenderTexture，再以 `MULTIPLY` 混合疊加到世界圖層
+- [ ] 遮擋 / 陰影投射：利用 `KinematicPhysicsAdapter` 的碰撞幾何或 TilemapManager 的實心 tile，進行 shadowcasting 射線計算，產生軟陰影遮罩
+- [ ] API：`lighting/light:add`、`lighting/light:remove`、`lighting/light:update`（支援 EventBus 與直接呼叫）
+- [ ] 與 `TweenManager` 整合，可補間光源強度／顏色（燈光閃爍、日夜循環）
+- [ ] 效能考量：僅重建視野範圍內的光源；提供 `quality` 選項（low/medium/high）控制陰影解析度
+
 ---
 
 ## 🔵 低優先
