@@ -142,9 +142,9 @@ Plugins may be supplied as:
 `createEngine` performs a **topological sort** (stable Kahn's algorithm) on all registered plugins before calling any `init()`.  This means the order in which plugins appear in the `plugins` array does **not** need to match the dependency order — only the `dependencies` field matters.
 
 ```ts
-class CollisionManager implements EnginePlugin {
-  readonly namespace = 'collision';
-  // CollisionManager uses entity/query at runtime → EntityManager must be ready first
+class KinematicPhysicsAdapter implements EnginePlugin {
+  readonly namespace = 'physics';
+  // KinematicPhysicsAdapter uses entity/query at runtime → EntityManager must be ready first
   readonly dependencies = ['entity'] as const;
 
   init(core: Core) { ... }
@@ -153,7 +153,7 @@ class CollisionManager implements EnginePlugin {
 // The caller can supply plugins in any order:
 createEngine({
   plugins: [
-    new CollisionManager(), // listed before EntityManager — still init'd after it
+    new KinematicPhysicsAdapter(), // listed before EntityManager — still init'd after it
     new SceneManager(),
     new EntityManager(),
   ],
@@ -717,7 +717,7 @@ createEngine({
     new GameStateManager(),
     new EntityManager(),
     new SpriteAnimator(),
-    new CollisionManager(),   // declares dependencies: ['entity'] — sorted automatically
+    new KinematicPhysicsAdapter(),   // declares dependencies: ['entity'] — sorted automatically
     new TilemapManager(),
     new TweenManager(),
     new ParticleManager(),
@@ -741,7 +741,7 @@ createEngine()
     ├── GameStateManager.init()     → registers game/state:set, game/state:get
     ├── EntityManager.init()        → registers entity/create, entity/destroy, …
     ├── SpriteAnimator.init()       → registers animator/define, animator/play, …
-    ├── CollisionManager.init()     → registers collision/move, collision/query, …
+    ├── KinematicPhysicsAdapter.init() → registers physics/body:add, physics/move, …
     ├── TilemapManager.init()       → registers tilemap/load, tilemap/set-tile, …
     ├── TweenManager.init()         → registers tween/to, tween/kill, …
     ├── ParticleManager.init()      → registers particle/emit, particle/clear, …
@@ -785,15 +785,28 @@ core.events.on('myGame', 'game/started', async () => {
 
 ---
 
-## 10. Collision System (CollisionManager)
+## 10. Physics System (KinematicPhysicsAdapter / PhysicsAdapter)
 
-The `CollisionManager` is a built-in `EnginePlugin` (namespace `collision`) that provides 2D collision detection, movement resolution, spatial queries, and raycasting.
+The physics system provides 2D collision detection, movement resolution, spatial queries, and raycasting.  It is built around a **unified `PhysicsAdapter` interface** (namespace `physics`) so that any backend — kinematic, rigid-body, or custom — can be swapped in without changing a single line of game code.
 
-### 10.1 Design
+### 10.1 Architecture
 
-**Unified pixel space.** All positions use the same coordinate system as `EntityManager`.  Tile-grid utilities convert tile coordinates to and from pixel space on demand, so pixel-movement and grid-movement games — and hybrids of both — work without extra configuration.
+```
+┌────────────────────────────────────────────────────────────────┐
+│  Game code emits:  physics/body:add  physics/move  physics/query  … │
+│                              │                                   │
+│                         EventBus (namespace: 'physics')          │
+│                              │                                   │
+│              ┌───────────────┴────────────────┐                  │
+│              ▼                                ▼                  │
+│   KinematicPhysicsAdapter        (future) MatterPhysicsAdapter   │
+│   (built-in default backend)     (rigid-body via Matter.js)      │
+└────────────────────────────────────────────────────────────────┘
+```
 
-**Colliders stored per entity.** When a collider is attached via `collision/collider:add` the manager stores it internally (keyed by entity ID).  There are no changes to the `Entity` interface.  Colliders are automatically cleaned up when their owning entity is destroyed (`entity/destroyed`).
+All physics events live under the `physics` namespace.  Only **one** physics backend may be registered at a time — registering two plugins with `namespace = 'physics'` causes `createEngine` to throw a duplicate-namespace error.
+
+**Colliders stored per entity.** When a collider is attached via `physics/body:add` the active backend stores it internally (keyed by entity ID).  There are no changes to the `Entity` interface.  Colliders are automatically cleaned up when their owning entity is destroyed (`entity/destroyed`).
 
 ### 10.2 Collider Shapes
 
@@ -824,23 +837,36 @@ const layer = CollisionLayer.BODY | CollisionLayer.HURTBOX;
 
 ### 10.4 Event Contract
 
+All physics backends **must** handle these events:
+
 | Event                        | Async? | Description                                     |
 |------------------------------|--------|-------------------------------------------------|
-| `collision/collider:add`     | ✗ sync | Attach a shape + layer mask to an entity        |
-| `collision/collider:remove`  | ✗ sync | Detach a collider from an entity                |
-| `collision/tilemap:set`      | ✗ sync | Register or replace the active tile map         |
-| `collision/move`             | ✗ sync | Move a BODY entity with full collision resolution; returns resolved `(x, y)` and `blockedX`/`blockedY` flags |
-| `collision/query`            | ✗ sync | Return entity IDs whose colliders overlap a given shape + layer mask |
-| `collision/raycast`          | ✗ sync | Cast a ray; return the first hit entity or tile |
-| `collision/grid:snap`        | ✗ sync | Snap pixel coordinates to the nearest tile-grid corner |
-| `collision/grid:worldToTile` | ✗ sync | Convert pixel coords → tile `{ row, col }`      |
-| `collision/grid:tileToWorld` | ✗ sync | Convert tile `{ row, col }` → pixel top-left    |
-| `collision/hit`              | emitted | Fired on the **first frame** a hitbox contacts a hurtbox; `{ attackerId, victimId }` |
-| `collision/overlap`          | emitted | Fired when a sensor overlap begins (`entered: true`) or ends (`entered: false`) |
+| `physics/body:add`           | ✗ sync | Attach a shape + layer mask to an entity        |
+| `physics/body:remove`        | ✗ sync | Detach a collider from an entity                |
+| `physics/tilemap:set`        | ✗ sync | Register or replace the active tile map         |
+| `physics/move`               | ✗ sync | Move a BODY entity with full collision resolution; returns resolved `(x, y)` and `blockedX`/`blockedY` flags |
+| `physics/query`              | ✗ sync | Return entity IDs whose colliders overlap a given shape + layer mask |
+| `physics/raycast`            | ✗ sync | Cast a ray; return the first hit entity or tile |
+| `physics/grid:snap`          | ✗ sync | Snap pixel coordinates to the nearest tile-grid corner |
+| `physics/grid:worldToTile`   | ✗ sync | Convert pixel coords → tile `{ row, col }`      |
+| `physics/grid:tileToWorld`   | ✗ sync | Convert tile `{ row, col }` → pixel top-left    |
+
+The following event is **optional** (rigid-body backends may handle it; kinematic backends ignore it):
+
+| Event              | Async? | Description                                         |
+|--------------------|--------|-----------------------------------------------------|
+| `physics/impulse`  | ✗ sync | Apply an impulse force to a rigid-body entity       |
+
+Notification events **emitted** by the active backend:
+
+| Event              | Description                                                                    |
+|--------------------|--------------------------------------------------------------------------------|
+| `physics/hit`      | Fired on the **first frame** a hitbox contacts a hurtbox; `{ attackerId, victimId }` |
+| `physics/overlap`  | Fired when a sensor overlap begins (`entered: true`) or ends (`entered: false`) |
 
 ### 10.5 Movement Resolution
 
-`collision/move` resolves axes **independently** (X first, then Y) to prevent corner-cutting:
+`physics/move` resolves axes **independently** (X first, then Y) to prevent corner-cutting:
 
 ```
 1. Apply dx  →  check tile AABB  →  check BODY entities  →  snap if blocked
@@ -853,7 +879,7 @@ The `blockedX` / `blockedY` flags let game code react (e.g. zero out velocity wh
 ### 10.6 Tilemap Format
 
 ```ts
-core.events.emitSync('collision/tilemap:set', {
+core.events.emitSync('physics/tilemap:set', {
   tileSize: 16,
   layers: [
     [0, 0, 0, 0],   // row 0 — open
@@ -886,12 +912,12 @@ The `tileShapes` record maps tile values to a `TileCollisionShape` string (or an
 
 Any tile value absent from the `tileShapes` record (or mapped to `'empty'`) is treated as passable.
 
-### 10.8 Custom Shape Resolvers
+### 10.8 Custom Tile Shape Resolvers
 
-For shapes not covered by the built-in set, pass `customShapeResolvers` to the `CollisionManager` constructor:
+For tile shapes not covered by the built-in set, pass `customShapeResolvers` to the `KinematicPhysicsAdapter` constructor:
 
 ```ts
-import { CollisionManager } from 'inkshot-engine';
+import { KinematicPhysicsAdapter } from 'inkshot-engine';
 import type { TileShapeResolver } from 'inkshot-engine';
 
 const iceResolver: TileShapeResolver = (shape, ctx) => {
@@ -910,11 +936,11 @@ const iceResolver: TileShapeResolver = (shape, ctx) => {
 const { core } = await createEngine({
   plugins: [
     new EntityManager(),
-    new CollisionManager({ customShapeResolvers: [iceResolver] }),
+    new KinematicPhysicsAdapter({ customShapeResolvers: [iceResolver] }),
   ],
 });
 
-core.events.emitSync('collision/tilemap:set', {
+core.events.emitSync('physics/tilemap:set', {
   tileSize: 16,
   layers: myTileData,
   tileShapes: {
@@ -948,31 +974,31 @@ Resolvers are tried in registration order.  The first non-`null` result wins.  I
 | `movementMode` | Behaviour |
 |---|---|
 | `'pixel'` (default) | Free sub-pixel movement; collision resolution snaps to tile boundaries only when blocked. |
-| `'grid'` | Same resolution, but the entity is additionally snapped to the nearest tile corner after each `collision/move`. Useful for strict tile-locked movement (e.g. puzzle RPGs). |
+| `'grid'` | Same resolution, but the entity is additionally snapped to the nearest tile corner after each `physics/move`. Useful for strict tile-locked movement (e.g. puzzle RPGs). |
 
 ### 10.10 Ranged Weapons
 
-Two composable patterns — no changes to `CollisionManager` needed for either:
+Two composable patterns — no changes to the physics backend needed for either:
 
-**Hitscan (instant):** emit `collision/raycast` from the muzzle origin.  The first `HURTBOX` entity (or solid tile) in the ray's path is the hit.
+**Hitscan (instant):** emit `physics/raycast` from the muzzle origin.  The first `HURTBOX` entity (or solid tile) in the ray's path is the hit.
 
-**Physical projectiles (arrows, fireballs):** spawn a projectile entity tagged `['projectile']` with a `circle` collider on the `HITBOX` layer.  `CollisionManager` automatically emits `collision/hit` on the first frame it overlaps a `HURTBOX` entity.
+**Physical projectiles (arrows, fireballs):** spawn a projectile entity tagged `['projectile']` with a `circle` collider on the `HITBOX` layer.  The active physics backend automatically emits `physics/hit` on the first frame it overlaps a `HURTBOX` entity.
 
 ### 10.11 Usage
 
 ```ts
-import { createEngine, EntityManager, CollisionManager, CollisionLayer } from 'inkshot-engine';
+import { createEngine, EntityManager, KinematicPhysicsAdapter, CollisionLayer } from 'inkshot-engine';
 
 const { core } = await createEngine({
   plugins: [
     new EntityManager(),
-    new CollisionManager(),  // must come after EntityManager
-    // To add custom tile shapes: new CollisionManager({ customShapeResolvers: [...] })
+    new KinematicPhysicsAdapter(),  // must come after EntityManager
+    // To add custom tile shapes: new KinematicPhysicsAdapter({ customShapeResolvers: [...] })
   ],
 });
 
 // ── Register tilemap ────────────────────────────────────────────────────
-core.events.emitSync('collision/tilemap:set', {
+core.events.emitSync('physics/tilemap:set', {
   tileSize: 16,
   layers: myTileData,
   tileShapes: {
@@ -989,7 +1015,7 @@ const { output } = core.events.emitSync('entity/create', {
 });
 const player = output.entity;
 
-core.events.emitSync('collision/collider:add', {
+core.events.emitSync('physics/body:add', {
   entityId: player.id,
   shape: { type: 'rect', width: 14, height: 20, offsetX: -7, offsetY: -10 },
   layer: CollisionLayer.BODY | CollisionLayer.HURTBOX,
@@ -997,7 +1023,7 @@ core.events.emitSync('collision/collider:add', {
 
 // ── Move each fixed update ──────────────────────────────────────────────
 core.events.on('myGame', 'core/update', ({ dt }) => {
-  const { output: move } = core.events.emitSync('collision/move', {
+  const { output: move } = core.events.emitSync('physics/move', {
     entityId: player.id,
     dx: velocityX * dt,
     dy: velocityY * dt,
@@ -1007,7 +1033,7 @@ core.events.on('myGame', 'core/update', ({ dt }) => {
 });
 
 // ── Query nearby enemies ────────────────────────────────────────────────
-const { output: q } = core.events.emitSync('collision/query', {
+const { output: q } = core.events.emitSync('physics/query', {
   shape: { type: 'circle', radius: 80 },
   position: player.position,
   layerMask: CollisionLayer.HURTBOX,
@@ -1016,7 +1042,7 @@ const { output: q } = core.events.emitSync('collision/query', {
 // q.entities → IDs of all nearby hurtbox entities
 
 // ── Hitscan attack ──────────────────────────────────────────────────────
-const { output: ray } = core.events.emitSync('collision/raycast', {
+const { output: ray } = core.events.emitSync('physics/raycast', {
   origin: player.position,
   direction: { x: 1, y: 0 },
   maxDistance: 200,
@@ -1025,17 +1051,17 @@ const { output: ray } = core.events.emitSync('collision/raycast', {
 if (ray.hit && ray.entityId) applyDamage(ray.entityId, 25);
 
 // ── React to combat events ──────────────────────────────────────────────
-core.events.on('combat', 'collision/hit', ({ attackerId, victimId }) => {
+core.events.on('combat', 'physics/hit', ({ attackerId, victimId }) => {
   applyDamage(victimId, 10);
 });
-core.events.on('triggers', 'collision/overlap', ({ entityAId, entityBId, entered }) => {
+core.events.on('triggers', 'physics/overlap', ({ entityAId, entityBId, entered }) => {
   if (entered) openDoor(entityAId, entityBId);
 });
 ```
 
 ### 10.12 Recommended Plugin Order
 
-`CollisionManager` must be registered **after** `EntityManager` because it uses
+`KinematicPhysicsAdapter` must be registered **after** `EntityManager` because it uses
 `entity/query` to read entity positions at runtime:
 
 ```ts
@@ -1048,9 +1074,83 @@ createEngine({
     new SaveManager(),
     new GameStateManager(),
     new EntityManager(),
-    new CollisionManager(),   // ← after EntityManager
+    new KinematicPhysicsAdapter(),   // ← after EntityManager
     new SceneManager(),
     new TweenManager(),
+  ],
+});
+```
+
+### 10.13 Implementing a Custom Physics Backend
+
+Any class that implements `EnginePlugin` with `namespace = 'physics'` is a valid physics backend.  Implement the `PhysicsAdapter` marker interface and register handlers for all required events:
+
+```ts
+import type { Core } from 'inkshot-engine';
+import type { EnginePlugin, PhysicsAdapter } from 'inkshot-engine';
+
+export class MyRigidBodyAdapter implements EnginePlugin, PhysicsAdapter {
+  readonly namespace = 'physics' as const;
+  readonly dependencies = ['entity'] as const;
+
+  init(core: Core): void {
+    const { events } = core;
+
+    events.on(this.namespace, 'physics/body:add', (params) => {
+      // Create a rigid body in your physics engine and track it by entityId
+    });
+
+    events.on(this.namespace, 'physics/body:remove', ({ entityId }) => {
+      // Remove the rigid body
+    });
+
+    events.on(this.namespace, 'physics/tilemap:set', (params) => {
+      // Convert tile data to static collision bodies
+    });
+
+    events.on(this.namespace, 'physics/move', (params, output) => {
+      // Step the simulation and write resolved position to output
+      output.x = /* resolved x */;
+      output.y = /* resolved y */;
+      output.blockedX = /* … */;
+      output.blockedY = /* … */;
+    });
+
+    events.on(this.namespace, 'physics/query', (params, output) => {
+      output.entities = /* overlapping entity IDs */;
+    });
+
+    events.on(this.namespace, 'physics/raycast', (params, output) => {
+      output.hit = /* … */;
+    });
+
+    // grid helpers
+    events.on(this.namespace, 'physics/grid:snap',        (p, o) => { /* … */ });
+    events.on(this.namespace, 'physics/grid:worldToTile', (p, o) => { /* … */ });
+    events.on(this.namespace, 'physics/grid:tileToWorld', (p, o) => { /* … */ });
+
+    // Optional: handle impulses for rigid-body backends
+    events.on(this.namespace, 'physics/impulse', ({ entityId, forceX, forceY }) => {
+      // Apply impulse to the rigid body
+    });
+
+    // Emit physics/hit and physics/overlap notifications as appropriate
+    // during your simulation step (e.g. via collision callbacks).
+  }
+
+  destroy(core: Core): void {
+    core.events.removeNamespace(this.namespace);
+  }
+}
+```
+
+Register it like any other plugin — the engine guarantees only one `physics` namespace is active:
+
+```ts
+createEngine({
+  plugins: [
+    new EntityManager(),
+    new MyRigidBodyAdapter(),  // replaces KinematicPhysicsAdapter
   ],
 });
 ```
@@ -1082,7 +1182,7 @@ Built-in plugins in `src/plugins/`:
 | `SceneManager.ts` | `scene` | Scene registration, lifecycle management, and transition orchestration |
 | `EntityManager.ts` | `entity` | ECS-lite entity creation, destruction, and tag-based queries |
 | `SpriteAnimator.ts` | `animator` | Frame-based sprite animation driven by `EntityManager` entities |
-| `CollisionManager.ts` | `collision` | 2D collision detection, movement resolution, spatial queries, and raycasting |
+| `KinematicPhysicsAdapter.ts` | `physics` | Built-in kinematic physics backend — 2D AABB/circle/point collision, tilemap resolution, raycasting, spatial queries |
 | `TweenManager.ts` | `tween` | Property-based animation driver; hosts `Tween` and `Timeline` objects |
 | `Timeline.ts` | _(n/a)_ | Fluent builder for sequenced/parallel tween animations (used via `TweenManager`) |
 | `TilemapManager.ts` | `tilemap` | Chunk-based tilemap rendering with autotile, animated tiles, and multi-layer support |
@@ -1442,18 +1542,18 @@ The default factory creates a `Sprite` (when `config.texture` is set) or a small
 ## 13. Pathfinding System (PathfindingManager)
 
 The `PathfindingManager` is a built-in `EnginePlugin` (namespace `pathfinding`) that provides
-tile-based A* navigation.  It depends on both `CollisionManager` (for the tile grid) and
+tile-based A* navigation.  It depends on both the active physics backend (for the tile grid) and
 `EntityManager` (for optional dynamic obstacles).
 
 ### 13.1 Architecture
 
 ```
-collision/tilemap:set  ──► _buildGrid()         rebuild full cost grid
+physics/tilemap:set    ──► _buildGrid()         rebuild full cost grid
 tilemap/set-tile       ──► _updateCell(row,col)  O(1) single-cell update
 pathfinding/find       ──► _find(params)          A* search → path[]
 ```
 
-- **Cost grid** — built from the collision tile map.  `'solid'` tiles (and any tile with a
+- **Cost grid** — built from the physics tile map.  `'solid'` tiles (and any tile with a
   non-empty, non-passable shape) are set to `Infinity` (impassable).  All other cells default
   to cost `1`.  Costs can be overridden per tile value via `pathfinding/weight:set`.
 - **Dynamic obstacles** — when `includeDynamicObstacles: true` is set, entity positions are
@@ -1462,7 +1562,7 @@ pathfinding/find       ──► _find(params)          A* search → path[]
   the path).  Dynamic-obstacle results are never cached.
 - **Path cache** — static A* results are stored in a 512-entry **LRU** `Map` keyed by
   `"fromRow,fromCol→toRow,toCol"`.  The oldest entry is evicted on overflow, bounding memory
-  use on large open maps.  The cache is fully cleared on `collision/tilemap:set` and on
+  use on large open maps.  The cache is fully cleared on `physics/tilemap:set` and on
   `tilemap/set-tile` (which also updates the affected grid cell in O(1)).
 
 ### 13.2 A* Details
@@ -1508,13 +1608,13 @@ new PathfindingManager({ directions: 4 | 8 })
 ### 13.6 Usage
 
 ```ts
-import { createEngine, EntityManager, CollisionManager, TilemapManager, PathfindingManager } from 'inkshot-engine';
+import { createEngine, EntityManager, KinematicPhysicsAdapter, TilemapManager, PathfindingManager } from 'inkshot-engine';
 import type { PathfindingFindParams, PathfindingFindOutput } from 'inkshot-engine';
 
 const { core } = await createEngine({
   plugins: [
     new EntityManager(),
-    new CollisionManager(),
+    new KinematicPhysicsAdapter(),
     new TilemapManager(),
     new PathfindingManager(),   // or { directions: 4 } for 4-dir only
   ],
@@ -1567,7 +1667,7 @@ The grid is kept in sync with two event sources:
 
 | Event                   | Handler behaviour |
 |-------------------------|-------------------|
-| `collision/tilemap:set` | Full grid rebuild (`O(rows × cols)`) + cache clear |
+| `physics/tilemap:set`   | Full grid rebuild (`O(rows × cols)`) + cache clear |
 | `tilemap/set-tile`      | Single-cell update (`O(1)`) + cache clear |
 
 This means opening a door (`tilemap/set-tile` with an empty tile) or placing a block is

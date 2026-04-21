@@ -1,5 +1,5 @@
 import type { Filter } from 'pixi.js';
-import type { TileCollisionShape } from './collision.js';
+import type { TileCollisionShape } from './physics.js';
 
 // ---------------------------------------------------------------------------
 // Tileset

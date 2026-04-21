@@ -51,6 +51,7 @@
 - [x] 定義 `PhysicsAdapter` 統一介面（namespace: `physics`）— 所有後端必須實作相同的事件集
 - [x] 將原 `CollisionManager` 重構為 `KinematicPhysicsAdapter`（預設後端），使用 `physics/*` 事件
 - [x] 所有跨插件事件（TilemapManager、PathfindingManager）均以 `physics/tilemap:set` 統一通訊
+- [x] 更新 `ARCHITECTURE.md` 第 10 節，正確反映 `KinematicPhysicsAdapter` 與 `physics/*` 事件，並加入自訂後端實作指南
 - [ ] 提供 [Matter.js](https://brm.io/matter-js/) 適配器（輕量，適合瀏覽器），實作 `PhysicsAdapter` 介面
 - [ ] 提供 [Rapier.js](https://rapier.rs/) WASM 適配器（高效能剛體/軟體模擬），實作 `PhysicsAdapter` 介面
 - [ ] 剛體後端：`physics/tilemap:set` 轉換為靜態剛體網格（批次建立 ChainShape/BoxBody）
