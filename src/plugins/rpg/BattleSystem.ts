@@ -23,11 +23,6 @@ import type {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-let _battleCounter = 0;
-function generateBattleId(): string {
-  return `battle_${++_battleCounter}`;
-}
-
 // ---------------------------------------------------------------------------
 // BattleSystem
 // ---------------------------------------------------------------------------
@@ -61,10 +56,15 @@ export class BattleSystem implements EnginePlugin {
   readonly dependencies = ['stats', 'inventory'] as const;
 
   private readonly _battles: Map<string, BattleState> = new Map();
+  private _battleCounter = 0;
+
+  private _generateBattleId(): string {
+    return `battle_${++this._battleCounter}`;
+  }
 
   init(core: Core): void {
     core.events.on<BattleStartParams, BattleStartOutput>(this.namespace, 'battle/start', (p, output) => {
-      const battleId = p.battleId ?? generateBattleId();
+      const battleId = p.battleId ?? this._generateBattleId();
       const party: BattleCombatant[] = p.party.map((c) => ({ ...c, side: 'party', alive: true }));
       const enemies: BattleCombatant[] = p.enemies.map((c) => ({ ...c, side: 'enemy', alive: true }));
 
@@ -113,6 +113,17 @@ export class BattleSystem implements EnginePlugin {
           critical: result.critical,
           defeated: result.defeated,
         });
+      }
+
+      // Remove the temporary guard modifier applied this turn by any actor
+      // that chose 'guard'.  The modifier is only meant to last one turn.
+      for (const action of sorted) {
+        if (action.kind === 'guard') {
+          core.events.emitSync('stats/modifier:remove', {
+            actorId: action.actorId,
+            source: 'guard:temp',
+          });
+        }
       }
 
       output.results = results;

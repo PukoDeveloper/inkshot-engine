@@ -621,10 +621,11 @@ export class TweenManager implements EnginePlugin {
    * Does not affect `Timeline` instances (use {@link killAll} if needed).
    */
   killTarget(object: object): void {
-    for (const item of this._active) {
-      if (item instanceof Tween && item.target === object) {
-        item.kill();
-      }
+    const toKill = [...this._active].filter(
+      (item): item is Tween => item instanceof Tween && item.target === object,
+    );
+    for (const item of toKill) {
+      this.kill(item);
     }
   }
 

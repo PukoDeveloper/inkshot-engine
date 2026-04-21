@@ -151,7 +151,9 @@ describe('InputRecorder', () => {
       // The key was pressed during the tick at frame 1 (before the frame counter
       // increments at the start of the tick handler — so it lands on frame 1).
       expect(entry).toBeDefined();
-      expect(typeof entry!.frame).toBe('number');
+      // The key was pressed between frame 1 and frame 2 of the recording;
+      // the after-phase listener records the current recording frame at that point.
+      expect(entry!.frame).toBe(1);
     });
 
     it('returns null recording when stop is called without start', () => {

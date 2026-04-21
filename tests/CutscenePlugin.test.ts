@@ -30,10 +30,14 @@ describe('CutscenePlugin', () => {
   });
 
   describe('cutscene/define', () => {
-    it('registers a cutscene definition', () => {
+    it('registers a cutscene definition so it can be played', () => {
       core.events.emitSync('cutscene/define', { cutscene: makeDef({ id: 'intro' }) });
+      // A registered cutscene must be playable; verify by playing it and
+      // confirming the engine transitions to 'playing' state.
+      core.events.emitSync('cutscene/play', { id: 'intro' });
       const { output } = core.events.emitSync<object, CutsceneStateOutput>('cutscene/state', {});
-      expect(output.status).toBe('idle');
+      expect(output.status).toBe('playing');
+      expect(output.cutsceneId).toBe('intro');
     });
   });
 

@@ -21,11 +21,6 @@ import type {
 // ID generation
 // ---------------------------------------------------------------------------
 
-let _nextLightId = 0;
-function generateLightId(): string {
-  return `light_${++_nextLightId}`;
-}
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -91,6 +86,13 @@ export class LightingPlugin implements EnginePlugin {
   /** The container that holds the light map layer. */
   private _layer: Container | null = null;
 
+  /** Per-instance light ID counter to avoid cross-instance collisions. */
+  private _nextLightId = 0;
+
+  private _generateLightId(): string {
+    return `light_${++this._nextLightId}`;
+  }
+
   constructor(opts: LightingPluginOptions = {}) {
     this._opts = {
       quality: opts.quality ?? 'medium',
@@ -124,7 +126,7 @@ export class LightingPlugin implements EnginePlugin {
 
     // ── EventBus API ─────────────────────────────────────────────────────
     core.events.on('lighting', 'lighting/light:add', (p: LightAddParams, output: LightAddOutput) => {
-      const id = p.id ?? generateLightId();
+      const id = p.id ?? this._generateLightId();
       const light: PointLight = {
         id,
         x: p.x,
@@ -176,6 +178,10 @@ export class LightingPlugin implements EnginePlugin {
       this._gfx.destroy();
       this._gfx = null;
     }
+    if (this._layer) {
+      this._layer.parent?.removeChild(this._layer as Parameters<typeof this._layer.parent.removeChild>[0]);
+      this._layer = null;
+    }
     this._lights.clear();
     core.events.removeNamespace('lighting');
   }
@@ -208,6 +214,9 @@ export class LightingPlugin implements EnginePlugin {
     );
     const vw = camOut.viewportWidth ?? 800;
     const vh = camOut.viewportHeight ?? 600;
+    const camX = camOut.x ?? 0;
+    const camY = camOut.y ?? 0;
+    const camZoom = camOut.zoom ?? 1;
 
     const gfx = this._gfx;
     gfx.clear();
@@ -231,9 +240,9 @@ export class LightingPlugin implements EnginePlugin {
         Math.round(b * 255);
 
       // Offset from world-space to screen-space.
-      const screenX = (light.x - camOut.x) * camOut.zoom + vw / 2;
-      const screenY = (light.y - camOut.y) * camOut.zoom + vh / 2;
-      const screenR = light.radius * camOut.zoom;
+      const screenX = (light.x - camX) * camZoom + vw / 2;
+      const screenY = (light.y - camY) * camZoom + vh / 2;
+      const screenR = light.radius * camZoom;
 
       // Draw concentric rings for a simple radial falloff effect.
       const steps = 8;
