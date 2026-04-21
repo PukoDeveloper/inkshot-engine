@@ -132,11 +132,12 @@ export type {
   SceneChangedParams,
 } from './types/scene.js';
 
-// Collision system
-export { CollisionManager } from './plugins/CollisionManager.js';
-export type { CollisionManagerOptions } from './plugins/CollisionManager.js';
-export { CollisionLayer } from './types/collision.js';
+// Physics system (unified adapter interface + kinematic built-in backend)
+export { KinematicPhysicsAdapter } from './plugins/KinematicPhysicsAdapter.js';
+export type { KinematicPhysicsAdapterOptions } from './plugins/KinematicPhysicsAdapter.js';
+export { CollisionLayer } from './types/physics.js';
 export type {
+  PhysicsAdapter,
   TileCollisionShape,
   TileShapeContext,
   TileShapeResolver,
@@ -146,24 +147,25 @@ export type {
   PointShape,
   Collider,
   TileCollisionMapData,
-  ColliderAddParams,
-  ColliderRemoveParams,
-  TilemapSetParams,
-  CollisionMoveParams,
-  CollisionMoveOutput,
-  CollisionQueryParams,
-  CollisionQueryOutput,
-  CollisionRaycastParams,
-  CollisionRaycastOutput,
-  GridSnapParams,
-  GridSnapOutput,
-  WorldToTileParams,
-  WorldToTileOutput,
-  TileToWorldParams,
-  TileToWorldOutput,
-  CollisionHitParams,
-  CollisionOverlapParams,
-} from './types/collision.js';
+  PhysicsBodyAddParams,
+  PhysicsBodyRemoveParams,
+  PhysicsTilemapSetParams,
+  PhysicsMoveParams,
+  PhysicsMoveOutput,
+  PhysicsImpulseParams,
+  PhysicsQueryParams,
+  PhysicsQueryOutput,
+  PhysicsRaycastParams,
+  PhysicsRaycastOutput,
+  PhysicsGridSnapParams,
+  PhysicsGridSnapOutput,
+  PhysicsWorldToTileParams,
+  PhysicsWorldToTileOutput,
+  PhysicsTileToWorldParams,
+  PhysicsTileToWorldOutput,
+  PhysicsHitParams,
+  PhysicsOverlapParams,
+} from './types/physics.js';
 
 // Entity system
 export { EntityManager } from './plugins/EntityManager.js';

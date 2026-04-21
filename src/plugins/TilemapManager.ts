@@ -86,7 +86,7 @@ interface AnimatedSpriteRef {
  *   selects the correct tile variant automatically for the placed cell and all
  *   affected neighbours.
  * - **Collision sync** — layers marked with `collider: true` automatically
- *   push their tile data to `CollisionManager` via `collision/tilemap:set`.
+ *   push their tile data to the active physics backend via `physics/tilemap:set`.
  *
  * ### EventBus API
  * | Event                       | Params / Output                                     |
@@ -730,7 +730,7 @@ export class TilemapManager implements EnginePlugin {
   }
 
   /**
-   * Push the current state of `layerDef.data` to the `CollisionManager` as a
+   * Push the current state of `layerDef.data` to the active physics backend as a
    * tile shape grid.
    */
   private _syncCollision(layerDef: TilemapLayerDef, mapData: TilemapData): void {
@@ -743,7 +743,7 @@ export class TilemapManager implements EnginePlugin {
       );
     }
 
-    this._core.events.emitSync('collision/tilemap:set', {
+    this._core.events.emitSync('physics/tilemap:set', {
       tileSize: mapData.tileWidth,
       layers: rows,
       tileShapes: layerDef.tileShapes ?? {},

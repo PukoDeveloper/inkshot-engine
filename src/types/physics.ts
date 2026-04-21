@@ -1,4 +1,43 @@
 // ---------------------------------------------------------------------------
+// PhysicsAdapter — abstract interface every physics backend must satisfy
+// ---------------------------------------------------------------------------
+
+/**
+ * Abstract contract that every physics backend must implement.
+ *
+ * Register event handlers for **all** events listed below during `init`.
+ * The engine always has **exactly one** active physics backend at a time.
+ *
+ * ### Required events to handle (input)
+ * | Event                        | Description                                     |
+ * |------------------------------|-------------------------------------------------|
+ * | `physics/body:add`           | Attach a collider / rigid-body to an entity     |
+ * | `physics/body:remove`        | Detach a collider / rigid-body from an entity   |
+ * | `physics/tilemap:set`        | Register/replace the active tile collision map  |
+ * | `physics/move`               | Move with BODY-layer collision resolution       |
+ * | `physics/query`              | Spatial overlap query                           |
+ * | `physics/raycast`            | Cast a ray; return the first hit                |
+ * | `physics/grid:snap`          | Snap a pixel position to the tile grid          |
+ * | `physics/grid:worldToTile`   | Convert pixel coords → tile row/col             |
+ * | `physics/grid:tileToWorld`   | Convert tile row/col → pixel corner coords      |
+ *
+ * ### Optional events to handle (input)
+ * | Event                        | Description                                     |
+ * |------------------------------|-------------------------------------------------|
+ * | `physics/impulse`            | Apply an impulse to a rigid-body entity         |
+ *
+ * ### Notification events to emit (output)
+ * | Event                        | Description                                     |
+ * |------------------------------|-------------------------------------------------|
+ * | `physics/hit`                | First-frame hitbox ↔ hurtbox contact            |
+ * | `physics/overlap`            | Sensor overlap begin / end                      |
+ */
+export interface PhysicsAdapter {
+  /** Must equal `'physics'` so the engine recognises it as the active backend. */
+  readonly namespace: 'physics';
+}
+
+// ---------------------------------------------------------------------------
 // Collider shapes
 // ---------------------------------------------------------------------------
 
@@ -66,7 +105,7 @@ export const CollisionLayer = {
 } as const;
 
 // ---------------------------------------------------------------------------
-// Collider record (stored in CollisionManager's registry)
+// Collider record (stored in KinematicPhysicsAdapter's registry)
 // ---------------------------------------------------------------------------
 
 /** A collider attached to an entity. */
@@ -101,7 +140,7 @@ export interface Collider {
  * | `'slope-sw'` | ◥ Ceiling slope ascending left-to-right. Blocks upward movement.  |
  *
  * Pass any other string for a custom shape handled by
- * {@link CollisionManagerOptions.customShapeResolvers}.
+ * {@link KinematicPhysicsAdapterOptions.customShapeResolvers}.
  */
 export type TileCollisionShape =
   | 'solid'
@@ -165,7 +204,7 @@ export type TileShapeResolver = (
 // Tilemap collision data
 // ---------------------------------------------------------------------------
 
-/** Tile collision map registered via `collision/tilemap:set`. */
+/** Tile collision map registered via `physics/tilemap:set`. */
 export interface TileCollisionMapData {
   /** Size of each tile in pixels (square tiles assumed). */
   tileSize: number;
@@ -180,7 +219,7 @@ export interface TileCollisionMapData {
    * Tile values absent from this record are treated as passable.
    * Use {@link TileCollisionShape} strings for built-in behaviours, or any
    * other string for custom shapes handled by
-   * {@link CollisionManagerOptions.customShapeResolvers}.
+   * {@link KinematicPhysicsAdapterOptions.customShapeResolvers}.
    *
    * @example
    * ```ts
@@ -195,11 +234,11 @@ export interface TileCollisionMapData {
 }
 
 // ---------------------------------------------------------------------------
-// Event params — collider registration
+// Event params — body registration
 // ---------------------------------------------------------------------------
 
-/** Params for `collision/collider:add`. */
-export interface ColliderAddParams {
+/** Params for `physics/body:add`. */
+export interface PhysicsBodyAddParams {
   /** ID of the entity to attach the collider to. */
   entityId: string;
   shape: ColliderShape;
@@ -209,20 +248,20 @@ export interface ColliderAddParams {
   movementMode?: 'pixel' | 'grid';
 }
 
-/** Params for `collision/collider:remove`. */
-export interface ColliderRemoveParams {
+/** Params for `physics/body:remove`. */
+export interface PhysicsBodyRemoveParams {
   entityId: string;
 }
 
-/** Params for `collision/tilemap:set`. */
-export interface TilemapSetParams extends TileCollisionMapData {}
+/** Params for `physics/tilemap:set`. */
+export interface PhysicsTilemapSetParams extends TileCollisionMapData {}
 
 // ---------------------------------------------------------------------------
 // Event params — movement
 // ---------------------------------------------------------------------------
 
-/** Params for `collision/move`. */
-export interface CollisionMoveParams {
+/** Params for `physics/move`. */
+export interface PhysicsMoveParams {
   /** ID of the entity to move. Must have a `BODY` collider registered. */
   entityId: string;
   /** Desired X displacement in pixels. */
@@ -231,8 +270,8 @@ export interface CollisionMoveParams {
   dy: number;
 }
 
-/** Output for `collision/move`. */
-export interface CollisionMoveOutput {
+/** Output for `physics/move`. */
+export interface PhysicsMoveOutput {
   /** Resolved world X position after collision. */
   x: number;
   /** Resolved world Y position after collision. */
@@ -244,11 +283,25 @@ export interface CollisionMoveOutput {
 }
 
 // ---------------------------------------------------------------------------
+// Event params — impulse
+// ---------------------------------------------------------------------------
+
+/** Params for `physics/impulse`. */
+export interface PhysicsImpulseParams {
+  /** ID of the entity to apply the impulse to. Must have a physics body registered. */
+  entityId: string;
+  /** Impulse force on the X axis in world-space units. */
+  forceX: number;
+  /** Impulse force on the Y axis in world-space units. */
+  forceY: number;
+}
+
+// ---------------------------------------------------------------------------
 // Event params — spatial query
 // ---------------------------------------------------------------------------
 
-/** Params for `collision/query`. */
-export interface CollisionQueryParams {
+/** Params for `physics/query`. */
+export interface PhysicsQueryParams {
   /** Shape used as the query volume. */
   shape: ColliderShape;
   /** World-space origin for the query shape. */
@@ -259,8 +312,8 @@ export interface CollisionQueryParams {
   excludeEntityId?: string;
 }
 
-/** Output for `collision/query`. */
-export interface CollisionQueryOutput {
+/** Output for `physics/query`. */
+export interface PhysicsQueryOutput {
   /** IDs of entities whose colliders overlap the query shape. */
   entities: string[];
 }
@@ -269,8 +322,8 @@ export interface CollisionQueryOutput {
 // Event params — raycast
 // ---------------------------------------------------------------------------
 
-/** Params for `collision/raycast`. */
-export interface CollisionRaycastParams {
+/** Params for `physics/raycast`. */
+export interface PhysicsRaycastParams {
   /** World-space ray origin. */
   origin: { x: number; y: number };
   /**
@@ -284,8 +337,8 @@ export interface CollisionRaycastParams {
   layerMask: number;
 }
 
-/** Output for `collision/raycast`. */
-export interface CollisionRaycastOutput {
+/** Output for `physics/raycast`. */
+export interface PhysicsRaycastOutput {
   /** Whether the ray hit anything. */
   hit: boolean;
   /** ID of the first entity hit, if the ray stopped at an entity. */
@@ -302,40 +355,40 @@ export interface CollisionRaycastOutput {
 // Event params — grid utilities
 // ---------------------------------------------------------------------------
 
-/** Params for `collision/grid:snap`. */
-export interface GridSnapParams {
+/** Params for `physics/grid:snap`. */
+export interface PhysicsGridSnapParams {
   x: number;
   y: number;
 }
 
-/** Output for `collision/grid:snap`. */
-export interface GridSnapOutput {
+/** Output for `physics/grid:snap`. */
+export interface PhysicsGridSnapOutput {
   /** X position snapped to the nearest tile-grid corner. */
   x: number;
   /** Y position snapped to the nearest tile-grid corner. */
   y: number;
 }
 
-/** Params for `collision/grid:worldToTile`. */
-export interface WorldToTileParams {
+/** Params for `physics/grid:worldToTile`. */
+export interface PhysicsWorldToTileParams {
   x: number;
   y: number;
 }
 
-/** Output for `collision/grid:worldToTile`. */
-export interface WorldToTileOutput {
+/** Output for `physics/grid:worldToTile`. */
+export interface PhysicsWorldToTileOutput {
   col: number;
   row: number;
 }
 
-/** Params for `collision/grid:tileToWorld`. */
-export interface TileToWorldParams {
+/** Params for `physics/grid:tileToWorld`. */
+export interface PhysicsTileToWorldParams {
   col: number;
   row: number;
 }
 
-/** Output for `collision/grid:tileToWorld`. */
-export interface TileToWorldOutput {
+/** Output for `physics/grid:tileToWorld`. */
+export interface PhysicsTileToWorldOutput {
   /** World X of the tile's top-left corner. */
   x: number;
   /** World Y of the tile's top-left corner. */
@@ -343,19 +396,19 @@ export interface TileToWorldOutput {
 }
 
 // ---------------------------------------------------------------------------
-// Notification events (emitted by CollisionManager, not used as input)
+// Notification events (emitted by the physics backend, not used as input)
 // ---------------------------------------------------------------------------
 
-/** Params emitted with `collision/hit` when a hitbox first contacts a hurtbox. */
-export interface CollisionHitParams {
+/** Params emitted with `physics/hit` when a hitbox first contacts a hurtbox. */
+export interface PhysicsHitParams {
   /** Entity ID of the attacker (owns the hitbox). */
   attackerId: string;
   /** Entity ID of the victim (owns the hurtbox). */
   victimId: string;
 }
 
-/** Params emitted with `collision/overlap` when a sensor overlap begins or ends. */
-export interface CollisionOverlapParams {
+/** Params emitted with `physics/overlap` when a sensor overlap begins or ends. */
+export interface PhysicsOverlapParams {
   entityAId: string;
   entityBId: string;
   /** `true` when the overlap begins; `false` when it ends. */

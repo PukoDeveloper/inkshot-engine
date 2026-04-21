@@ -220,7 +220,7 @@ export interface TilemapLayerDef {
 
   /**
    * When `true`, the layer's tile shape data is automatically synchronised
-   * to the `CollisionManager` via `collision/tilemap:set`.
+   * to the active physics backend via `physics/tilemap:set`.
    */
   collider?: boolean;
 
@@ -230,7 +230,7 @@ export interface TilemapLayerDef {
    *
    * Use {@link TileCollisionShape} strings for built-in shapes (`'solid'`,
    * `'top-only'`, `'slope-ne'`, etc.), or any other string for custom shapes
-   * handled by `CollisionManagerOptions.customShapeResolvers`.
+   * handled by `KinematicPhysicsAdapterOptions.customShapeResolvers`.
    *
    * @example
    * ```ts

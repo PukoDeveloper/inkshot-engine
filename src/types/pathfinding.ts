@@ -157,7 +157,7 @@ export interface PathfindingWeightSetParams {
  * Parameters for `pathfinding/cache:clear`.
  *
  * Manually clears cached paths.  Useful when the game world changes in a way
- * that does not trigger `collision/tilemap:set` or `tilemap/set-tile` (e.g. a
+ * that does not trigger `physics/tilemap:set` or `tilemap/set-tile` (e.g. a
  * script-driven layout shift).
  *
  * @example
