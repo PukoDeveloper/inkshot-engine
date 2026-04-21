@@ -139,6 +139,15 @@ export type { EventSpy } from './core/EventBus.js';
 export { SaveManager } from './plugins/save/SaveManager.js';
 export { LocalStorageSaveAdapter } from './plugins/save/LocalStorageSaveAdapter.js';
 export type { StorageLike, LocalStorageSaveAdapterOptions } from './plugins/save/LocalStorageSaveAdapter.js';
+export { IndexedDBSaveAdapter } from './plugins/save/IndexedDBSaveAdapter.js';
+export type { IDBStoreLike, IndexedDBSaveAdapterOptions } from './plugins/save/IndexedDBSaveAdapter.js';
+export { SaveMigrationPlugin } from './plugins/save/SaveMigrationPlugin.js';
+export type {
+  SlotMigrateFn,
+  GlobalMigrateFn,
+  SaveMigrationStep,
+  SaveMigrationPluginOptions,
+} from './plugins/save/SaveMigrationPlugin.js';
 export type {
   SlotMeta,
   SlotData,

@@ -152,9 +152,9 @@
 - [ ] 事件：`network/connect`、`network/disconnect`、`network/message`
 
 ### 13. 資料持久化擴充 (Persistence Adapters)
-- [ ] 新增 `IndexedDBSaveAdapter`（適合大型存檔、二進位資料）
+- [x] 新增 `IndexedDBSaveAdapter`（適合大型存檔、二進位資料）
 - [ ] 新增 `CloudSaveAdapter` 抽象介面（供第三方後端實作）
-- [ ] 存檔版本遷移（migration）工具，處理舊版存檔格式升級
+- [x] 存檔版本遷移（migration）工具，處理舊版存檔格式升級
 
 ### 14. 熱重載與插件動態更新 (Hot Reload / Live Update)
 - [ ] 支援在不重啟引擎的情況下重新載入場景或 plugin
