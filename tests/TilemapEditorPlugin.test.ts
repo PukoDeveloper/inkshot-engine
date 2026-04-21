@@ -455,10 +455,8 @@ describe('TilemapEditorPlugin', () => {
         0, 0, 0, 0,
         0, 0, 0, 0,
       ];
-      const { editor } = createCoreStub();
-      const { core: c2 } = createCoreStub();
 
-      // Need a fresh core for this test
+      // Build a dedicated core for this test so it doesn't share event listeners
       const events2 = new EventBus();
       const worldLayer2 = createWorldLayerStub();
       events2.on('_s', 'renderer/layer', (_p: { name: string }, o: { layer: unknown }) => {
@@ -489,8 +487,7 @@ describe('TilemapEditorPlugin', () => {
       expect(getTile(core2, 0, 2, 3)).toBe(9);
       expect(getTile(core2, 0, 3, 3)).toBe(9);
 
-      void editor;
-      void c2;
+      void tm2; // prevent unused-variable warnings; tm2 is needed for plugin wiring
     });
   });
 

@@ -625,7 +625,9 @@ export class TilemapEditorPlugin implements EnginePlugin {
       camOutput &&
       typeof camOutput.x === 'number' &&
       typeof camOutput.zoom === 'number' &&
-      camOutput.zoom > 0
+      camOutput.zoom > 0 &&
+      typeof camOutput.viewportWidth === 'number' &&
+      typeof camOutput.viewportHeight === 'number'
     ) {
       const vpW = camOutput.viewportWidth;
       const vpH = camOutput.viewportHeight;
