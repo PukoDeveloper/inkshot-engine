@@ -1,5 +1,5 @@
-import type { Core } from '../core/Core.js';
-import type { EnginePlugin } from '../types/plugin.js';
+import type { Core } from '../../core/Core.js';
+import type { EnginePlugin } from '../../types/plugin.js';
 import type {
   GlobalSaveData,
   SlotData,
@@ -18,7 +18,7 @@ import type {
   SaveGlobalGetOutput,
   SaveGlobalSaveOutput,
   SaveGlobalLoadOutput,
-} from '../types/save.js';
+} from '../../types/save.js';
 
 /**
  * Built-in plugin that manages in-memory save slots and global save data.

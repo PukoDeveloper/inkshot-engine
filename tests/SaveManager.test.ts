@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { EventBus } from '../src/core/EventBus.js';
-import { SaveManager } from '../src/plugins/SaveManager.js';
+import { SaveManager } from '../src/plugins/save/SaveManager.js';
 import type { Core } from '../src/core/Core.js';
 import type {
   SaveSlotGetOutput,
