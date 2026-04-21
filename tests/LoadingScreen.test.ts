@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventBus } from '../src/core/EventBus.js';
-import { LoadingScreen } from '../src/plugins/LoadingScreen.js';
-import { SceneManager } from '../src/plugins/SceneManager.js';
+import { LoadingScreen } from '../src/plugins/ui/LoadingScreen.js';
+import { SceneManager } from '../src/plugins/scene/SceneManager.js';
 import type { Core } from '../src/core/Core.js';
 import type { SceneDescriptor } from '../src/types/scene.js';
 

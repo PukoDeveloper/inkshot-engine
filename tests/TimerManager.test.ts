@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventBus } from '../src/core/EventBus.js';
-import { TimerManager } from '../src/plugins/TimerManager.js';
+import { TimerManager } from '../src/plugins/gameplay/TimerManager.js';
 import type { Core } from '../src/core/Core.js';
 import type {
   TimerOnceParams,

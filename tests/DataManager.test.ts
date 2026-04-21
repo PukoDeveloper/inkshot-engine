@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { EventBus } from '../src/core/EventBus.js';
-import { DataManager } from '../src/plugins/DataManager.js';
+import { DataManager } from '../src/plugins/data/DataManager.js';
 import type { Core } from '../src/core/Core.js';
 import type { DataLoadOutput, DataGetOutput, DataGetAllOutput, DataUnloadOutput } from '../src/types/data.js';
 

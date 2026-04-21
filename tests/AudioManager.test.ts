@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventBus } from '../src/core/EventBus.js';
-import { AudioManager } from '../src/plugins/AudioManager.js';
+import { AudioManager } from '../src/plugins/audio/AudioManager.js';
 import type { Core } from '../src/core/Core.js';
 import type {
   AudioLoadOutput,

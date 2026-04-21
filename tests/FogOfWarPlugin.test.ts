@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventBus } from '../src/core/EventBus.js';
-import { FogOfWarPlugin } from '../src/plugins/FogOfWarPlugin.js';
+import { FogOfWarPlugin } from '../src/plugins/world/FogOfWarPlugin.js';
 import type { Core } from '../src/core/Core.js';
 import type {
   FogConfig,

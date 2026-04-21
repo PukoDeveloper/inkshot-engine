@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventBus } from '../src/core/EventBus.js';
-import { CutscenePlugin } from '../src/plugins/CutscenePlugin.js';
+import { CutscenePlugin } from '../src/plugins/gameplay/CutscenePlugin.js';
 import type { Core } from '../src/core/Core.js';
 import type {
   CutsceneDef,

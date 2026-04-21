@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventBus } from '../src/core/EventBus.js';
 import { PlayerController } from '../src/plugins/rpg/PlayerController.js';
-import { EntityManager } from '../src/plugins/EntityManager.js';
-import { GameStateManager } from '../src/plugins/GameStateManager.js';
+import { EntityManager } from '../src/plugins/entity/EntityManager.js';
+import { GameStateManager } from '../src/plugins/gameplay/GameStateManager.js';
 import type { Core } from '../src/core/Core.js';
 import type { PlayerMovedParams, PlayerInteractParams } from '../src/types/player.js';
 

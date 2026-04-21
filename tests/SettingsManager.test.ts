@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventBus } from '../src/core/EventBus.js';
-import { SettingsManager } from '../src/plugins/SettingsManager.js';
+import { SettingsManager } from '../src/plugins/data/SettingsManager.js';
 import type { Core } from '../src/core/Core.js';
 import type {
   SettingsGetOutput,

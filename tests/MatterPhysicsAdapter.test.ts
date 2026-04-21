@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventBus } from '../src/core/EventBus.js';
-import { EntityManager } from '../src/plugins/EntityManager.js';
-import { MatterPhysicsAdapter } from '../src/plugins/MatterPhysicsAdapter.js';
-import type { MatterLib, MatterBody, MatterEngine, MatterComposite } from '../src/plugins/MatterPhysicsAdapter.js';
+import { EntityManager } from '../src/plugins/entity/EntityManager.js';
+import { MatterPhysicsAdapter } from '../src/plugins/physics/MatterPhysicsAdapter.js';
+import type { MatterLib, MatterBody, MatterEngine, MatterComposite } from '../src/plugins/physics/MatterPhysicsAdapter.js';
 import { CollisionLayer } from '../src/types/physics.js';
 import type {
   PhysicsMoveOutput,
