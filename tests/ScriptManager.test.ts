@@ -12,7 +12,6 @@ import type {
   ScriptStateGetOutput,
   ScriptRegisterCommandParams,
 } from '../src/types/script.js';
-import type { GamePhase } from '../src/types/game.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1684,13 +1683,6 @@ describe('ScriptManager', () => {
     });
 
     it('restores "playing" for each say in a consecutive sequence', async () => {
-      const phases: GamePhase[] = [];
-      // Record the state between each dialogue/advanced call.
-      core.events.on('test', 'dialogue/advanced', () => {
-        // This fires AFTER our internal advance handler already restored state,
-        // so we check with a microtask flush after each advance below.
-      });
-
       core.events.emitSync('script/define', {
         script: {
           id: 'say-seq',
@@ -1713,8 +1705,6 @@ describe('ScriptManager', () => {
       core.events.emitSync('dialogue/advanced', {});
       await flushMicrotasks();
       expect(gsm.state).toBe('playing'); // fully restored
-
-      void phases; // suppress unused-variable lint warning
     });
   });
 
