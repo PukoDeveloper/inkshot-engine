@@ -831,7 +831,7 @@ createEngine()
     ├── ResourceManager.init()      → registers asset/preload, asset/load, …
     ├── AudioManager.init()         → registers audio/play, audio/stop, …
     ├── LocalizationManager.init()  → registers i18n/load, i18n/t, …
-    ├── InputManager.init()         → attaches keyboard / pointer listeners
+    ├── InputManager.init()         → attaches keyboard / pointer / touch / gesture listeners
     ├── SaveManager.init()          → registers save/slot:*, save/global:*
     ├── GameStateManager.init()     → registers game/state:set, game/state:get
     ├── EntityManager.init()        → registers entity/create, entity/destroy, …
@@ -1288,7 +1288,8 @@ Built-in plugins in `src/plugins/`:
 | `AudioManager.ts` | `audio` | Web Audio API playback with spatial audio (`PannerNode`), categories, fade, pause/resume |
 | `SaveManager.ts` | `save` | In-memory save slots and global save data |
 | `GameStateManager.ts` | `game` | High-level game phase state machine |
-| `InputManager.ts` | `input` | Keyboard, pointer, and gamepad input; action bindings; per-frame axes cache |
+| `InputManager.ts` | `input` | Keyboard, pointer, multi-touch, gesture (pinch/rotate/swipe), and gamepad input; unified action bindings; per-frame axes cache |
+| `InputRecorder.ts` | `input-recorder` | Frame-accurate recording and playback of all `input/*` events; JSON-serialisable `InputRecording`; SaveManager integration |
 | `TimerManager.ts` | `timer` | One-shot timers, repeating intervals, cooldown tracking, and `cancel-all` |
 | `ResourceManager.ts` | `assets` | Multi-mode asset loading with cache-first guarantee |
 | `LocalizationManager.ts` | `i18n` | JSON locale loading, key lookup, variable substitution, and token interpolation |

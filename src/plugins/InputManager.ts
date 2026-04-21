@@ -19,10 +19,17 @@ import type {
   InputGamepadVibrateParams,
   InputGamepadConnectedParams,
   InputGamepadDisconnectedParams,
+  InputTouchStartParams,
+  InputTouchEndParams,
+  InputTouchMoveParams,
+  InputGesturePinchParams,
+  InputGestureRotateParams,
+  InputGestureSwipeParams,
+  InputTouchStateOutput,
 } from '../types/input.js';
 
 /**
- * Built-in plugin that handles keyboard, pointer, and gamepad input.
+ * Built-in plugin that handles keyboard, pointer, gamepad, and touch/gesture input.
  *
  * `InputManager` implements a **dual-track** input model:
  *
@@ -37,7 +44,13 @@ import type {
  * | `input/pointer:down`        | A pointer button transitions released → pressed             |
  * | `input/pointer:up`          | A pointer button transitions pressed → released             |
  * | `input/pointer:move`        | Pointer moved — throttled to **one event per frame**        |
- * | `input/action:triggered`    | A bound action key or button changed state                  |
+ * | `input/touch:start`         | A new touch contact begins                                  |
+ * | `input/touch:end`           | A touch contact ends or is cancelled                        |
+ * | `input/touch:move`          | Touch point moved — throttled to **one event per frame**    |
+ * | `input/gesture:pinch`       | Two-finger pinch/zoom — one event per frame while active    |
+ * | `input/gesture:rotate`      | Two-finger rotation — one event per frame while active      |
+ * | `input/gesture:swipe`       | Single-finger swipe detected on touch lift                  |
+ * | `input/action:triggered`    | A bound action key, button, or gesture changed state        |
  * | `input/gamepad:button:down` | A gamepad button transitions released → pressed             |
  * | `input/gamepad:button:up`   | A gamepad button transitions pressed → released             |
  * | `input/gamepad:axes`        | Per-frame raw analog axes (when any axis > 0.05 deadzone)   |
@@ -47,27 +60,38 @@ import type {
  * ### Pull (synchronous query)
  * Current state can be queried at any time without subscribing to events:
  *
- * | Event                  | Returns                                     |
- * |------------------------|---------------------------------------------|
- * | `input/key:pressed`    | `output.pressed: boolean`                   |
- * | `input/pointer:state`  | `output.position`, `output.buttons`         |
+ * | Event                  | Returns                                          |
+ * |------------------------|--------------------------------------------------|
+ * | `input/key:pressed`    | `output.pressed: boolean`                        |
+ * | `input/pointer:state`  | `output.position`, `output.buttons`              |
+ * | `input/touch:state`    | `output.touches` — Map of active touch points    |
  *
  * Direct accessor methods (`isKeyPressed`, `getPointerPosition`,
- * `isPointerButtonDown`, `isGamepadButtonPressed`, `getGamepadAxes`) are also
- * available for code that holds a reference to the plugin instance.
+ * `isPointerButtonDown`, `isGamepadButtonPressed`, `getGamepadAxes`,
+ * `getActiveTouches`) are also available for code that holds a plugin reference.
  *
  * ### Action bindings
- * Logical actions decouple game code from physical keys.  Both keyboard codes
- * and gamepad buttons (`'Gamepad:<index>:<button>'`) can be bound:
+ * Logical actions decouple game code from physical keys.  Keyboard codes,
+ * gamepad buttons (`'Gamepad:<index>:<button>'`), and gesture codes can all
+ * be bound:
  * ```ts
  * core.events.emitSync('input/action:bind', {
  *   action: 'jump',
  *   codes: ['Space', 'Gamepad:0:0'],
  * });
- * core.events.on('myGame', 'input/action:triggered', (params) => {
- *   if (params.action === 'jump' && params.state === 'pressed') player.jump();
+ * core.events.emitSync('input/action:bind', {
+ *   action: 'zoom-in',
+ *   codes: ['Gesture:pinch:out'],   // pinch fingers apart
+ * });
+ * core.events.emitSync('input/action:bind', {
+ *   action: 'dash-right',
+ *   codes: ['Gesture:swipe:right'],
  * });
  * ```
+ *
+ * Supported gesture codes:
+ * - `'Gesture:swipe:left'` | `'Gesture:swipe:right'` | `'Gesture:swipe:up'` | `'Gesture:swipe:down'`
+ * - `'Gesture:pinch:in'` (fingers moving closer) | `'Gesture:pinch:out'` (fingers moving apart)
  *
  * ### Gamepad axis binding
  * Map analog axes to logical actions with `input/gamepad:axis:bind`.
@@ -82,7 +106,9 @@ import type {
  * ### Performance safeguards
  * - `keydown` auto-repeat events are suppressed; `input/key:down` fires once.
  * - `pointermove` DOM events are batched; one `input/pointer:move` per frame.
- * - `window blur` clears all pressed-key and gamepad state to prevent stuck inputs.
+ * - `input/touch:move`, `input/gesture:pinch`, `input/gesture:rotate` are
+ *   throttled to one emission per frame via the `core/tick` before-phase.
+ * - `window blur` clears all pressed-key, pointer, and gamepad state.
  * - Gamepad axes are snapshotted once per frame; `getGamepadAxes()` reads the
  *   frame-local cache for consistency.
  *
@@ -178,6 +204,63 @@ export class InputManager implements EnginePlugin {
   private readonly _gamepadAxesCache = new Map<number, readonly number[]>();
 
   // ---------------------------------------------------------------------------
+  // Multi-touch state
+  // ---------------------------------------------------------------------------
+
+  /**
+   * All currently active touch points keyed by `pointerId`.
+   * `startX`/`startY`/`startTime` capture where and when the touch began,
+   * enabling swipe detection on lift.
+   */
+  private readonly _activeTouches = new Map<
+    number,
+    { x: number; y: number; startX: number; startY: number; startTime: number }
+  >();
+
+  /**
+   * Pending touch-move updates buffered until the next `core/tick`.
+   * Maps pointerId → latest position for that frame.
+   */
+  private readonly _pendingTouchMoves = new Map<number, { x: number; y: number }>();
+
+  /**
+   * Last-emitted positions per touch point, used to compute dx/dy on flush.
+   */
+  private readonly _lastEmittedTouchPos = new Map<number, { x: number; y: number }>();
+
+  // ---------------------------------------------------------------------------
+  // Two-finger gesture state (pinch + rotate)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Initialised when the second finger makes contact; cleared when any touch
+   * drops below 2 active points.
+   */
+  private _pinchRotateState: {
+    initialDist: number;
+    lastDist: number;
+    initialAngle: number;
+    lastAngle: number;
+    cumulativeRotation: number;
+  } | null = null;
+
+  /**
+   * Whether a two-finger gesture update is pending for the current frame.
+   */
+  private _pendingGestureUpdate = false;
+
+  // ---------------------------------------------------------------------------
+  // Swipe detection thresholds
+  // ---------------------------------------------------------------------------
+
+  private static readonly SWIPE_MIN_DISTANCE = 30; // px
+  private static readonly SWIPE_MIN_VELOCITY = 0.1; // px/ms
+
+  // Pinch delta thresholds for triggering 'Gesture:pinch:in' / ':out' actions.
+  private static readonly PINCH_OUT_THRESHOLD = 1.02;
+  private static readonly PINCH_IN_THRESHOLD = 0.98;
+
+  // ---------------------------------------------------------------------------
   // EventBus reference (set during init, cleared during destroy)
   // ---------------------------------------------------------------------------
 
@@ -197,6 +280,7 @@ export class InputManager implements EnginePlugin {
     window.addEventListener('pointerdown', this._onPointerDown);
     window.addEventListener('pointerup', this._onPointerUp);
     window.addEventListener('pointermove', this._onPointerMove);
+    window.addEventListener('pointercancel', this._onPointerCancel);
     window.addEventListener('blur', this._onBlur);
     window.addEventListener('gamepadconnected', this._onGamepadConnected);
     window.addEventListener('gamepaddisconnected', this._onGamepadDisconnected);
@@ -219,6 +303,18 @@ export class InputManager implements EnginePlugin {
       },
     );
 
+    events.on<Record<string, never>, InputTouchStateOutput>(
+      this.namespace,
+      'input/touch:state',
+      (_params, output) => {
+        const touches = new Map<number, { x: number; y: number }>();
+        for (const [id, t] of this._activeTouches) {
+          touches.set(id, { x: t.x, y: t.y });
+        }
+        output.touches = touches;
+      },
+    );
+
     // ── pointer:move throttle: flush once per frame ────────────────────────
     // Runs in the 'before' phase of core/tick so pointer position is current
     // by the time game logic runs in the main phase.
@@ -236,6 +332,20 @@ export class InputManager implements EnginePlugin {
           'input/pointer:move',
           { x, y, dx, dy },
         );
+      },
+      { phase: 'before' },
+    );
+
+    // ── touch:move throttle + gesture flush: once per frame ───────────────
+    events.on(
+      this.namespace,
+      'core/tick',
+      () => {
+        this._flushTouchMoves(events);
+        if (this._pendingGestureUpdate) {
+          this._pendingGestureUpdate = false;
+          this._emitGestures(events);
+        }
       },
       { phase: 'before' },
     );
@@ -330,6 +440,7 @@ export class InputManager implements EnginePlugin {
     window.removeEventListener('pointerdown', this._onPointerDown);
     window.removeEventListener('pointerup', this._onPointerUp);
     window.removeEventListener('pointermove', this._onPointerMove);
+    window.removeEventListener('pointercancel', this._onPointerCancel);
     window.removeEventListener('blur', this._onBlur);
     window.removeEventListener('gamepadconnected', this._onGamepadConnected);
     window.removeEventListener('gamepaddisconnected', this._onGamepadDisconnected);
@@ -346,6 +457,11 @@ export class InputManager implements EnginePlugin {
     this._gamepadButtonState.clear();
     this._gamepadAxesCache.clear();
     this._axisBindings.length = 0;
+    this._activeTouches.clear();
+    this._pendingTouchMoves.clear();
+    this._lastEmittedTouchPos.clear();
+    this._pinchRotateState = null;
+    this._pendingGestureUpdate = false;
     this._events = null;
   }
 
@@ -409,6 +525,20 @@ export class InputManager implements EnginePlugin {
     return this._gamepadAxesCache.get(gamepadIndex) ?? [];
   }
 
+  /**
+   * Returns a **snapshot** of all currently active touch points, keyed by
+   * `pointerId`.  Each entry carries the current `{ x, y }` in client
+   * coordinates.  The returned `Map` is a copy — it will not update after
+   * being read.
+   */
+  getActiveTouches(): ReadonlyMap<number, { readonly x: number; readonly y: number }> {
+    const snap = new Map<number, { x: number; y: number }>();
+    for (const [id, t] of this._activeTouches) {
+      snap.set(id, { x: t.x, y: t.y });
+    }
+    return snap;
+  }
+
   // ---------------------------------------------------------------------------
   // DOM event handlers (arrow functions to preserve `this` binding)
   // ---------------------------------------------------------------------------
@@ -432,6 +562,10 @@ export class InputManager implements EnginePlugin {
   };
 
   private readonly _onPointerDown = (event: PointerEvent): void => {
+    if (event.pointerType === 'touch') {
+      this._handleTouchStart(event);
+      return;
+    }
     this._pointerButtons.add(event.button);
     this._pointerPosition = { x: event.clientX, y: event.clientY };
     this._events?.emitSync<InputPointerDownParams, Record<string, never>>(
@@ -441,6 +575,10 @@ export class InputManager implements EnginePlugin {
   };
 
   private readonly _onPointerUp = (event: PointerEvent): void => {
+    if (event.pointerType === 'touch') {
+      this._handleTouchEnd(event);
+      return;
+    }
     this._pointerButtons.delete(event.button);
     this._pointerPosition = { x: event.clientX, y: event.clientY };
     this._events?.emitSync<InputPointerUpParams, Record<string, never>>(
@@ -450,10 +588,20 @@ export class InputManager implements EnginePlugin {
   };
 
   private readonly _onPointerMove = (event: PointerEvent): void => {
+    if (event.pointerType === 'touch') {
+      this._handleTouchMove(event);
+      return;
+    }
     // Buffer the latest position; the actual event is flushed once per frame
     // in the core/tick before-phase handler to avoid EventBus saturation.
     this._pointerPosition = { x: event.clientX, y: event.clientY };
     this._pendingPointerMove = true;
+  };
+
+  private readonly _onPointerCancel = (event: PointerEvent): void => {
+    if (event.pointerType === 'touch') {
+      this._handleTouchEnd(event);
+    }
   };
 
   private readonly _onBlur = (): void => {
@@ -467,6 +615,12 @@ export class InputManager implements EnginePlugin {
     for (const binding of this._axisBindings) {
       binding.wasActive = false;
     }
+    // Clear multi-touch state.
+    this._activeTouches.clear();
+    this._pendingTouchMoves.clear();
+    this._lastEmittedTouchPos.clear();
+    this._pinchRotateState = null;
+    this._pendingGestureUpdate = false;
   };
 
   private readonly _onGamepadConnected = (event: GamepadEvent): void => {
@@ -644,5 +798,207 @@ export class InputManager implements EnginePlugin {
         { action, state },
       );
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Multi-touch helpers
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Handle the start of a new touch point.
+   * Adds it to `_activeTouches`, optionally initialises two-finger gesture
+   * state, and emits `input/touch:start`.
+   */
+  private _handleTouchStart(event: PointerEvent): void {
+    this._activeTouches.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+      startX: event.clientX,
+      startY: event.clientY,
+      startTime: Date.now(),
+    });
+
+    // Initialise gesture tracking when a second finger touches down.
+    if (this._activeTouches.size === 2) {
+      const [a, b] = [...this._activeTouches.values()];
+      const dx = b!.x - a!.x;
+      const dy = b!.y - a!.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const angle = Math.atan2(dy, dx);
+      this._pinchRotateState = {
+        initialDist: dist,
+        lastDist: dist,
+        initialAngle: angle,
+        lastAngle: angle,
+        cumulativeRotation: 0,
+      };
+    }
+
+    this._events?.emitSync<InputTouchStartParams, Record<string, never>>(
+      'input/touch:start',
+      { pointerId: event.pointerId, x: event.clientX, y: event.clientY },
+    );
+  }
+
+  /**
+   * Handle the end (or cancel) of a touch point.
+   * Checks for swipe, removes the point, clears gesture state if needed, and
+   * emits `input/touch:end`.
+   */
+  private _handleTouchEnd(event: PointerEvent): void {
+    const touch = this._activeTouches.get(event.pointerId);
+    if (!touch) return;
+
+    // Swipe detection (only for single-finger lifts).
+    if (this._activeTouches.size === 1 && this._events) {
+      const dx = event.clientX - touch.startX;
+      const dy = event.clientY - touch.startY;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      const duration = Date.now() - touch.startTime;
+      // Treat zero-duration (same-ms lift) as instantaneous = infinite velocity.
+      const velocity = duration > 0 ? distance / duration : Infinity;
+
+      if (
+        distance >= InputManager.SWIPE_MIN_DISTANCE &&
+        velocity >= InputManager.SWIPE_MIN_VELOCITY
+      ) {
+        const direction: 'left' | 'right' | 'up' | 'down' =
+          Math.abs(dx) >= Math.abs(dy)
+            ? dx > 0
+              ? 'right'
+              : 'left'
+            : dy > 0
+              ? 'down'
+              : 'up';
+
+        this._events.emitSync<InputGestureSwipeParams, Record<string, never>>(
+          'input/gesture:swipe',
+          {
+            direction,
+            velocity,
+            distance,
+            startX: touch.startX,
+            startY: touch.startY,
+            endX: event.clientX,
+            endY: event.clientY,
+          },
+        );
+        // Treat swipe as a momentary action press+release.
+        this._triggerActions(this._events, `Gesture:swipe:${direction}`, 'pressed');
+        this._triggerActions(this._events, `Gesture:swipe:${direction}`, 'released');
+      }
+    }
+
+    this._activeTouches.delete(event.pointerId);
+    this._pendingTouchMoves.delete(event.pointerId);
+    this._lastEmittedTouchPos.delete(event.pointerId);
+
+    // Clear two-finger gesture state when fewer than 2 touches remain.
+    if (this._activeTouches.size < 2) {
+      this._pinchRotateState = null;
+      this._pendingGestureUpdate = false;
+    }
+
+    this._events?.emitSync<InputTouchEndParams, Record<string, never>>(
+      'input/touch:end',
+      { pointerId: event.pointerId, x: event.clientX, y: event.clientY },
+    );
+  }
+
+  /**
+   * Buffer a touch-move update for flushing on the next `core/tick`.
+   */
+  private _handleTouchMove(event: PointerEvent): void {
+    const touch = this._activeTouches.get(event.pointerId);
+    if (!touch) return;
+
+    touch.x = event.clientX;
+    touch.y = event.clientY;
+    this._pendingTouchMoves.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    if (this._activeTouches.size >= 2) {
+      this._pendingGestureUpdate = true;
+    }
+  }
+
+  /**
+   * Flush all pending touch-move updates, emitting one `input/touch:move`
+   * per touch point that has moved since the last frame.
+   */
+  private _flushTouchMoves(events: EventBus): void {
+    if (this._pendingTouchMoves.size === 0) return;
+
+    for (const [pointerId, pos] of this._pendingTouchMoves) {
+      const last = this._lastEmittedTouchPos.get(pointerId) ?? { x: pos.x, y: pos.y };
+      const dx = pos.x - last.x;
+      const dy = pos.y - last.y;
+      this._lastEmittedTouchPos.set(pointerId, { x: pos.x, y: pos.y });
+
+      events.emitSync<InputTouchMoveParams, Record<string, never>>(
+        'input/touch:move',
+        { pointerId, x: pos.x, y: pos.y, dx, dy },
+      );
+    }
+    this._pendingTouchMoves.clear();
+  }
+
+  /**
+   * Compute and emit pinch and rotation gesture events from the two currently
+   * active touch points.  Called once per frame when `_pendingGestureUpdate`
+   * is set and there are exactly two touches.
+   */
+  private _emitGestures(events: EventBus): void {
+    if (this._activeTouches.size < 2 || !this._pinchRotateState) return;
+
+    const [a, b] = [...this._activeTouches.values()];
+    const dx = b!.x - a!.x;
+    const dy = b!.y - a!.y;
+    const currentDist = Math.sqrt(dx * dx + dy * dy);
+    const currentAngle = Math.atan2(dy, dx);
+    const centerX = (a!.x + b!.x) / 2;
+    const centerY = (a!.y + b!.y) / 2;
+
+    // ── Pinch ────────────────────────────────────────────────────────────
+    const scale = this._pinchRotateState.initialDist > 0
+      ? currentDist / this._pinchRotateState.initialDist
+      : 1;
+    const pinchDelta = this._pinchRotateState.lastDist > 0
+      ? currentDist / this._pinchRotateState.lastDist
+      : 1;
+    this._pinchRotateState.lastDist = currentDist;
+
+    events.emitSync<InputGesturePinchParams, Record<string, never>>(
+      'input/gesture:pinch',
+      { scale, delta: pinchDelta, centerX, centerY },
+    );
+
+    // Trigger directional pinch actions when the per-frame delta crosses the
+    // threshold, then release immediately (instantaneous action pulse).
+    if (pinchDelta > InputManager.PINCH_OUT_THRESHOLD) {
+      this._triggerActions(events, 'Gesture:pinch:out', 'pressed');
+      this._triggerActions(events, 'Gesture:pinch:out', 'released');
+    } else if (pinchDelta < InputManager.PINCH_IN_THRESHOLD) {
+      this._triggerActions(events, 'Gesture:pinch:in', 'pressed');
+      this._triggerActions(events, 'Gesture:pinch:in', 'released');
+    }
+
+    // ── Rotate ───────────────────────────────────────────────────────────
+    let rotDelta = currentAngle - this._pinchRotateState.lastAngle;
+    // Wrap delta to [-π, π] to handle the ±π discontinuity.
+    if (rotDelta > Math.PI) rotDelta -= 2 * Math.PI;
+    if (rotDelta < -Math.PI) rotDelta += 2 * Math.PI;
+
+    this._pinchRotateState.cumulativeRotation += rotDelta;
+    this._pinchRotateState.lastAngle = currentAngle;
+
+    events.emitSync<InputGestureRotateParams, Record<string, never>>(
+      'input/gesture:rotate',
+      {
+        rotation: this._pinchRotateState.cumulativeRotation,
+        delta: rotDelta,
+        centerX,
+        centerY,
+      },
+    );
   }
 }

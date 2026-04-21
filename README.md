@@ -18,6 +18,7 @@ Everything communicates through a shared **EventBus** — no tight coupling, no 
    - [DataManager (`data`)](#datamanager-data)
    - [LocalizationManager (`i18n`)](#localizationmanager-i18n)
    - [InputManager (`input`)](#inputmanager-input)
+   - [InputRecorder (`input-recorder`)](#inputrecorder-input-recorder)
    - [TimerManager (`timer`)](#timermanager-timer)
    - [SaveManager (`save`)](#savemanager-save)
    - [GameStateManager (`game`)](#gamestatemanager-game)
@@ -399,7 +400,7 @@ console.log(output.result); // "Language: English — Start Game"
 
 ### InputManager (`input`)
 
-Captures keyboard, pointer, and gamepad events from the browser and re-emits them on the bus.  Pointer-move events are throttled to **one per frame** to avoid flooding the bus.  Gamepad state is polled once per `core/tick`; axes are snapshotted into a per-frame cache for consistent reads.
+Captures keyboard, pointer, gamepad, and **multi-touch / gesture** events from the browser and re-emits them on the bus.  Pointer-move and touch-move events are throttled to **one per frame** to avoid flooding the bus.  Gamepad state is polled once per `core/tick`; axes are snapshotted into a per-frame cache for consistent reads.
 
 #### Event Contract — Keyboard & Pointer
 
@@ -412,8 +413,33 @@ Captures keyboard, pointer, and gamepad events from the browser and re-emits the
 | `input/pointer:move` | — emitted | Pointer moved (throttled, once per frame) |
 | `input/key:pressed` | ✗ `emitSync` | Query whether a key is currently held |
 | `input/pointer:state` | ✗ `emitSync` | Query current pointer position and pressed buttons |
-| `input/action:bind` | ✗ `emitSync` | Map a logical action to one or more key codes; re-registering replaces the existing binding |
-| `input/action:triggered` | — emitted | Fired when a bound action key or button changes state |
+| `input/action:bind` | ✗ `emitSync` | Map a logical action to one or more key/gesture codes; re-registering replaces the existing binding |
+| `input/action:triggered` | — emitted | Fired when a bound action key, button, or gesture changes state |
+
+#### Event Contract — Touch & Gestures
+
+Touch events are routed from Pointer Events (`pointerType === 'touch'`).  Mouse/pointer events are **not** emitted for touch contacts — they use the dedicated touch events below.
+
+| Event | Direction | Description |
+|-------|-----------|-------------|
+| `input/touch:start` | — emitted | A new touch contact begins (`pointerId`, `x`, `y`) |
+| `input/touch:end` | — emitted | A touch contact ends or is cancelled (`pointerId`, `x`, `y`) |
+| `input/touch:move` | — emitted | Touch point moved — throttled to **one event per frame per point** (`pointerId`, `x`, `y`, `dx`, `dy`) |
+| `input/gesture:pinch` | — emitted | Two-finger pinch/zoom — once per frame while active (`scale`, `delta`, `centerX`, `centerY`) |
+| `input/gesture:rotate` | — emitted | Two-finger rotation — once per frame while active (`rotation`, `delta`, `centerX`, `centerY`) |
+| `input/gesture:swipe` | — emitted | Single-finger swipe detected on lift (`direction`, `velocity`, `distance`, `startX/Y`, `endX/Y`) |
+| `input/touch:state` | ✗ `emitSync` | Query all currently active touch points (returns `output.touches: Map<pointerId, {x,y}>`) |
+
+**Gesture action codes** can be used in `input/action:bind` alongside keyboard and gamepad codes:
+
+| Gesture code | Triggered when |
+|---|---|
+| `'Gesture:swipe:left'` | Finger swipes left |
+| `'Gesture:swipe:right'` | Finger swipes right |
+| `'Gesture:swipe:up'` | Finger swipes up |
+| `'Gesture:swipe:down'` | Finger swipes down |
+| `'Gesture:pinch:in'` | Two fingers move closer (per-frame delta < 0.98) |
+| `'Gesture:pinch:out'` | Two fingers spread apart (per-frame delta > 1.02) |
 
 #### Event Contract — Gamepad
 
@@ -437,15 +463,26 @@ const { core } = await createEngine({
   plugins: [inputManager],
 });
 
-// Bind logical actions (keyboard + gamepad together)
+// Bind logical actions (keyboard + gamepad + gesture together)
 core.events.emitSync('input/action:bind', {
   action: 'jump',
   codes: ['Space', 'ArrowUp', 'Gamepad:0:0'],  // keyboard or gamepad button 0
 });
 
+core.events.emitSync('input/action:bind', {
+  action: 'zoom-in',
+  codes: ['Gesture:pinch:out', 'KeyEqual'],     // pinch OR keyboard
+});
+
+core.events.emitSync('input/action:bind', {
+  action: 'dash-right',
+  codes: ['Gesture:swipe:right'],
+});
+
 // React to actions (decoupled from physical keys)
 core.events.on('myGame', 'input/action:triggered', ({ action, state }) => {
   if (action === 'jump' && state === 'pressed') player.jump();
+  if (action === 'zoom-in' && state === 'pressed') camera.zoomIn();
 });
 
 // Pull-query for polling-style game logic
@@ -456,6 +493,19 @@ core.events.on('myGame', 'core/tick', () => {
   // Read cached gamepad axes (snapshotted this frame)
   const axes = inputManager.getGamepadAxes(0);
   if (axes[0] > 0.5) player.moveRight();
+
+  // Check active touch points
+  const touches = inputManager.getActiveTouches();
+  if (touches.size > 0) console.log('touch active');
+});
+
+// Subscribe to raw touch events
+core.events.on('myGame', 'input/gesture:swipe', ({ direction, velocity }) => {
+  console.log(`Swipe ${direction} at ${velocity.toFixed(2)} px/ms`);
+});
+
+core.events.on('myGame', 'input/gesture:pinch', ({ scale, delta }) => {
+  camera.zoom *= delta; // apply per-frame pinch delta to camera
 });
 
 // Bind a gamepad analog axis to a logical action
@@ -470,6 +520,63 @@ core.events.emitSync('input/gamepad:axis:bind', {
 core.events.on('myGame', 'input/gamepad:connected', ({ gamepadIndex, id }) => {
   console.log(`Gamepad ${gamepadIndex} connected: ${id}`);
 });
+```
+
+---
+
+### InputRecorder (`input-recorder`)
+
+Records all `input/*` events frame-by-frame and replays them — useful for automated testing, demo recording, and game replays.  The recording format (`InputRecording`) is fully JSON-serialisable and can be persisted via `SaveManager`.
+
+#### Event Contract
+
+| Event | Direction | Description |
+|-------|-----------|-------------|
+| `input/recorder:start` | ✗ `emitSync` | Begin recording; any in-progress recording is discarded |
+| `input/recorder:stop` | ✗ `emitSync` | Stop recording; returns `output.recording: InputRecording \| null` |
+| `input/recorder:play` | ✗ `emitSync` | Start playback of an `InputRecording`; pass `loop: true` to loop |
+| `input/recorder:pause` | ✗ `emitSync` | Pause an active playback |
+| `input/recorder:resume` | ✗ `emitSync` | Resume a paused playback |
+| `input/recorder:state` | ✗ `emitSync` | Query `output.state` (`'idle'` \| `'recording'` \| `'playing'` \| `'paused'`) and `output.frame` |
+| `input/recorder:save` | ✗ `emitSync` | Persist a recording to the global save area (requires `SaveManager`) |
+| `input/recorder:load` | ✗ `emitSync` | Load a persisted recording; returns `output.recording: InputRecording \| null` |
+| `input/recorder:playback:end` | — emitted | Playback reached the end of a non-looping recording |
+
+#### Usage
+
+```ts
+import { createEngine, InputManager, InputRecorder } from 'inkshot-engine';
+
+const { core } = await createEngine({
+  plugins: [new InputManager(), new InputRecorder()],
+});
+
+// ── Record ────────────────────────────────────────────────────────────────
+core.events.emitSync('input/recorder:start', {});
+
+// ... user plays the game ...
+
+const { output: stopOut } = core.events.emitSync('input/recorder:stop', {});
+const recording = stopOut.recording; // InputRecording
+
+// ── Playback ──────────────────────────────────────────────────────────────
+core.events.emitSync('input/recorder:play', { recording, loop: false });
+
+core.events.on('myGame', 'input/recorder:playback:end', ({ recording }) => {
+  console.log('Playback finished', recording.frameCount, 'frames');
+});
+
+// ── Pause / resume ────────────────────────────────────────────────────────
+core.events.emitSync('input/recorder:pause', {});
+core.events.emitSync('input/recorder:resume', {});
+
+// ── Persist (requires SaveManager) ────────────────────────────────────────
+core.events.emitSync('input/recorder:save', { slotId: 'demo-run-1', recording });
+
+const { output: loadOut } = core.events.emitSync('input/recorder:load', { slotId: 'demo-run-1' });
+if (loadOut.recording) {
+  core.events.emitSync('input/recorder:play', { recording: loadOut.recording });
+}
 ```
 
 ---
