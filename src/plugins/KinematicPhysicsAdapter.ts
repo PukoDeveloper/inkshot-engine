@@ -23,6 +23,7 @@ import type {
   PhysicsWorldToTileOutput,
   PhysicsTileToWorldParams,
   PhysicsTileToWorldOutput,
+  PhysicsImpulseParams,
   PhysicsHitParams,
   PhysicsOverlapParams,
 } from '../types/physics.js';
@@ -445,6 +446,11 @@ export class KinematicPhysicsAdapter implements EnginePlugin {
         output.y = w.y;
       },
     );
+
+    // physics/impulse is a no-op for the kinematic backend (no rigid-body velocity).
+    events.on<PhysicsImpulseParams>(this.namespace, 'physics/impulse', (_params) => {
+      // Kinematic bodies do not support impulse forces; ignore silently.
+    });
 
     // Per-frame overlap detection — runs after game logic (lower priority).
     events.on(this.namespace, 'core/update', this._onUpdate, { priority: -20 });

@@ -1107,4 +1107,20 @@ describe('KinematicPhysicsAdapter', () => {
       expect(output.x).toBe(20);
     });
   });
+
+  describe('physics/impulse — ignored by kinematic adapter', () => {
+    it('does not throw when physics/impulse is emitted', () => {
+      const { core, em } = createSetup();
+      const entity = em.create({ id: 'imp' });
+      core.events.emitSync('physics/body:add', {
+        entityId: entity.id,
+        shape: { type: 'rect', width: 16, height: 16 },
+        layer: CollisionLayer.BODY,
+      });
+
+      expect(() => {
+        core.events.emitSync('physics/impulse', { entityId: entity.id, forceX: 10, forceY: 0 });
+      }).not.toThrow();
+    });
+  });
 });
