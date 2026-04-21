@@ -94,7 +94,7 @@
 ### 6. 小地圖系統 (Minimap)
 - [x] 新增 `MinimapPlugin`（namespace: `minimap`），以低解析度縮圖渲染世界地圖
 - [x] 支援自訂圖標（玩家、NPC、敵人、事件點）疊加
-- [ ] 支援霧效（探索過的區域才顯示）
+- [x] 支援霧效（探索過的區域才顯示）
 - [x] 可掛載至 UI 層的任意位置
 
 ### 7. 視野 / 迷霧系統 (Fog of War / Line-of-Sight)

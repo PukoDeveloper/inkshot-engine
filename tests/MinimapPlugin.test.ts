@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventBus } from '../src/core/EventBus.js';
 import { MinimapPlugin } from '../src/plugins/MinimapPlugin.js';
+import { FogOfWarPlugin } from '../src/plugins/FogOfWarPlugin.js';
 import type { Core } from '../src/core/Core.js';
 import type {
   MinimapConfig,
@@ -8,12 +9,14 @@ import type {
   MinimapIconAddOutput,
   MinimapIconsOutput,
 } from '../src/types/minimap.js';
+import type { FogConfig } from '../src/types/fog.js';
 
 vi.mock('pixi.js', async () => {
   class Graphics {
+    readonly calls: string[] = [];
     clear() { return this; }
-    rect() { return this; }
-    circle() { return this; }
+    rect() { this.calls.push('rect'); return this; }
+    circle() { this.calls.push('circle'); return this; }
     fill() { return this; }
     stroke() { return this; }
     destroy() {}
@@ -28,8 +31,21 @@ function createCoreStub() {
   return { core: { events } as unknown as Core, uiLayer };
 }
 
+function createCoreStubWithFog() {
+  const events = new EventBus();
+  const uiLayer = { children: [] as unknown[], addChild(c: unknown) { this.children.push(c); } };
+  const fogLayer = { children: [] as unknown[], addChild(c: unknown) { this.children.push(c); } };
+  events.on('test', 'renderer/layer', (_p: { name: string }, output: { layer: unknown }) => { if (_p.name === 'ui') output.layer = uiLayer; });
+  events.on('test', 'renderer/layer:create', (_p: { name: string; zIndex: number }, output: { layer: unknown }) => { output.layer = fogLayer; });
+  return { core: { events } as unknown as Core, uiLayer, fogLayer };
+}
+
 function makeConfig(overrides: Partial<MinimapConfig> = {}): MinimapConfig {
   return { x: 10, y: 10, width: 200, height: 150, worldWidth: 3200, worldHeight: 2400, ...overrides };
+}
+
+function makeFogConfig(overrides: Partial<FogConfig> = {}): FogConfig {
+  return { mapWidth: 10, mapHeight: 8, tileWidth: 16, tileHeight: 16, ...overrides };
 }
 
 describe('MinimapPlugin', () => {
@@ -140,6 +156,114 @@ describe('MinimapPlugin', () => {
       plugin.destroy(core);
       const { output } = core.events.emitSync<object, Partial<MinimapIconsOutput>>('minimap/icons', {});
       expect(output.icons).toBeUndefined();
+    });
+  });
+
+  describe('fog-of-war integration', () => {
+    let fogCore: Core;
+    let fogPlugin: FogOfWarPlugin;
+    let minimapPlugin: MinimapPlugin;
+
+    beforeEach(() => {
+      ({ core: fogCore } = createCoreStubWithFog());
+
+      // Register FogOfWarPlugin first so its events are available.
+      fogPlugin = new FogOfWarPlugin();
+      fogPlugin.init(fogCore);
+
+      minimapPlugin = new MinimapPlugin();
+      minimapPlugin.init(fogCore);
+
+      // Initialise the fog grid (10×8 tiles, 16 px each → world 160×128).
+      fogCore.events.emitSync('fog/init', { config: makeFogConfig() });
+
+      // Initialise the minimap covering the same world area.
+      fogCore.events.emitSync('minimap/init', {
+        config: makeConfig({ worldWidth: 160, worldHeight: 128 }),
+      });
+    });
+
+    it('does not throw when FogOfWarPlugin is not registered', () => {
+      // Fresh core without fog plugin — minimap should still render.
+      const { core: plainCore } = createCoreStub();
+      const plain = new MinimapPlugin();
+      plain.init(plainCore);
+      plainCore.events.emitSync('minimap/init', { config: makeConfig() });
+      expect(() => plainCore.events.emitSync('renderer/pre-render', {})).not.toThrow();
+    });
+
+    it('hides icons whose tile is unexplored', () => {
+      // Place an icon at world (8, 8) → tile (0, 0) which starts unexplored.
+      fogCore.events.emitSync('minimap/icon:add', { id: 'hidden', x: 8, y: 8 });
+
+      const circleCalls: string[] = [];
+      // Intercept circle calls on the Graphics instance.
+      const gfx = (minimapPlugin as unknown as { _gfx: { circle: () => { fill: () => void }; calls: string[] } })._gfx;
+      const origCircle = gfx!.circle.bind(gfx);
+      gfx!.circle = (...args: unknown[]) => {
+        circleCalls.push('circle');
+        return origCircle(...args as Parameters<typeof origCircle>);
+      };
+
+      fogCore.events.emitSync('renderer/pre-render', {});
+      // No circle should have been drawn because the tile is unexplored.
+      expect(circleCalls.length).toBe(0);
+    });
+
+    it('shows icons whose tile is explored', () => {
+      // Reveal tile (0, 0) as explored.
+      fogCore.events.emitSync('fog/reveal', { col: 0, row: 0, width: 1, height: 1, state: 'explored' });
+
+      // Place an icon inside that tile.
+      fogCore.events.emitSync('minimap/icon:add', { id: 'shown', x: 8, y: 8 });
+
+      const circleCalls: string[] = [];
+      const gfx = (minimapPlugin as unknown as { _gfx: { circle: () => { fill: () => void } } })._gfx;
+      const origCircle = gfx!.circle.bind(gfx);
+      gfx!.circle = (...args: unknown[]) => {
+        circleCalls.push('circle');
+        return origCircle(...args as Parameters<typeof origCircle>);
+      };
+
+      fogCore.events.emitSync('renderer/pre-render', {});
+      expect(circleCalls.length).toBe(1);
+    });
+
+    it('shows icons whose tile is visible', () => {
+      // fog/update at (8, 8) with radius 0 → tile (0, 0) becomes visible.
+      fogCore.events.emitSync('fog/update', { x: 8, y: 8, radius: 0 });
+
+      fogCore.events.emitSync('minimap/icon:add', { id: 'visible', x: 8, y: 8 });
+
+      const circleCalls: string[] = [];
+      const gfx = (minimapPlugin as unknown as { _gfx: { circle: () => { fill: () => void } } })._gfx;
+      const origCircle = gfx!.circle.bind(gfx);
+      gfx!.circle = (...args: unknown[]) => {
+        circleCalls.push('circle');
+        return origCircle(...args as Parameters<typeof origCircle>);
+      };
+
+      fogCore.events.emitSync('renderer/pre-render', {});
+      expect(circleCalls.length).toBe(1);
+    });
+
+    it('draws fog tile overlay rects for explored and visible tiles', () => {
+      // Reveal a 2×2 region and make one tile visible.
+      fogCore.events.emitSync('fog/reveal', { col: 0, row: 0, width: 2, height: 2, state: 'explored' });
+      fogCore.events.emitSync('fog/update', { x: 8, y: 8, radius: 0 });
+
+      const rectCalls: string[] = [];
+      const gfx = (minimapPlugin as unknown as { _gfx: { rect: () => { fill: () => void; stroke: () => void } } })._gfx;
+      const origRect = gfx!.rect.bind(gfx);
+      gfx!.rect = (...args: unknown[]) => {
+        rectCalls.push('rect');
+        return origRect(...args as Parameters<typeof origRect>);
+      };
+
+      fogCore.events.emitSync('renderer/pre-render', {});
+
+      // At minimum: 1 background rect + ≥1 explored/visible tile rects.
+      expect(rectCalls.length).toBeGreaterThan(1);
     });
   });
 });
