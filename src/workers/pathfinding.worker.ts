@@ -54,9 +54,6 @@ interface TileUpdatePayload {
   cost: number;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-interface CacheClearPayload {}
-
 interface FindPayload {
   params: {
     from: { x: number; y: number };

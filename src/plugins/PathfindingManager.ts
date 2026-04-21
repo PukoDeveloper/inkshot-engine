@@ -277,7 +277,9 @@ export class PathfindingManager implements EnginePlugin {
       if (this._bridge && this._workerReady) {
         this._bridge
           .run('tile:update', { row: params.row, col: params.col, cost: newCost })
-          .catch(() => { /* ignore */ });
+          .catch((err: unknown) => {
+            console.warn('[PathfindingManager] Worker tile:update failed:', err);
+          });
       }
     });
 
@@ -315,7 +317,9 @@ export class PathfindingManager implements EnginePlugin {
         this._cache.clear();
         // Also clear the Worker's internal cache.
         if (this._bridge && this._workerReady) {
-          this._bridge.run('cache:clear', {}).catch(() => { /* ignore */ });
+          this._bridge.run('cache:clear', {}).catch((err: unknown) => {
+            console.warn('[PathfindingManager] Worker cache:clear failed:', err);
+          });
         }
       },
     );
@@ -428,9 +432,9 @@ export class PathfindingManager implements EnginePlugin {
       .then(() => {
         this._workerReady = true;
       })
-      .catch(() => {
-        // If the Worker fails to initialise, keep _workerReady = false so
-        // find:async silently falls back to sync A*.
+      .catch((err: unknown) => {
+        // Keep _workerReady = false so find:async falls back to sync A*.
+        console.warn('[PathfindingManager] Worker initialisation failed:', err);
       });
   }
 
