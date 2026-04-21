@@ -16,6 +16,25 @@ export interface EntityDescriptor {
   position?: { x: number; y: number };
   /** If provided, used as the entity's display object. Otherwise a new Container is created. */
   display?: Container;
+  /**
+   * When `true`, the entity's `display.zIndex` is automatically set to
+   * `position.y + ySortOffset` on every update frame, producing correct
+   * painter-order depth in top-down (2D overhead) views.
+   *
+   * The world layer's `sortableChildren` is enabled automatically by
+   * `EntityManager` when at least one entity uses this flag.
+   *
+   * Defaults to `false`.
+   */
+  ySort?: boolean;
+  /**
+   * Pixel offset added to `position.y` when computing the Y-sort depth value.
+   * Use a positive value equal to half the sprite height to sort by the
+   * character's feet rather than its origin point.
+   *
+   * Only meaningful when `ySort` is `true`.  Defaults to `0`.
+   */
+  ySortOffset?: number;
 }
 
 /**
@@ -37,6 +56,18 @@ export interface Entity {
   readonly data: Map<string, unknown>;
   /** Whether the entity is still alive (not destroyed). */
   active: boolean;
+  /**
+   * When `true`, `display.zIndex` is updated to `position.y + ySortOffset`
+   * every frame so entities are drawn in correct painter order for top-down
+   * views (entities closer to the bottom of the screen appear in front).
+   */
+  ySort: boolean;
+  /**
+   * Pixel offset added to `position.y` when computing the Y-sort depth value.
+   * Set to half the sprite height to sort by feet rather than the origin.
+   * Only meaningful when `ySort` is `true`.
+   */
+  ySortOffset: number;
 }
 
 // ---------------------------------------------------------------------------

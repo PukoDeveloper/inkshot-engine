@@ -75,6 +75,9 @@ export class EntityManager implements EnginePlugin {
       output: { layer: Container };
     };
     this._worldLayer = result.output.layer;
+    // Enable child z-index sorting so Y-sort entities render in the correct
+    // painter order without requiring manual re-ordering of the child list.
+    this._worldLayer.sortableChildren = true;
 
     // Sync entity positions each fixed update.
     core.events.on(this.namespace, 'core/update', this._onUpdate, { priority: -10 });
@@ -144,7 +147,15 @@ export class EntityManager implements EnginePlugin {
       position,
       data: new Map(),
       active: true,
+      ySort: descriptor.ySort ?? false,
+      ySortOffset: descriptor.ySortOffset ?? 0,
     };
+
+    // Set an initial zIndex so the entity is correctly sorted before the
+    // first update frame fires.
+    if (entity.ySort) {
+      display.zIndex = position.y + entity.ySortOffset;
+    }
 
     this._entities.set(id, entity);
     this._worldLayer?.addChild(display);
@@ -230,6 +241,9 @@ export class EntityManager implements EnginePlugin {
     for (const entity of this._entities.values()) {
       entity.display.x = entity.position.x;
       entity.display.y = entity.position.y;
+      if (entity.ySort) {
+        entity.display.zIndex = entity.position.y + entity.ySortOffset;
+      }
     }
   };
 }
