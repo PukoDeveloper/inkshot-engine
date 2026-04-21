@@ -66,10 +66,10 @@
 - [ ] 隨機種子管理（確保可重現的生成結果）
 
 ### 4. 遊戲設定管理 (Game Settings Manager)
-- [ ] 新增 `SettingsManager` plugin（namespace: `settings`），統一管理玩家偏好設定（解析度、音量、按鍵綁定、語言等）
-- [ ] 與 `InputManager` 整合，支援按鍵重綁定並即時生效
-- [ ] 與 `LocalizationManager` 整合，locale 切換可由設定系統觸發
-- [ ] 透過 `SaveManager` 持久化（全域存檔槽），支援匯出/匯入設定 JSON
+- [x] 新增 `SettingsManager` plugin（namespace: `settings`），統一管理玩家偏好設定（解析度、音量、按鍵綁定、語言等），schema 完全由開發者透過 `defaults` 選項自訂
+- [x] 與 `InputManager` 整合，支援按鍵重綁定並即時生效（`bridges.inputBindings` 橋接，預設開啟）
+- [x] 與 `LocalizationManager` 整合，locale 切換可由設定系統觸發（`bridges.locale` 橋接，預設開啟）
+- [x] 透過 `SaveManager` 持久化（全域存檔槽），支援 `settings/save` / `settings/load`
 
 ---
 
