@@ -29,13 +29,20 @@ import type {
  * `'playing'` (or when no {@link GameStateManager} is registered at all, in
  * which case movement is always allowed).
  *
+ * ### Entity detection
+ *
+ * The controller automatically adopts any entity created with the configured
+ * `playerTag` (default `'player'`) when no entity is currently being
+ * controlled.  An explicit `player/entity:set` event can override this at any
+ * time — useful for vehicle boarding, dialogue puppets, multiplayer, etc.
+ *
  * ### Events handled (commands)
  *
- * | Event                | Description                                        |
- * |----------------------|----------------------------------------------------|
- * | `player/entity:set`  | Set or change the controlled entity at runtime     |
+ * | Event                    | Description                                    |
+ * |--------------------------|------------------------------------------------|
+ * | `player/entity:set`      | Override the controlled entity at runtime      |
  * | `input/action:triggered` | Track pressed/released direction + interact    |
- * | `core/update`        | Apply per-frame movement                           |
+ * | `core/update`            | Apply per-frame movement                       |
  *
  * ### Events emitted
  *
@@ -65,9 +72,9 @@ import type {
  *   ],
  * });
  *
- * // Create the player entity and assign it to the controller
- * const { output } = core.events.emitSync('entity/create', { tags: ['player'] });
- * core.events.emitSync('player/entity:set', { entityId: output.entity.id });
+ * // Creating an entity tagged 'player' is all that's needed — no
+ * // player/entity:set call required.
+ * core.events.emitSync('entity/create', { tags: ['player'] });
  *
  * // Bind keys to actions
  * core.events.emitSync('input/action:bind', { action: 'move-up',    codes: ['ArrowUp',    'KeyW'] });
@@ -87,6 +94,7 @@ export class PlayerController implements EnginePlugin {
   private _entity: Entity | null = null;
   private _entityId: string | null;
   private readonly _speed: number;
+  private readonly _playerTag: string;
   private readonly _actionNames: {
     readonly up: string;
     readonly down: string;
@@ -99,8 +107,9 @@ export class PlayerController implements EnginePlugin {
   private _held = { up: false, down: false, left: false, right: false };
 
   constructor(options: PlayerControllerOptions = {}) {
-    this._entityId = options.entityId ?? null;
-    this._speed    = options.speed    ?? 120;
+    this._entityId  = options.entityId ?? null;
+    this._speed     = options.speed    ?? 120;
+    this._playerTag = options.playerTag ?? 'player';
     this._actionNames = {
       up:       options.actions?.up       ?? 'move-up',
       down:     options.actions?.down     ?? 'move-down',
@@ -131,16 +140,28 @@ export class PlayerController implements EnginePlugin {
     });
 
     // Cache the entity reference as soon as it is created.
+    // Also auto-adopt any entity tagged with _playerTag when no entity is
+    // currently being controlled (tag-based detection).
     events.on<EntityCreatedParams>(this.namespace, 'entity/created', ({ entity }) => {
       if (entity.id === this._entityId) {
         this._entity = entity;
+      } else if (
+        this._entityId === null &&
+        this._playerTag !== '' &&
+        entity.tags.has(this._playerTag)
+      ) {
+        this._entityId = entity.id;
+        this._entity   = entity;
       }
     });
 
     // Drop the reference when the entity is destroyed.
+    // Clear _entityId too so that auto-detection can re-activate if a new
+    // player-tagged entity is created later.
     events.on<EntityDestroyedParams>(this.namespace, 'entity/destroyed', ({ entity }) => {
       if (entity.id === this._entityId) {
-        this._entity = null;
+        this._entity   = null;
+        this._entityId = null;
       }
     });
 
@@ -167,8 +188,9 @@ export class PlayerController implements EnginePlugin {
   }
 
   destroy(core: Core): void {
-    this._held   = { up: false, down: false, left: false, right: false };
-    this._entity = null;
+    this._held     = { up: false, down: false, left: false, right: false };
+    this._entity   = null;
+    this._entityId = null;
     core.events.removeNamespace(this.namespace);
     this._core = null;
   }

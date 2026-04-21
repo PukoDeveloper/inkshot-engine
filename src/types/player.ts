@@ -21,6 +21,30 @@ export interface PlayerControllerOptions {
   speed?: number;
 
   /**
+   * Entity tag used for automatic entity detection.
+   *
+   * When an entity is created with this tag and no entity is currently
+   * controlled, the controller automatically adopts it — no explicit
+   * `player/entity:set` call is needed.
+   *
+   * Defaults to `'player'`. Pass an empty string (`''`) to disable
+   * auto-detection entirely.
+   *
+   * @example
+   * ```ts
+   * // Default: automatically adopts any entity tagged 'player'.
+   * new PlayerController()
+   *
+   * // Custom tag.
+   * new PlayerController({ playerTag: 'hero' })
+   *
+   * // Opt-out of auto-detection entirely.
+   * new PlayerController({ playerTag: '' })
+   * ```
+   */
+  playerTag?: string;
+
+  /**
    * Logical action names that map to movement directions and interaction.
    *
    * These must match the bindings registered via `input/action:bind`.

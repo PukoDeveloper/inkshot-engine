@@ -68,6 +68,126 @@ describe('PlayerController', () => {
   });
 
   // -------------------------------------------------------------------------
+  // Tag-based auto-detection
+  // -------------------------------------------------------------------------
+
+  describe('tag-based auto-detection', () => {
+    it('auto-adopts an entity created with the default "player" tag', () => {
+      const moved = vi.fn();
+      core.events.on('test', 'player/moved', moved);
+
+      // No player/entity:set call — just create with the right tag.
+      em.create({ tags: ['player'], position: { x: 0, y: 0 } });
+
+      core.events.emitSync('input/action:triggered', { action: 'move-right', state: 'pressed' });
+      core.events.emitSync('core/update', { dt: 1000 / 60, tick: 1 });
+
+      expect(moved).toHaveBeenCalledOnce();
+    });
+
+    it('exposes the auto-detected entityId via the entityId accessor', () => {
+      const entity = em.create({ tags: ['player'], position: { x: 0, y: 0 } });
+      expect(pc.entityId).toBe(entity.id);
+    });
+
+    it('does not auto-adopt a second player-tagged entity when one is already controlled', () => {
+      const entity1 = em.create({ tags: ['player'], position: { x: 0, y: 0 } });
+      const entity2 = em.create({ tags: ['player'], position: { x: 100, y: 100 } });
+
+      // The controller should still point to entity1.
+      expect(pc.entityId).toBe(entity1.id);
+
+      core.events.emitSync('input/action:triggered', { action: 'move-right', state: 'pressed' });
+      core.events.emitSync('core/update', { dt: 1000 / 60, tick: 1 });
+
+      // entity2 must not have moved.
+      expect(entity2.position.x).toBe(100);
+    });
+
+    it('re-detects a new player-tagged entity after the current one is destroyed', () => {
+      const entity1 = em.create({ tags: ['player'], position: { x: 0, y: 0 } });
+      expect(pc.entityId).toBe(entity1.id);
+
+      em.destroyById(entity1.id);
+      expect(pc.entityId).toBeNull();
+
+      const entity2 = em.create({ tags: ['player'], position: { x: 50, y: 50 } });
+      expect(pc.entityId).toBe(entity2.id);
+    });
+
+    it('respects a custom playerTag option', () => {
+      const tagCore = createCoreStub();
+      const tagEm   = new EntityManager();
+      const tagGsm  = new GameStateManager();
+      const tagPc   = new PlayerController({ playerTag: 'hero' });
+      tagEm.init(tagCore);
+      tagGsm.init(tagCore);
+      tagPc.init(tagCore);
+      tagCore.events.emitSync('game/state:set', { state: 'playing' });
+
+      const moved = vi.fn();
+      tagCore.events.on('test', 'player/moved', moved);
+
+      // 'player' tag should NOT trigger auto-adopt.
+      tagEm.create({ tags: ['player'], position: { x: 0, y: 0 } });
+      tagCore.events.emitSync('input/action:triggered', { action: 'move-right', state: 'pressed' });
+      tagCore.events.emitSync('core/update', { dt: 1000 / 60, tick: 1 });
+      expect(moved).not.toHaveBeenCalled();
+
+      // 'hero' tag SHOULD trigger auto-adopt.
+      tagEm.create({ tags: ['hero'], position: { x: 0, y: 0 } });
+      tagCore.events.emitSync('core/update', { dt: 1000 / 60, tick: 2 });
+      expect(moved).toHaveBeenCalledOnce();
+
+      tagPc.destroy(tagCore);
+      tagGsm.destroy(tagCore);
+      tagEm.destroy();
+    });
+
+    it('disables auto-detection when playerTag is set to empty string', () => {
+      const noTagCore = createCoreStub();
+      const noTagEm   = new EntityManager();
+      const noTagGsm  = new GameStateManager();
+      const noTagPc   = new PlayerController({ playerTag: '' });
+      noTagEm.init(noTagCore);
+      noTagGsm.init(noTagCore);
+      noTagPc.init(noTagCore);
+      noTagCore.events.emitSync('game/state:set', { state: 'playing' });
+
+      const moved = vi.fn();
+      noTagCore.events.on('test', 'player/moved', moved);
+
+      noTagEm.create({ tags: ['player'], position: { x: 0, y: 0 } });
+      noTagCore.events.emitSync('input/action:triggered', { action: 'move-right', state: 'pressed' });
+      noTagCore.events.emitSync('core/update', { dt: 1000 / 60, tick: 1 });
+
+      expect(moved).not.toHaveBeenCalled();
+      expect(noTagPc.entityId).toBeNull();
+
+      noTagPc.destroy(noTagCore);
+      noTagGsm.destroy(noTagCore);
+      noTagEm.destroy();
+    });
+
+    it('player/entity:set overrides tag-based detection', () => {
+      const taggedEntity = em.create({ tags: ['player'], position: { x: 0, y: 0 } });
+      const otherEntity  = em.create({ position: { x: 200, y: 200 } });
+
+      // Override with a non-tagged entity.
+      core.events.emitSync('player/entity:set', { entityId: otherEntity.id });
+      expect(pc.entityId).toBe(otherEntity.id);
+
+      core.events.emitSync('input/action:triggered', { action: 'move-right', state: 'pressed' });
+      core.events.emitSync('core/update', { dt: 1000 / 60, tick: 1 });
+
+      // The tagged entity must NOT have moved.
+      expect(taggedEntity.position.x).toBe(0);
+      // The explicitly-set entity SHOULD have moved.
+      expect(otherEntity.position.x).toBeGreaterThan(200);
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // player/entity:set
   // -------------------------------------------------------------------------
 
