@@ -37,19 +37,33 @@ npm install @inkshot/engine
 
 ## 2. 初始化引擎
 
-使用 `createRpgEngine` 一行啟動包含全套 RPG 插件的引擎：
+使用 `createRpgEngine` 一行啟動包含全套 RPG 插件的引擎。  
+透過選填的 `gameData` 欄位，可同時傳入遊戲資料並在引擎就緒後自動完成所有定義注入：
 
 ```ts
 import { createRpgEngine } from '@inkshot/engine';
+import type { RpgGameData } from '@inkshot/engine';
+
+const gameData: RpgGameData = { /* 詳細內容見第 3 節 */ };
 
 const { core, rpg } = await createRpgEngine({
   container: '#app',   // 掛載 Canvas 的 DOM 選擇器
   width: 1280,
   height: 720,
   dataRoot: '/assets/',
+  gameData,            // ← 自動注入所有 RPG 定義，無需額外 loop
 });
 
-console.log('引擎啟動完成！');
+console.log('引擎啟動並載入完成！');
+```
+
+若不想在啟動時傳入，也可以之後任何時刻呼叫 `registerRpgData`：
+
+```ts
+import { createRpgEngine, registerRpgData } from '@inkshot/engine';
+
+const { core, rpg } = await createRpgEngine({ container: '#app', width: 1280, height: 720 });
+registerRpgData(core, gameData);   // 在此呼叫效果相同
 ```
 
 `createRpgEngine` 會自動初始化以下子系統：
@@ -335,56 +349,65 @@ scripts: [
 
 ## 4. 載入資料到引擎
 
-呼叫 `loadRpgData()` 取得轉換結果後，逐一注入各子系統：
+### 推薦：`registerRpgData`（一次完成）
+
+呼叫 `registerRpgData(core, gameData)` 即可自動將所有定義注入引擎：
+
+```ts
+import { registerRpgData } from '@inkshot/engine';
+
+registerRpgData(core, gameData);
+// ✅ 完成！所有角色、道具、職業、狀態效果、腳本都已注入。
+```
+
+等同於呼叫 `createRpgEngine` 時傳入 `gameData` 選項（見第 2 節）。
+
+### 進階：手動注入（完全掌控）
+
+若需要在每筆資料之間插入自訂邏輯，可先呼叫 `loadRpgData()` 取得轉換結果後手動注入：
 
 ```ts
 import { loadRpgData } from '@inkshot/engine';
 
 async function loadGameData(core) {
-  const data = loadRpgData(gameData);   // gameData 是你的 RpgGameData 物件
+  const data = loadRpgData(gameData);
 
-  // 1. 經驗曲線
-  for (const curve of data.expCurves) {
-    core.events.emitSync('exp/curve:define', { curve });
-  }
-
-  // 2. 基礎屬性 profile
+  // 1. 基礎屬性 profile（需先於 actor 注入）
   for (const profile of data.statProfiles) {
     core.events.emitSync('stats/profile:define', { profile });
   }
 
-  // 3. 道具定義
-  for (const item of data.items) {
-    core.events.emitSync('inventory/item:define', { item });
+  // 2. 經驗曲線
+  for (const curve of data.expCurves) {
+    core.events.emitSync('exp/curve:define', { curve });
   }
 
-  // 4. 狀態效果定義
-  for (const effect of data.statusEffects) {
-    core.events.emitSync('stats/status:define', { effect });
-  }
-
-  // 5. 獨立腳本
-  for (const script of data.scripts) {
-    core.events.emitSync('script/define', { script });
-  }
-
-  // 6. 角色定義（包含其腳本與觸發器）
+  // 3. 角色定義（包含腳本與觸發器）
   for (const actor of data.actors) {
     core.events.emitSync('actor/define', { def: actor });
   }
 
+  // 4. 道具定義
+  for (const item of data.items) {
+    core.events.emitSync('inventory/item:define', { item });
+  }
+
+  // 5. 狀態效果定義
+  for (const effect of data.statusEffects) {
+    core.events.emitSync('stats/status:define', { effect });
+  }
+
+  // 6. 獨立腳本
+  for (const script of data.scripts) {
+    core.events.emitSync('script/define', { script });
+  }
+
   // 7. 初始化全域變數與起始金幣
   if (Object.keys(data.initialVariables).length > 0) {
-    core.events.emitSync('store/patch', {
-      namespace: 'game',
-      patch: data.initialVariables,
-    });
+    core.events.emitSync('store/patch', { ns: 'game', patch: data.initialVariables });
   }
   if (data.initialGold > 0) {
-    core.events.emitSync('store/patch', {
-      namespace: 'player',
-      patch: { gold: data.initialGold },
-    });
+    core.events.emitSync('store/set', { ns: 'player', key: 'gold', value: data.initialGold });
   }
 }
 ```
@@ -540,7 +563,7 @@ core.events.emitSync('shop/close', { sessionId });
 > **金幣儲存：** 金幣存放在 `VariableStoreManager` 的 `'player'` 命名空間，鍵值 `'gold'`。  
 > 可用以下方式設定初始金幣：
 > ```ts
-> core.events.emitSync('store/patch', { namespace: 'player', patch: { gold: 500 } });
+> core.events.emitSync('store/set', { ns: 'player', key: 'gold', value: 500 });
 > ```
 
 ---
@@ -565,10 +588,10 @@ const { slots } = await core.events.emit('save/slot:list', {});
 
 ## 9. 完整範例
 
-以下是從啟動引擎到開始第一場戰鬥的完整流程：
+以下是從啟動引擎到開始第一場戰鬥的完整流程（使用 `registerRpgData` 一鍵注入）：
 
 ```ts
-import { createRpgEngine, loadRpgData } from '@inkshot/engine';
+import { createRpgEngine, registerRpgData } from '@inkshot/engine';
 import type { RpgGameData } from '@inkshot/engine';
 
 // ── 1. 定義遊戲資料 ────────────────────────────────────────────────────────
@@ -631,27 +654,19 @@ const gameData: RpgGameData = {
   ],
 };
 
-// ── 2. 啟動引擎 ────────────────────────────────────────────────────────────
+// ── 2. 啟動引擎並同時注入資料（最簡寫法）────────────────────────────────────
 const { core, rpg } = await createRpgEngine({
   container: '#app',
   width: 1280,
   height: 720,
+  gameData,   // ← 一次完成所有定義注入
 });
 
-// ── 3. 載入遊戲資料 ────────────────────────────────────────────────────────
-const data = loadRpgData(gameData);
+// 亦可分開寫（效果相同）：
+// const { core, rpg } = await createRpgEngine({ container: '#app', width: 1280, height: 720 });
+// registerRpgData(core, gameData);
 
-for (const curve   of data.expCurves)    core.events.emitSync('exp/curve:define',      { curve });
-for (const profile of data.statProfiles) core.events.emitSync('stats/profile:define',  { profile });
-for (const item    of data.items)        core.events.emitSync('inventory/item:define', { item });
-for (const effect  of data.statusEffects)core.events.emitSync('stats/status:define',  { effect });
-for (const script  of data.scripts)      core.events.emitSync('script/define',         { script });
-for (const actor   of data.actors)       core.events.emitSync('actor/define',          { def: actor });
-
-// 設定初始金幣
-core.events.emitSync('store/patch', { namespace: 'player', patch: { gold: data.initialGold } });
-
-// ── 4. 生成玩家角色 ────────────────────────────────────────────────────────
+// ── 3. 生成玩家角色 ────────────────────────────────────────────────────────
 const { instance } = await core.events.emit('actor/spawn', {
   actorType: 'hero',
   instanceId: 'player',
@@ -663,7 +678,7 @@ core.events.emitSync('stats/base:set', {
   patch: { hp: 120, hpMax: 120, mp: 20, mpMax: 20, atk: 15, def: 10, agi: 8, luk: 5 },
 });
 
-// ── 5. 定義商店 ────────────────────────────────────────────────────────────
+// ── 4. 定義商店 ────────────────────────────────────────────────────────────
 core.events.emitSync('shop/define', {
   shop: {
     id: 'town-shop',
@@ -675,7 +690,7 @@ core.events.emitSync('shop/define', {
   },
 });
 
-// ── 6. 開始一場戰鬥 ────────────────────────────────────────────────────────
+// ── 5. 開始一場戰鬥 ────────────────────────────────────────────────────────
 const { battleId } = await core.events.emit('battle/start', {
   allies:  [{ id: 'player', stats: { hp: 120, hpMax: 120, atk: 15, def: 10 } }],
   enemies: [{ id: 'slime',  stats: { hp: 30,  hpMax: 30,  atk: 5,  def: 2  } }],

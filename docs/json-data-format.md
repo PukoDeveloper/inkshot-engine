@@ -33,19 +33,32 @@
 ## 1. RPG 遊戲資料（`RpgGameData`）
 
 `RpgGameData` 是描述一款 RPG 遊戲所有靜態資料的根物件。  
-使用 `loadRpgData()` 將此物件轉換為引擎可直接使用的格式。
+使用 `registerRpgData()` 可一次完成所有定義注入；或先呼叫 `loadRpgData()` 取得轉換結果後手動注入。
 
 ```ts
-import { loadRpgData } from '@inkshot/engine';
+import { registerRpgData } from '@inkshot/engine';
 import type { RpgGameData } from '@inkshot/engine';
 
 // 可直接定義於程式碼中
 const gameData: RpgGameData = { /* ... */ };
 
 // 也可以從 JSON 檔案讀取
-const gameData = await fetch('/data/game.json').then(r => r.json()) as RpgGameData;
+// const gameData = await fetch('/data/game.json').then(r => r.json()) as RpgGameData;
+
+// ✅ 推薦：一行注入引擎
+registerRpgData(core, gameData);
+
+// 或在 createRpgEngine 時傳入（效果相同）：
+// await createRpgEngine({ container: '#app', gameData });
+```
+
+若需要手動逐一注入（進階用法），仍可使用 `loadRpgData()`：
+
+```ts
+import { loadRpgData } from '@inkshot/engine';
 
 const data = loadRpgData(gameData);
+// 使用 data.actors、data.items、data.expCurves 等逐一注入
 ```
 
 ---
