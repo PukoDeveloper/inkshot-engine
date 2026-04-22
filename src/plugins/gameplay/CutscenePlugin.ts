@@ -107,7 +107,7 @@ export class CutscenePlugin implements EnginePlugin {
     displayName: 'Cutscene Plugin',
     icon: 'cutscene',
     description: 'Plays scripted cutscene sequences with camera moves, waits, and event steps.',
-    commands: [
+    events: [
       'cutscene/define', 'cutscene/play', 'cutscene/stop', 'cutscene/skip', 'cutscene/state',
     ] as const,
     schemas: {

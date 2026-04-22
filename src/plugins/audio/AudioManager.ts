@@ -141,7 +141,7 @@ export class AudioManager implements EnginePlugin {
     displayName: 'Audio Manager',
     icon: 'audio',
     description: 'Provides audio playback via the browser-native Web Audio API with spatial audio support.',
-    commands: [
+    events: [
       'audio/load', 'audio/play', 'audio/stop', 'audio/pause', 'audio/resume',
       'audio/volume', 'audio/fade-stop', 'audio/unload', 'audio/state',
       'audio/list', 'audio/listener:update', 'audio/source:move',

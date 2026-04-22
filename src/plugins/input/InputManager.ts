@@ -138,7 +138,7 @@ export class InputManager implements EnginePlugin {
     displayName: 'Input Manager',
     icon: 'input',
     description: 'Unified keyboard, pointer, gamepad, and touch input with action-binding support.',
-    commands: [
+    events: [
       'input/key:down', 'input/key:up', 'input/key:pressed',
       'input/pointer:down', 'input/pointer:up', 'input/pointer:move',
       'input/action:bind', 'input/action:triggered',

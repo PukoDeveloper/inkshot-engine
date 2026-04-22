@@ -59,7 +59,7 @@ export class GameStateManager implements EnginePlugin {
     displayName: 'Game State Manager',
     icon: 'game',
     description: 'Tracks and broadcasts the current high-level game phase (e.g. menu, playing, paused).',
-    commands: ['game/state:set', 'game/state:get'] as const,
+    events: ['game/state:set', 'game/state:get'] as const,
   };
 
   private _state: GamePhase = 'none';

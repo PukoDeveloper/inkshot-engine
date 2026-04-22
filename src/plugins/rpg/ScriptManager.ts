@@ -244,7 +244,7 @@ export class ScriptManager implements EnginePlugin {
     displayName: 'Script Manager',
     icon: 'script',
     description: 'Executes data-driven node-based scripts for NPC behaviours, cutscenes, and quests.',
-    commands: [
+    events: [
       'script/define', 'script/run', 'script/stop', 'script/register-command', 'script/state:get',
     ] as const,
     schemas: {

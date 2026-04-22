@@ -58,7 +58,7 @@ export class BattleSystem implements EnginePlugin {
     displayName: 'Battle System',
     icon: 'battle',
     description: 'Turn-based battle system with action resolution and combatant defeat tracking.',
-    commands: [
+    events: [
       'battle/start', 'battle/end', 'battle/action', 'battle/resolve', 'battle/state:get',
     ] as const,
   };

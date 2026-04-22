@@ -53,7 +53,7 @@ export class ShopSystem implements EnginePlugin {
     displayName: 'Shop System',
     icon: 'shop',
     description: 'Shop definitions with buy/sell workflows integrated with the inventory.',
-    commands: [
+    events: [
       'shop/define', 'shop/open', 'shop/close', 'shop/buy', 'shop/sell',
     ] as const,
   };

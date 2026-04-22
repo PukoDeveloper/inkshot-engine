@@ -218,7 +218,7 @@ export class IndexedDBSaveAdapter implements EnginePlugin {
     displayName: 'IndexedDB Save Adapter',
     icon: 'save',
     description: 'Persists save data to the browser IndexedDB for larger storage capacity.',
-    commands: [
+    events: [
       'save/slot:save', 'save/slot:load', 'save/slot:delete',
       'save/global:save', 'save/global:load',
     ] as const,

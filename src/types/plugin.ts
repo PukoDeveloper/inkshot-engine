@@ -1,17 +1,82 @@
 import type { Core } from '../core/Core.js';
 
 // ---------------------------------------------------------------------------
+// SchemaFieldDef / SchemaObjectDef
+// ---------------------------------------------------------------------------
+
+/**
+ * A single field definition inside a {@link SchemaObjectDef}.
+ *
+ * Each variant corresponds to one of the primitive or composite types that
+ * the Inkshot editor understands:
+ *
+ * | `type`    | Extra properties |
+ * |-----------|-----------------|
+ * | `string`  | `default?`      |
+ * | `number`  | `default?`, `min?`, `max?` |
+ * | `boolean` | `default?`      |
+ * | `enum`    | `options`, `default?` |
+ * | `ref`     | `ref` (collection name) |
+ * | `array`   | `items`         |
+ * | `object`  | `properties`    |
+ */
+export type SchemaFieldDef =
+  | { type: 'string';  label?: string; description?: string; hidden?: boolean; default?: string }
+  | { type: 'number';  label?: string; description?: string; hidden?: boolean; default?: number; min?: number; max?: number }
+  | { type: 'boolean'; label?: string; description?: string; hidden?: boolean; default?: boolean }
+  | { type: 'enum';    label?: string; description?: string; hidden?: boolean; options: string[]; default?: string }
+  | { type: 'ref';     label?: string; description?: string; hidden?: boolean; ref: string }
+  | { type: 'array';   label?: string; description?: string; hidden?: boolean; items: SchemaFieldDef }
+  | { type: 'object';  label?: string; description?: string; hidden?: boolean; properties: Record<string, SchemaFieldDef> };
+
+/**
+ * A structured, editor-renderable definition of a data collection's shape.
+ *
+ * This mirrors a simplified subset of JSON Schema that is sufficient to
+ * describe typical game data (actors, items, skills, …) while remaining easy
+ * for visual editors to render as form controls.
+ *
+ * @example
+ * ```ts
+ * const itemSchema: SchemaObjectDef = {
+ *   type: 'object',
+ *   label: 'Item',
+ *   properties: {
+ *     name:  { type: 'string',  label: 'Name' },
+ *     price: { type: 'number',  label: 'Price', default: 0, min: 0 },
+ *     stackable: { type: 'boolean', label: 'Stackable', default: true },
+ *   },
+ * };
+ * ```
+ */
+export interface SchemaObjectDef {
+  type: 'object';
+  /** Human-readable label for the editor UI. */
+  label?: string;
+  /** Short description of what this schema represents. */
+  description?: string;
+  /** Field definitions keyed by field name. */
+  properties: Record<string, SchemaFieldDef>;
+}
+
+// ---------------------------------------------------------------------------
 // EditorSchema
 // ---------------------------------------------------------------------------
 
 /**
  * Describes a single data schema that a plugin exposes to the Inkshot editor.
  *
- * The most important editor-specific field is {@link folder}, which tells the
- * editor where on disk files of this schema type are stored.  All other fields
- * are passed through to the editor as-is; the engine never reads them.
+ * Each entry in {@link EditorMeta.schemas} uses this shape.  The engine never
+ * reads or validates this object — it is passed through as-is to external
+ * tooling.
  */
 export interface EditorSchema {
+  /** Human-readable label for this schema, used in the editor UI. */
+  displayName?: string;
+
+  /** Icon identifier understood by the Inkshot editor (e.g. `'data'`, `'actor'`). */
+  icon?: string;
+
   /**
    * Name of the project sub-folder (relative to the project root) that
    * contains files associated with this schema.
@@ -20,8 +85,13 @@ export interface EditorSchema {
    */
   folder?: string;
 
-  /** Human-readable label for this schema, used in the editor UI. */
-  displayName?: string;
+  /**
+   * Structured field definition for this schema.
+   *
+   * When present, the editor uses this to render a form for creating and
+   * editing entries of this collection type.
+   */
+  field?: SchemaObjectDef;
 
   /** Additional arbitrary properties for custom tooling. */
   [key: string]: unknown;
@@ -40,11 +110,12 @@ export interface EditorSchema {
  *
  * ### Key fields
  * - `displayName` / `icon` / `description` — basic presentation data.
- * - `commands` — the event names this plugin registers (helps the editor
- *   build auto-complete lists and show relevant commands in its UI).
+ * - `events` — the event names this plugin registers (helps the editor
+ *   build auto-complete lists and show relevant events in its UI).
  * - `schemas` — named data shapes this plugin works with.  Each entry may
- *   include a {@link EditorSchema.folder | folder} property so the editor
- *   knows which project directory contains files of that type.
+ *   include a {@link EditorSchema.folder | folder} and a
+ *   {@link EditorSchema.field | field} definition so the editor knows where
+ *   files of that type live and how to render an edit form for them.
  */
 export interface EditorMeta {
   /** Human-readable plugin name shown in the editor sidebar / inspector. */
@@ -61,20 +132,27 @@ export interface EditorMeta {
    *
    * @example `['scene/load', 'scene/register', 'scene/current']`
    */
-  commands?: readonly string[];
+  events?: readonly string[];
 
   /**
    * Named data schemas describing the data structures this plugin works with.
    *
    * Each key is a schema name (e.g. `'tilemap'`, `'actor'`).  Each value is
-   * an {@link EditorSchema} that optionally specifies a {@link EditorSchema.folder}
-   * where files of this type are located on disk.
+   * an {@link EditorSchema} with optional `displayName`, `icon`, `folder`, and
+   * `field` properties.
    *
    * @example
    * ```ts
    * schemas: {
    *   tilemap: { folder: 'tilemaps', displayName: 'Tilemap' },
-   *   actor:   { folder: 'actors',   displayName: 'Actor Definition' },
+   *   actor:   {
+   *     folder: 'actors',
+   *     displayName: 'Actor Definition',
+   *     field: {
+   *       type: 'object',
+   *       properties: { name: { type: 'string', label: 'Name' } },
+   *     },
+   *   },
    * }
    * ```
    */
@@ -141,9 +219,9 @@ export interface EnginePlugin {
    * case.  The editor is free to interpret them however it likes.
    *
    * The `schemas` map is especially important: each entry describes a data
-   * type the plugin works with, and its optional {@link EditorSchema.folder}
-   * property tells the editor which project sub-folder holds files of that
-   * type.
+   * type the plugin works with.  Its `folder` property tells the editor which
+   * project sub-folder holds files of that type, and its optional `field`
+   * property describes the editable structure of each entry.
    *
    * @example
    * ```ts
@@ -152,7 +230,7 @@ export interface EnginePlugin {
    *   editorMeta: {
    *     displayName: 'Scene Manager',
    *     icon: 'scene',
-   *     commands: ['scene/register', 'scene/load', 'scene/current'],
+   *     events: ['scene/register', 'scene/load', 'scene/current'],
    *     schemas: {
    *       scene: {
    *         folder: 'scenes',

@@ -78,7 +78,7 @@ export class MinimapPlugin implements EnginePlugin {
     displayName: 'Minimap',
     icon: 'minimap',
     description: 'Renders a minimap overlay with configurable icons and fog-of-war integration.',
-    commands: [
+    events: [
       'minimap/init', 'minimap/icon:add', 'minimap/icon:remove',
       'minimap/icon:update', 'minimap/icons', 'minimap/config',
     ] as const,

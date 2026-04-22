@@ -339,7 +339,7 @@ export class KinematicPhysicsAdapter implements EnginePlugin {
     displayName: 'Kinematic Physics Adapter',
     icon: 'physics',
     description: 'Built-in AABB-based kinematic physics with slope and tilemap collision support.',
-    commands: [
+    events: [
       'physics/body:add', 'physics/body:remove', 'physics/move', 'physics/impulse',
       'physics/query', 'physics/raycast', 'physics/hit', 'physics/overlap',
       'physics/tilemap:set', 'physics/grid:snap',

@@ -130,7 +130,7 @@ export class TilemapManager implements EnginePlugin {
     displayName: 'Tilemap Manager',
     icon: 'tilemap',
     description: 'Renders and manages tile-based maps with support for multiple layers and auto-tiling.',
-    commands: [
+    events: [
       'tilemap/load', 'tilemap/unload',
       'tilemap/set-tile', 'tilemap/get-tile', 'tilemap/layer:set-filter',
     ] as const,

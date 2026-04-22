@@ -76,7 +76,7 @@ export class AchievementPlugin implements EnginePlugin {
     displayName: 'Achievement Plugin',
     icon: 'achievement',
     description: 'Defines, tracks progress for, and unlocks player achievements.',
-    commands: [
+    events: [
       'achievement/define', 'achievement/unlock', 'achievement/progress',
       'achievement/get', 'achievement/list', 'achievement/reset',
     ] as const,

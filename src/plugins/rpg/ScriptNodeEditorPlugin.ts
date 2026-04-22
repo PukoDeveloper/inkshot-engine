@@ -60,7 +60,7 @@ export class ScriptNodeEditorPlugin implements EnginePlugin {
     displayName: 'Script Node Editor',
     icon: 'script-node-editor',
     description: 'Visual node-graph editor for authoring and compiling script definitions.',
-    commands: [
+    events: [
       'scriptnodeeditor/open', 'scriptnodeeditor/close',
       'scriptnodeeditor/node:add', 'scriptnodeeditor/node:update', 'scriptnodeeditor/node:remove',
       'scriptnodeeditor/node:connect', 'scriptnodeeditor/undo', 'scriptnodeeditor/redo',

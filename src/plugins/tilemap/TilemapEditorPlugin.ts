@@ -98,7 +98,7 @@ export class TilemapEditorPlugin implements EnginePlugin {
     displayName: 'Tilemap Editor',
     icon: 'mapeditor',
     description: 'In-engine tile-painting editor with undo/redo and export support.',
-    commands: [
+    events: [
       'mapeditor/open', 'mapeditor/close', 'mapeditor/tool:set',
       'mapeditor/tile:select', 'mapeditor/layer:select',
       'mapeditor/undo', 'mapeditor/redo', 'mapeditor/export', 'mapeditor/state',

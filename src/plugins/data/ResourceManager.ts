@@ -90,7 +90,7 @@ export class ResourceManager implements EnginePlugin {
     displayName: 'Resource Manager',
     icon: 'assets',
     description: 'Manages binary and texture asset bundles through Pixi.js Assets.',
-    commands: [
+    events: [
       'assets/preload', 'assets/load', 'assets/prefetch',
       'assets/get', 'assets/unload',
     ] as const,

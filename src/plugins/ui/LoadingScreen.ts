@@ -71,7 +71,7 @@ export class LoadingScreen implements EnginePlugin {
     displayName: 'Loading Screen',
     icon: 'loadingScreen',
     description: 'Displays a fade-in/out overlay during scene transitions.',
-    commands: [] as const,
+    events: [] as const,
   };
 
   private readonly _duration: number;

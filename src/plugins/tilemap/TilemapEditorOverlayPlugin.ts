@@ -71,7 +71,7 @@ export class TilemapEditorOverlayPlugin implements EnginePlugin {
     displayName: 'Tilemap Editor Overlay',
     icon: 'mapeditor-overlay',
     description: 'Renders the in-engine tilemap editor cursor and grid overlay.',
-    commands: [] as const,
+    events: [] as const,
   };
 
   private _core: Core | null = null;

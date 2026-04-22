@@ -105,7 +105,7 @@ export class TimerManager implements EnginePlugin {
     displayName: 'Timer Manager',
     icon: 'timer',
     description: 'Event-driven one-shot timers, repeating intervals, and cooldown checks.',
-    commands: [
+    events: [
       'timer/once', 'timer/interval', 'timer/cancel', 'timer/cancel-all', 'timer/cooldown',
     ] as const,
   };

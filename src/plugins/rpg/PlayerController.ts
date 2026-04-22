@@ -93,7 +93,7 @@ export class PlayerController implements EnginePlugin {
     displayName: 'Player Controller',
     icon: 'playerController',
     description: 'Moves a designated entity in response to input actions and emits interact events.',
-    commands: ['player/entity:set'] as const,
+    events: ['player/entity:set'] as const,
   };
 
   private _core: Core | null = null;

@@ -167,7 +167,7 @@ export class ActorManager implements EnginePlugin {
     displayName: 'Actor Manager',
     icon: 'actor',
     description: 'Manages actor definitions, spawning, state, and script-driven behaviours.',
-    commands: [
+    events: [
       'actor/define', 'actor/spawn', 'actor/despawn', 'actor/list',
       'actor/state:set', 'actor/state:get', 'actor/state:patch', 'actor/trigger',
     ] as const,
