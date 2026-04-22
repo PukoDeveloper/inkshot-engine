@@ -46,7 +46,7 @@ Everything communicates through a shared **EventBus** — no tight coupling, no 
 ## Installation
 
 ```bash
-npm install inkshot-engine
+npm install @inkshot/engine
 ```
 
 > **Peer dependency**: Pixi.js v8 is bundled as a regular dependency — you do not need to install it separately.
@@ -2340,7 +2340,15 @@ core.events.on<TweenFinishedParams>('fx', 'tween/finished', ({ id, target }) => 
 
 ---
 
+## Roadmap
+
+Features listed in [TODO.md](./TODO.md) under the "中優先" and "低優先" sections are **planned but not yet implemented**. They do not exist in any currently published version.
+
+If you'd like to see a feature prioritised or want to contribute an implementation, feel free to open a [Feature Request](https://github.com/PukoDeveloper/inkshot-engine/issues/new?template=feature_request.md).
+
+---
+
 ## License
 
-ISC
+[ISC](./LICENSE) © 2026 PukoDeveloper
 
