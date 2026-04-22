@@ -1,5 +1,11 @@
 # RPG Roadmap — inkshot-engine
 
+> **⚠️ 此文件已過時。**  
+> 本文件中大部分功能已完整實作，詳見根目錄的 [`TODO.md`](../TODO.md)。  
+> 尚未實作的計畫功能已整合至新的路線圖文件：[`docs/roadmap.md`](./roadmap.md)。
+
+---
+
 本文件記錄所有 **尚未實作** 的 RPG 及遊戲功能計畫，依優先順序分組。
 已完成的功能請參閱根目錄的 [`TODO.md`](../TODO.md)。
 
