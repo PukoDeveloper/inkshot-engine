@@ -7,6 +7,18 @@
 // while plugins can declare "@inkshot/engine" as external (keeping their own
 // file sizes minimal and sharing the engine instance).
 
+const banner = `/*!
+ * @inkshot/engine
+ * Copyright (c) 2026 PukoDeveloper
+ * Licensed under the ISC License
+ * https://github.com/PukoDeveloper/inkshot-engine
+ *
+ * Includes pixi.js v8.18.1
+ * Copyright (c) 2013-2025 Mathew Groves, Chad Engler
+ * Licensed under the MIT License
+ * https://github.com/pixijs/pixijs
+ */`;
+
 /** @type {import('rolldown').RolldownOptions} */
 export default {
   input: 'src/index.ts',
@@ -20,5 +32,8 @@ export default {
     // Dynamic imports inside the engine (e.g. the Web Worker bridge) remain
     // functional because the worker source is inlined as a Blob URL at runtime.
     codeSplitting: false,
+    // Preserve license notices at the top of the minified bundle so that
+    // distributing engine.bundle.js alone is sufficient for attribution.
+    banner,
   },
 };
