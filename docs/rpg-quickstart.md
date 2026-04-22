@@ -1,7 +1,7 @@
 # RPG 快速開始指南
 
 本指南說明如何使用 **inkshot-engine** 的 RPG 功能，從零建立一個可運行的 RPG 專案。  
-全流程不依賴任何外部工具（如 RPG Maker），所有資料皆以 TypeScript / JSON 定義。
+全流程不依賴任何外部工具，所有資料皆以 TypeScript / JSON 定義。
 
 ---
 
@@ -317,13 +317,13 @@ scripts: [
   {
     id: 'opening-cutscene',
     nodes: [
-      { cmd: 'say',  text: '在遙遠的王國，黑暗的力量正在甦醒……', speaker: '旁白' },
-      { cmd: 'wait', duration: 2000 },
-      { cmd: 'say',  text: '勇者啊，請起身！', speaker: '國王' },
-      { cmd: 'choices', choices: ['我準備好了', '給我一點時間'], var: 'hero_choice' },
-      { cmd: 'if',   var: 'hero_choice', value: 0, jump: 'ready' },
-      { cmd: 'say',  text: '別猶豫了，時間不多！', speaker: '國王' },
-      { cmd: 'label', name: 'ready' },
+      { cmd: 'say',     text: '在遙遠的王國，黑暗的力量正在甦醒……', speaker: '旁白' },
+      { cmd: 'wait',    ms: 2000 },
+      { cmd: 'say',     text: '勇者啊，請起身！', speaker: '國王' },
+      { cmd: 'choices', choices: ['我準備好了', '給我一點時間'], var: '$hero_choice' },
+      { cmd: 'if',      var: '$hero_choice', value: 0, jump: 'ready' },
+      { cmd: 'say',     text: '別猶豫了，時間不多！', speaker: '國王' },
+      { cmd: 'label',   name: 'ready' },
       { cmd: 'end' },
     ],
   },
@@ -334,16 +334,29 @@ scripts: [
 
 | `cmd` | 參數 | 說明 |
 |-------|------|------|
-| `say` | `text`, `speaker?`, `portrait?` | 顯示對話（typewriter 效果） |
-| `choices` | `choices[]`, `var` | 顯示選項，結果存入 `var` |
-| `if` | `var`, `value`, `jump` | 比對變數，跳轉至 `jump` 標籤 |
-| `wait` | `duration` (ms) | 等待指定毫秒 |
+| `say` | `text`, `speaker?`, `portrait?` | 顯示對話（typewriter 效果）；`text` 支援 `{$var}` 插值與 `[tag]` 標記 |
+| `choices` | `choices[]`, `var` | 顯示選項（支援 `{$var}` 插值），結果存入 `var` |
+| `if` | `var` (變數參照), `op?`, `value`, `jump` | 條件跳轉；`op`：`eq`（預設）`ne` `gt` `lt` `gte` `lte` |
+| `set` | `var` (變數參照), `value` | 寫入腳本變數（`$name`）或持久化儲存（`$ns.key`） |
+| `wait` | `ms` (ms) | 等待指定毫秒 |
 | `label` | `name` | 定義跳轉目標 |
 | `jump` | `target` | 無條件跳轉至標籤 |
 | `call` | `scriptId` | 呼叫另一個腳本（子程序） |
 | `emit` | `event`, `params?` | 發出 EventBus 事件 |
-| `store-set` | `namespace`, `key`, `value` | 寫入變數儲存 |
 | `end` | — | 結束腳本 |
+
+#### 變數參照格式
+
+| 格式 | 對應 |
+|------|------|
+| `$name` | 腳本本地變數 `vars.name` |
+| `$ns.key` | 持久化變數儲存（`store/get` `store/set`） |
+
+在 `say` 和 `choices` 的文字欄位中可嵌入 `{$name}` 或 `{$ns.key}` 佔位符，執行時會自動替換：
+
+```ts
+{ cmd: 'say', text: '你的 HP：{$player.hp}，金幣：{$gold}' }
+```
 
 ---
 
@@ -488,7 +501,7 @@ core.events.emitSync('script/run', {
 
 ```ts
 // 顯示文字
-core.events.emitSync('dialogue/show:text', {
+core.events.emitSync('dialogue/show-text', {
   text: '歡迎來到我的商店！',
   speaker: '商人',
 });
@@ -497,7 +510,7 @@ core.events.emitSync('dialogue/show:text', {
 core.events.emitSync('dialogue/advance', {});
 
 // 顯示選項
-core.events.emitSync('dialogue/show:choices', {
+core.events.emitSync('dialogue/show-choices', {
   choices: ['購買', '出售', '離開'],
 });
 
@@ -624,9 +637,9 @@ const gameData: RpgGameData = {
         {
           id: 'merchant-dialogue',
           nodes: [
-            { cmd: 'say', text: '歡迎光臨！', speaker: '商人' },
-            { cmd: 'choices', choices: ['購買', '離開'], var: 'choice' },
-            { cmd: 'if', var: 'choice', value: 1, jump: 'bye' },
+            { cmd: 'say',     text: '歡迎光臨！', speaker: '商人' },
+            { cmd: 'choices', choices: ['購買', '離開'], var: '$choice' },
+            { cmd: 'if',      var: '$choice', value: 1, jump: 'bye' },
             { cmd: 'emit', event: 'shop/open', params: { shopId: 'town-shop', customerId: 'hero' } },
             { cmd: 'label', name: 'bye' },
             { cmd: 'end' },
@@ -782,8 +795,8 @@ console.log('戰鬥結算：', result.log);
 
 | 事件 | 說明 |
 |------|------|
-| `dialogue/show:text` | 顯示文字 |
-| `dialogue/show:choices` | 顯示選項 |
+| `dialogue/show-text` | 顯示文字 |
+| `dialogue/show-choices` | 顯示選項 |
 | `dialogue/advance` | 推進對話 |
 | `dialogue/choice` | 選擇選項 |
 | `dialogue/end` | 強制結束對話 |
