@@ -137,6 +137,22 @@ interface AudioInstance {
  */
 export class AudioManager implements EnginePlugin {
   readonly namespace = 'audio';
+  readonly editorMeta = {
+    displayName: 'Audio Manager',
+    icon: 'audio',
+    description: 'Provides audio playback via the browser-native Web Audio API with spatial audio support.',
+    commands: [
+      'audio/load', 'audio/play', 'audio/stop', 'audio/pause', 'audio/resume',
+      'audio/volume', 'audio/fade-stop', 'audio/unload', 'audio/state',
+      'audio/list', 'audio/listener:update', 'audio/source:move',
+    ] as const,
+    schemas: {
+      audio: {
+        folder: 'audio',
+        displayName: 'Audio Clip',
+      },
+    },
+  };
 
   // ---------------------------------------------------------------------------
   // Internal state

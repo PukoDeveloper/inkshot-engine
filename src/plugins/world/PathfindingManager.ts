@@ -185,6 +185,15 @@ export class PathfindingManager implements EnginePlugin {
   readonly namespace = 'pathfinding';
   /** Must be initialised after EntityManager (entity queries used at runtime). */
   readonly dependencies = ['entityManager'] as const;
+  readonly editorMeta = {
+    displayName: 'Pathfinding Manager',
+    icon: 'pathfinding',
+    description: 'Grid-based A* pathfinding with weight maps and async path queries.',
+    commands: [
+      'pathfinding/find', 'pathfinding/find:async',
+      'pathfinding/weight:set', 'pathfinding/cache:clear',
+    ] as const,
+  };
 
   /** Sentinel cost value used to flag completely impassable cells. */
   static readonly IMPASSABLE = IMPASSABLE;

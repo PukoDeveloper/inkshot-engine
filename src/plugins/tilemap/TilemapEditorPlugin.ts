@@ -94,6 +94,22 @@ const MAX_UNDO_HISTORY = 100;
 export class TilemapEditorPlugin implements EnginePlugin {
   readonly namespace = 'mapeditor';
   readonly dependencies = ['tilemap', 'input'] as const;
+  readonly editorMeta = {
+    displayName: 'Tilemap Editor',
+    icon: 'mapeditor',
+    description: 'In-engine tile-painting editor with undo/redo and export support.',
+    commands: [
+      'mapeditor/open', 'mapeditor/close', 'mapeditor/tool:set',
+      'mapeditor/tile:select', 'mapeditor/layer:select',
+      'mapeditor/undo', 'mapeditor/redo', 'mapeditor/export', 'mapeditor/state',
+    ] as const,
+    schemas: {
+      tilemap: {
+        folder: 'tilemaps',
+        displayName: 'Tilemap',
+      },
+    },
+  };
 
   // ── Editor state ───────────────────────────────────────────────────────────
 

@@ -83,6 +83,15 @@ export interface LocalStorageSaveAdapterOptions {
  */
 export class LocalStorageSaveAdapter implements EnginePlugin {
   readonly namespace = 'localStorageSave';
+  readonly editorMeta = {
+    displayName: 'LocalStorage Save Adapter',
+    icon: 'save',
+    description: 'Persists save data to the browser localStorage.',
+    commands: [
+      'save/slot:save', 'save/slot:load', 'save/slot:delete',
+      'save/global:save', 'save/global:load',
+    ] as const,
+  };
 
   private readonly _prefix: string;
   private readonly _storage: StorageLike;

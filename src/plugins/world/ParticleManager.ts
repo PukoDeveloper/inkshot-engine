@@ -244,6 +244,15 @@ export interface ParticleManagerOptions {
  */
 export class ParticleManager implements EnginePlugin {
   readonly namespace = 'particle';
+  readonly editorMeta = {
+    displayName: 'Particle Manager',
+    icon: 'particle',
+    description: 'Manages pooled particle emitters for visual effects.',
+    commands: [
+      'particle/emit', 'particle/stop', 'particle/clear', 'particle/move',
+      'particle/pause', 'particle/resume', 'particle/count', 'particle/update',
+    ] as const,
+  };
 
   private _core: Core | null = null;
   private _fxLayer: ParticleLayer = _noopLayer;

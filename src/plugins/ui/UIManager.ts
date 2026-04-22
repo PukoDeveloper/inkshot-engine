@@ -1003,6 +1003,15 @@ function createDialogueBox(id: string, props: UIDialogueBoxProps, core: Core): U
 export class UIManager implements EnginePlugin {
   readonly namespace   = 'ui';
   readonly dependencies: readonly string[] = [];
+  readonly editorMeta = {
+    displayName: 'UI Manager',
+    icon: 'ui',
+    description: 'Manages UI widgets with a factory-based creation system and anchor layout.',
+    commands: [
+      'ui/register', 'ui/create', 'ui/show', 'ui/hide', 'ui/destroy',
+      'ui/get', 'ui/update',
+    ] as const,
+  };
 
   private _core!: Core;
   private _layer!: Container;

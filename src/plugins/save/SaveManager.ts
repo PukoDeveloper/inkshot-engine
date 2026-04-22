@@ -97,6 +97,22 @@ import type {
  */
 export class SaveManager implements EnginePlugin {
   readonly namespace = 'save';
+  readonly editorMeta = {
+    displayName: 'Save Manager',
+    icon: 'save',
+    description: 'Manages save slots and global save data through a pluggable storage adapter.',
+    commands: [
+      'save/slot:set', 'save/slot:get', 'save/slot:list',
+      'save/slot:save', 'save/slot:load', 'save/slot:delete',
+      'save/global:set', 'save/global:get', 'save/global:save', 'save/global:load',
+    ] as const,
+    schemas: {
+      save: {
+        folder: 'saves',
+        displayName: 'Save Slot',
+      },
+    },
+  };
 
   private readonly _slots = new Map<string, SlotData>();
   private _global: GlobalSaveData = { data: {}, updatedAt: 0 };

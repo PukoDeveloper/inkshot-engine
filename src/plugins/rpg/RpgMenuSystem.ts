@@ -43,6 +43,14 @@ import type {
 export class RpgMenuSystem implements EnginePlugin {
   readonly namespace = 'rpgmenu';
   readonly dependencies = ['game'] as const;
+  readonly editorMeta = {
+    displayName: 'RPG Menu System',
+    icon: 'rpgmenu',
+    description: 'Manages the main RPG status/equipment menu with page navigation.',
+    commands: [
+      'rpgmenu/open', 'rpgmenu/close', 'rpgmenu/page:set', 'rpgmenu/party:set', 'rpgmenu/state:get',
+    ] as const,
+  };
 
   private _open = false;
   private _page: RpgMenuPage = 'main';

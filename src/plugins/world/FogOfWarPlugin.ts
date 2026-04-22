@@ -70,6 +70,15 @@ const FOG_VISIBLE = 2;
  */
 export class FogOfWarPlugin implements EnginePlugin {
   readonly namespace = 'fog';
+  readonly editorMeta = {
+    displayName: 'Fog of War Plugin',
+    icon: 'fog',
+    description: 'Renders a fog-of-war overlay with explored and visible tile states.',
+    commands: [
+      'fog/init', 'fog/update', 'fog/reveal', 'fog/clear',
+      'fog/get-tile', 'fog/state',
+    ] as const,
+  };
 
   private _config: FogConfig | null = null;
   /** Flat row-major array: 0=unexplored, 1=explored, 2=visible. */

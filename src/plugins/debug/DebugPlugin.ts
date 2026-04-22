@@ -127,6 +127,15 @@ function layerColour(layer: number): number {
  */
 export class DebugPlugin implements EnginePlugin {
   readonly namespace = 'debug';
+  readonly editorMeta = {
+    displayName: 'Debug Plugin',
+    icon: 'debug',
+    description: 'Provides in-game debug overlay, FPS counter, and event-log inspection.',
+    commands: [
+      'debug/overlay:toggle', 'debug/overlay:visible',
+      'debug/event-log:filter', 'debug/event-log:get',
+    ] as const,
+  };
 
   // ---------------------------------------------------------------------------
   // Config

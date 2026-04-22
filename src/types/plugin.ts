@@ -1,5 +1,93 @@
 import type { Core } from '../core/Core.js';
 
+// ---------------------------------------------------------------------------
+// EditorSchema
+// ---------------------------------------------------------------------------
+
+/**
+ * Describes a single data schema that a plugin exposes to the Inkshot editor.
+ *
+ * The most important editor-specific field is {@link folder}, which tells the
+ * editor where on disk files of this schema type are stored.  All other fields
+ * are passed through to the editor as-is; the engine never reads them.
+ */
+export interface EditorSchema {
+  /**
+   * Name of the project sub-folder (relative to the project root) that
+   * contains files associated with this schema.
+   *
+   * @example `'audio'`, `'tilemaps'`, `'data'`, `'i18n'`
+   */
+  folder?: string;
+
+  /** Human-readable label for this schema, used in the editor UI. */
+  displayName?: string;
+
+  /** Additional arbitrary properties for custom tooling. */
+  [key: string]: unknown;
+}
+
+// ---------------------------------------------------------------------------
+// EditorMeta
+// ---------------------------------------------------------------------------
+
+/**
+ * Editor-facing metadata attached to a plugin.
+ *
+ * The engine itself **never** reads or validates this object — it is a
+ * pass-through bag of data consumed exclusively by external tooling such as
+ * the Inkshot visual editor.
+ *
+ * ### Key fields
+ * - `displayName` / `icon` / `description` — basic presentation data.
+ * - `commands` — the event names this plugin registers (helps the editor
+ *   build auto-complete lists and show relevant commands in its UI).
+ * - `schemas` — named data shapes this plugin works with.  Each entry may
+ *   include a {@link EditorSchema.folder | folder} property so the editor
+ *   knows which project directory contains files of that type.
+ */
+export interface EditorMeta {
+  /** Human-readable plugin name shown in the editor sidebar / inspector. */
+  displayName?: string;
+
+  /** Icon identifier understood by the Inkshot editor (e.g. `'audio'`, `'scene'`). */
+  icon?: string;
+
+  /** Short description of what the plugin does. */
+  description?: string;
+
+  /**
+   * Event names this plugin handles and exposes to the editor.
+   *
+   * @example `['scene/load', 'scene/register', 'scene/current']`
+   */
+  commands?: readonly string[];
+
+  /**
+   * Named data schemas describing the data structures this plugin works with.
+   *
+   * Each key is a schema name (e.g. `'tilemap'`, `'actor'`).  Each value is
+   * an {@link EditorSchema} that optionally specifies a {@link EditorSchema.folder}
+   * where files of this type are located on disk.
+   *
+   * @example
+   * ```ts
+   * schemas: {
+   *   tilemap: { folder: 'tilemaps', displayName: 'Tilemap' },
+   *   actor:   { folder: 'actors',   displayName: 'Actor Definition' },
+   * }
+   * ```
+   */
+  schemas?: Record<string, EditorSchema>;
+
+  /** Additional arbitrary properties for custom tooling. */
+  [key: string]: unknown;
+}
+
+// ---------------------------------------------------------------------------
+// EnginePlugin
+// ---------------------------------------------------------------------------
+
 /**
  * The contract every engine plugin must satisfy.
  *
@@ -44,13 +132,18 @@ export interface EnginePlugin {
   readonly dependencies?: readonly string[];
 
   /**
-   * Arbitrary editor-facing metadata exposed to external tooling (e.g. the
-   * Inkshot visual editor).
+   * Editor-facing metadata exposed to external tooling (e.g. the Inkshot
+   * visual editor).
    *
    * The engine itself never reads or validates this object — it is purely a
-   * pass-through bag of data.  The shape is intentionally open-ended so each
-   * plugin author can define whatever properties make sense for their use case,
-   * and the editor is free to interpret them however it likes.
+   * pass-through bag of data.  The shape is defined by {@link EditorMeta} and
+   * each plugin author fills in whatever properties make sense for their use
+   * case.  The editor is free to interpret them however it likes.
+   *
+   * The `schemas` map is especially important: each entry describes a data
+   * type the plugin works with, and its optional {@link EditorSchema.folder}
+   * property tells the editor which project sub-folder holds files of that
+   * type.
    *
    * @example
    * ```ts
@@ -59,14 +152,11 @@ export interface EnginePlugin {
    *   editorMeta: {
    *     displayName: 'Scene Manager',
    *     icon: 'scene',
-   *     commands: ['scene/load', 'scene/unload'],
+   *     commands: ['scene/register', 'scene/load', 'scene/current'],
    *     schemas: {
    *       scene: {
-   *         type: 'object',
-   *         properties: {
-   *           id:   { type: 'string' },
-   *           file: { type: 'string' },
-   *         },
+   *         folder: 'scenes',
+   *         displayName: 'Scene Descriptor',
    *       },
    *     },
    *   },
@@ -74,7 +164,7 @@ export interface EnginePlugin {
    * };
    * ```
    */
-  readonly editorMeta?: Record<string, unknown>;
+  readonly editorMeta?: EditorMeta;
 
   /**
    * Called once before the game loop starts.

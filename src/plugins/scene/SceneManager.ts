@@ -78,6 +78,18 @@ import type {
  */
 export class SceneManager implements EnginePlugin {
   readonly namespace = 'scene';
+  readonly editorMeta = {
+    displayName: 'Scene Manager',
+    icon: 'scene',
+    description: 'Manages scene registration and transitions between levels or rooms.',
+    commands: ['scene/register', 'scene/load', 'scene/current'] as const,
+    schemas: {
+      scene: {
+        folder: 'scenes',
+        displayName: 'Scene Descriptor',
+      },
+    },
+  };
 
   private _core: Core | null = null;
 

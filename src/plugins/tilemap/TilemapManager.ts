@@ -126,6 +126,21 @@ interface AnimatedSpriteRef {
  */
 export class TilemapManager implements EnginePlugin {
   readonly namespace = 'tilemap';
+  readonly editorMeta = {
+    displayName: 'Tilemap Manager',
+    icon: 'tilemap',
+    description: 'Renders and manages tile-based maps with support for multiple layers and auto-tiling.',
+    commands: [
+      'tilemap/load', 'tilemap/unload',
+      'tilemap/set-tile', 'tilemap/get-tile', 'tilemap/layer:set-filter',
+    ] as const,
+    schemas: {
+      tilemap: {
+        folder: 'tilemaps',
+        displayName: 'Tilemap',
+      },
+    },
+  };
 
   private _core: Core | null = null;
   private _worldLayer: Container | null = null;

@@ -89,6 +89,12 @@ import type {
  */
 export class PlayerController implements EnginePlugin {
   readonly namespace = 'playerController';
+  readonly editorMeta = {
+    displayName: 'Player Controller',
+    icon: 'playerController',
+    description: 'Moves a designated entity in response to input actions and emits interact events.',
+    commands: ['player/entity:set'] as const,
+  };
 
   private _core: Core | null = null;
   private _entity: Entity | null = null;

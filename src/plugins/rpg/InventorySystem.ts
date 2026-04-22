@@ -64,6 +64,22 @@ interface ActorBag {
 export class InventorySystem implements EnginePlugin {
   readonly namespace = 'inventory';
   readonly dependencies = ['stats'] as const;
+  readonly editorMeta = {
+    displayName: 'Inventory System',
+    icon: 'inventory',
+    description: 'Item definitions, per-actor bags, equipment slots, and item usage.',
+    commands: [
+      'inventory/item:define', 'inventory/item:get', 'inventory/add', 'inventory/remove',
+      'inventory/use', 'inventory/equip', 'inventory/unequip',
+      'inventory/list', 'inventory/has',
+    ] as const,
+    schemas: {
+      item: {
+        folder: 'data',
+        displayName: 'Item Definition',
+      },
+    },
+  };
 
   private readonly _items: Map<string, ItemDef> = new Map();
   private readonly _bags: Map<string, ActorBag> = new Map();

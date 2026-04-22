@@ -83,6 +83,18 @@ import type {
  */
 export class DataManager implements EnginePlugin {
   readonly namespace = 'data';
+  readonly editorMeta = {
+    displayName: 'Data Manager',
+    icon: 'data',
+    description: 'Loads and manages typed JSON data collections (items, skills, enemies, …).',
+    commands: ['data/load', 'data/get', 'data/getAll', 'data/unload'] as const,
+    schemas: {
+      data: {
+        folder: 'data',
+        displayName: 'Data Collection',
+      },
+    },
+  };
 
   /**
    * Outer key: collection name (e.g. `'items'`, `'skills'`).

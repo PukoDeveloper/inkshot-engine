@@ -214,6 +214,15 @@ export interface IndexedDBSaveAdapterOptions {
  */
 export class IndexedDBSaveAdapter implements EnginePlugin {
   readonly namespace = 'indexedDbSave';
+  readonly editorMeta = {
+    displayName: 'IndexedDB Save Adapter',
+    icon: 'save',
+    description: 'Persists save data to the browser IndexedDB for larger storage capacity.',
+    commands: [
+      'save/slot:save', 'save/slot:load', 'save/slot:delete',
+      'save/global:save', 'save/global:load',
+    ] as const,
+  };
 
   private readonly _dbName: string;
   private readonly _dbVersion: number;

@@ -240,6 +240,20 @@ interface RunState {
  */
 export class ScriptManager implements EnginePlugin {
   readonly namespace = 'script';
+  readonly editorMeta = {
+    displayName: 'Script Manager',
+    icon: 'script',
+    description: 'Executes data-driven node-based scripts for NPC behaviours, cutscenes, and quests.',
+    commands: [
+      'script/define', 'script/run', 'script/stop', 'script/register-command', 'script/state:get',
+    ] as const,
+    schemas: {
+      script: {
+        folder: 'scripts',
+        displayName: 'Script Definition',
+      },
+    },
+  };
 
   private _core: Core | null = null;
 

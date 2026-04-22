@@ -134,6 +134,20 @@ import type {
  */
 export class InputManager implements EnginePlugin {
   readonly namespace = 'input';
+  readonly editorMeta = {
+    displayName: 'Input Manager',
+    icon: 'input',
+    description: 'Unified keyboard, pointer, gamepad, and touch input with action-binding support.',
+    commands: [
+      'input/key:down', 'input/key:up', 'input/key:pressed',
+      'input/pointer:down', 'input/pointer:up', 'input/pointer:move',
+      'input/action:bind', 'input/action:triggered',
+      'input/gamepad:button:down', 'input/gamepad:button:up',
+      'input/gamepad:axes', 'input/gamepad:axis:bind', 'input/gamepad:vibrate',
+      'input/gamepad:connected', 'input/gamepad:disconnected',
+      'input/gesture:pinch', 'input/gesture:rotate', 'input/gesture:swipe',
+    ] as const,
+  };
 
   // ---------------------------------------------------------------------------
   // Internal state

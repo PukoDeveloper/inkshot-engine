@@ -76,6 +76,15 @@ function hexToRgb(hex: number): { r: number; g: number; b: number } {
  */
 export class LightingPlugin implements EnginePlugin {
   readonly namespace = 'lighting';
+  readonly editorMeta = {
+    displayName: 'Lighting Plugin',
+    icon: 'lighting',
+    description: 'Renders a dynamic 2D lighting layer with point lights and ambient control.',
+    commands: [
+      'lighting/light:add', 'lighting/light:remove', 'lighting/light:update',
+      'lighting/light:get', 'lighting/ambient:set', 'lighting/state',
+    ] as const,
+  };
 
   private readonly _opts: Required<LightingPluginOptions>;
   private readonly _lights: Map<string, PointLight> = new Map();

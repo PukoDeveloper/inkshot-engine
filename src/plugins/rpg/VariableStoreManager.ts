@@ -144,6 +144,16 @@ export class VariableStoreManager implements EnginePlugin {
    * independently.
    */
   readonly dependencies: readonly string[] = [];
+  readonly editorMeta = {
+    displayName: 'Variable Store Manager',
+    icon: 'store',
+    description: 'Namespaced key-value variable store with save/load integration.',
+    commands: [
+      'store/set', 'store/get', 'store/patch',
+      'store/get-namespace', 'store/clear-namespace',
+      'store/snapshot', 'store/restore',
+    ] as const,
+  };
 
   /** Two-level store: namespace → (key → value). */
   private readonly _store = new Map<string, StoreNamespace>();

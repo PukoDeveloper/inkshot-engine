@@ -91,6 +91,15 @@ interface ParallaxLayerState {
  */
 export class ParallaxPlugin implements EnginePlugin {
   readonly namespace = 'parallax';
+  readonly editorMeta = {
+    displayName: 'Parallax Plugin',
+    icon: 'parallax',
+    description: 'Manages multi-layer parallax scrolling backgrounds driven by the camera.',
+    commands: [
+      'parallax/layer:add', 'parallax/layer:remove', 'parallax/layer:update',
+      'parallax/layer:get', 'parallax/layers',
+    ] as const,
+  };
 
   private readonly _opts: Required<ParallaxPluginOptions>;
   private readonly _layers: Map<string, ParallaxLayerState> = new Map();
