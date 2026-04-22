@@ -61,6 +61,25 @@ const EXPORT_LAYER_NAME = 'objects';
 export class SceneEditorPlugin implements EnginePlugin {
   readonly namespace = 'scene-editor';
   readonly dependencies = ['input'] as const;
+  readonly editorMeta = {
+    displayName: 'Scene Editor',
+    icon: 'scene-editor',
+    description: 'In-engine scene editor for placing, moving, and removing scene objects.',
+    commands: [
+      'sceneeditor/open', 'sceneeditor/close', 'sceneeditor/tool:set',
+      'sceneeditor/actor-type:select',
+      'sceneeditor/object:place', 'sceneeditor/object:select',
+      'sceneeditor/object:move', 'sceneeditor/object:remove',
+      'sceneeditor/undo', 'sceneeditor/redo',
+      'sceneeditor/export', 'sceneeditor/state',
+    ] as const,
+    schemas: {
+      scene: {
+        folder: 'scenes',
+        displayName: 'Scene Layout',
+      },
+    },
+  };
 
   // ── Editor state ───────────────────────────────────────────────────────────
 

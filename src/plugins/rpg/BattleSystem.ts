@@ -54,6 +54,14 @@ import type {
 export class BattleSystem implements EnginePlugin {
   readonly namespace = 'battle';
   readonly dependencies = ['stats', 'inventory'] as const;
+  readonly editorMeta = {
+    displayName: 'Battle System',
+    icon: 'battle',
+    description: 'Turn-based battle system with action resolution and combatant defeat tracking.',
+    commands: [
+      'battle/start', 'battle/end', 'battle/action', 'battle/resolve', 'battle/state:get',
+    ] as const,
+  };
 
   private readonly _battles: Map<string, BattleState> = new Map();
   private _battleCounter = 0;

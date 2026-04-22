@@ -111,6 +111,21 @@ import type {
  */
 export class LocalizationManager implements EnginePlugin {
   readonly namespace = 'i18n';
+  readonly editorMeta = {
+    displayName: 'Localization Manager',
+    icon: 'i18n',
+    description: 'Loads locale catalogues and provides runtime translation utilities.',
+    commands: [
+      'i18n/load', 'i18n/set-locale', 'i18n/t',
+      'i18n/lookup', 'i18n/interpolate', 'i18n/get-locales',
+    ] as const,
+    schemas: {
+      i18n: {
+        folder: 'i18n',
+        displayName: 'Locale Catalogue',
+      },
+    },
+  };
 
   /** Map of locale id → flattened key→value dictionary. */
   private readonly _catalogues = new Map<string, Map<string, string>>();

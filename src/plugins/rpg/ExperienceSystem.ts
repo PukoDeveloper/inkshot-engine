@@ -45,6 +45,14 @@ interface ActorExpState {
 export class ExperienceSystem implements EnginePlugin {
   readonly namespace = 'exp';
   readonly dependencies = ['stats'] as const;
+  readonly editorMeta = {
+    displayName: 'Experience System',
+    icon: 'exp',
+    description: 'Tracks per-actor XP with configurable level curves and level-up events.',
+    commands: [
+      'exp/curve:define', 'exp/gain', 'exp/get', 'exp/set',
+    ] as const,
+  };
 
   private readonly _curves: Map<string, ExpCurveDef> = new Map();
   private readonly _actorExp: Map<string, ActorExpState> = new Map();

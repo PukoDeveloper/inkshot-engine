@@ -382,7 +382,7 @@ export type {
   DispatchResult,
 } from './types/events.js';
 
-export type { EnginePlugin, PluginSource } from './types/plugin.js';
+export type { EnginePlugin, PluginSource, EditorMeta, EditorSchema } from './types/plugin.js';
 
 // Particle system
 export { ParticleManager } from './plugins/world/ParticleManager.js';

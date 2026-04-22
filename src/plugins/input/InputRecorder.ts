@@ -103,6 +103,16 @@ const SAVE_KEY_PREFIX = 'inputRecording/';
  */
 export class InputRecorder implements EnginePlugin {
   readonly namespace = 'input-recorder';
+  readonly editorMeta = {
+    displayName: 'Input Recorder',
+    icon: 'input-recorder',
+    description: 'Records and replays input sequences for demos, tests, and cutscenes.',
+    commands: [
+      'input/recorder:start', 'input/recorder:stop',
+      'input/recorder:play', 'input/recorder:pause', 'input/recorder:resume',
+      'input/recorder:save', 'input/recorder:load', 'input/recorder:state',
+    ] as const,
+  };
 
   // ---------------------------------------------------------------------------
   // Internal state

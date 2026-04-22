@@ -102,6 +102,15 @@ import type { SaveGlobalGetOutput, SaveGlobalSaveOutput, SaveGlobalLoadOutput } 
  */
 export class SettingsManager implements EnginePlugin {
   readonly namespace = 'settings';
+  readonly editorMeta = {
+    displayName: 'Settings Manager',
+    icon: 'settings',
+    description: 'Persists and bridges user-facing settings (audio volume, locale, key bindings, …).',
+    commands: [
+      'settings/set', 'settings/get', 'settings/get-all',
+      'settings/reset', 'settings/save', 'settings/load',
+    ] as const,
+  };
 
   private readonly _defaults: Record<string, unknown>;
   private readonly _saveKey: string;

@@ -74,6 +74,15 @@ function generateIconId(): string {
  */
 export class MinimapPlugin implements EnginePlugin {
   readonly namespace = 'minimap';
+  readonly editorMeta = {
+    displayName: 'Minimap',
+    icon: 'minimap',
+    description: 'Renders a minimap overlay with configurable icons and fog-of-war integration.',
+    commands: [
+      'minimap/init', 'minimap/icon:add', 'minimap/icon:remove',
+      'minimap/icon:update', 'minimap/icons', 'minimap/config',
+    ] as const,
+  };
 
   private _config: MinimapConfig | null = null;
   private readonly _icons: Map<string, MinimapIcon> = new Map();

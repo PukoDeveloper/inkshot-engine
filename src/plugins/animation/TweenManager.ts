@@ -522,6 +522,12 @@ export interface Advanceable {
  */
 export class TweenManager implements EnginePlugin {
   readonly namespace = 'tween';
+  readonly editorMeta = {
+    displayName: 'Tween Manager',
+    icon: 'tween',
+    description: 'Drives property interpolation tweens and timelines with configurable easing.',
+    commands: ['tween/to', 'tween/kill'] as const,
+  };
 
   private _core: Core | null = null;
 

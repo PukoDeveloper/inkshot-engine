@@ -169,6 +169,12 @@ export interface SaveMigrationPluginOptions {
  */
 export class SaveMigrationPlugin implements EnginePlugin {
   readonly namespace = 'saveMigration';
+  readonly editorMeta = {
+    displayName: 'Save Migration Plugin',
+    icon: 'save',
+    description: 'Applies versioned migration steps to save data during load.',
+    commands: [] as const,
+  };
 
   private readonly _currentVersion: number;
   private readonly _migrations: ReadonlyMap<number, SaveMigrationStep>;

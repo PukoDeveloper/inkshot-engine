@@ -56,6 +56,23 @@ const MAX_UNDO_HISTORY = 100;
 export class ScriptNodeEditorPlugin implements EnginePlugin {
   readonly namespace = 'script-node-editor';
   readonly dependencies = ['script'] as const;
+  readonly editorMeta = {
+    displayName: 'Script Node Editor',
+    icon: 'script-node-editor',
+    description: 'Visual node-graph editor for authoring and compiling script definitions.',
+    commands: [
+      'scriptnodeeditor/open', 'scriptnodeeditor/close',
+      'scriptnodeeditor/node:add', 'scriptnodeeditor/node:update', 'scriptnodeeditor/node:remove',
+      'scriptnodeeditor/node:connect', 'scriptnodeeditor/undo', 'scriptnodeeditor/redo',
+      'scriptnodeeditor/export', 'scriptnodeeditor/compile', 'scriptnodeeditor/state',
+    ] as const,
+    schemas: {
+      script: {
+        folder: 'scripts',
+        displayName: 'Script Definition',
+      },
+    },
+  };
 
   // ── Editor state ───────────────────────────────────────────────────────────
 

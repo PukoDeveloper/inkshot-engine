@@ -163,6 +163,21 @@ export class ActorManager implements EnginePlugin {
    * ScriptManager's `init` runs before ours.
    */
   readonly dependencies = ['script'] as const;
+  readonly editorMeta = {
+    displayName: 'Actor Manager',
+    icon: 'actor',
+    description: 'Manages actor definitions, spawning, state, and script-driven behaviours.',
+    commands: [
+      'actor/define', 'actor/spawn', 'actor/despawn', 'actor/list',
+      'actor/state:set', 'actor/state:get', 'actor/state:patch', 'actor/trigger',
+    ] as const,
+    schemas: {
+      actor: {
+        folder: 'actors',
+        displayName: 'Actor Definition',
+      },
+    },
+  };
 
   private _core: Core | null = null;
 

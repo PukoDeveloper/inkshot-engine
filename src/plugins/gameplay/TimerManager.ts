@@ -101,6 +101,14 @@ interface CooldownEntry {
  */
 export class TimerManager implements EnginePlugin {
   readonly namespace = 'timer';
+  readonly editorMeta = {
+    displayName: 'Timer Manager',
+    icon: 'timer',
+    description: 'Event-driven one-shot timers, repeating intervals, and cooldown checks.',
+    commands: [
+      'timer/once', 'timer/interval', 'timer/cancel', 'timer/cancel-all', 'timer/cooldown',
+    ] as const,
+  };
 
   // ---------------------------------------------------------------------------
   // Internal state

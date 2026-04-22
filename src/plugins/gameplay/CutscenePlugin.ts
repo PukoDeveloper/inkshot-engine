@@ -103,6 +103,20 @@ interface ParallelRunner {
  */
 export class CutscenePlugin implements EnginePlugin {
   readonly namespace = 'cutscene';
+  readonly editorMeta = {
+    displayName: 'Cutscene Plugin',
+    icon: 'cutscene',
+    description: 'Plays scripted cutscene sequences with camera moves, waits, and event steps.',
+    commands: [
+      'cutscene/define', 'cutscene/play', 'cutscene/stop', 'cutscene/skip', 'cutscene/state',
+    ] as const,
+    schemas: {
+      cutscene: {
+        folder: 'cutscenes',
+        displayName: 'Cutscene Definition',
+      },
+    },
+  };
 
   private readonly _definitions: Map<string, CutsceneDef> = new Map();
   private _active: ActiveCutscene | null = null;

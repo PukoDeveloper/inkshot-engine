@@ -280,6 +280,16 @@ export class RapierPhysicsAdapter implements EnginePlugin {
   readonly namespace = 'physics' as const;
   /** Must be initialised after EntityManager so `entity/query` is available. */
   readonly dependencies = ['entityManager'] as const;
+  readonly editorMeta = {
+    displayName: 'Rapier Physics Adapter',
+    icon: 'physics',
+    description: 'Physics backend powered by Rapier (WASM) for high-performance simulation.',
+    commands: [
+      'physics/body:add', 'physics/body:remove', 'physics/move', 'physics/impulse',
+      'physics/query', 'physics/raycast', 'physics/hit', 'physics/overlap',
+      'physics/tilemap:set', 'physics/grid:snap',
+    ] as const,
+  };
 
   private _core: Core | null = null;
   private readonly _RAPIER: RapierLib;

@@ -335,6 +335,16 @@ export class KinematicPhysicsAdapter implements EnginePlugin {
   readonly namespace = 'physics' as const;
   /** Must be initialised after EntityManager so `entity/query` is available. */
   readonly dependencies = ['entityManager'] as const;
+  readonly editorMeta = {
+    displayName: 'Kinematic Physics Adapter',
+    icon: 'physics',
+    description: 'Built-in AABB-based kinematic physics with slope and tilemap collision support.',
+    commands: [
+      'physics/body:add', 'physics/body:remove', 'physics/move', 'physics/impulse',
+      'physics/query', 'physics/raycast', 'physics/hit', 'physics/overlap',
+      'physics/tilemap:set', 'physics/grid:snap',
+    ] as const,
+  };
   private _core: Core | null = null;
 
   private readonly _options: KinematicPhysicsAdapterOptions;

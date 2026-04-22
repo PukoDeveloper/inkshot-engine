@@ -67,6 +67,12 @@ const HOVER_ALPHA = 0.25;
 export class TilemapEditorOverlayPlugin implements EnginePlugin {
   readonly namespace = 'mapeditor-overlay';
   readonly dependencies = ['tilemap', 'input', 'mapeditor'] as const;
+  readonly editorMeta = {
+    displayName: 'Tilemap Editor Overlay',
+    icon: 'mapeditor-overlay',
+    description: 'Renders the in-engine tilemap editor cursor and grid overlay.',
+    commands: [] as const,
+  };
 
   private _core: Core | null = null;
   private _gfx: Graphics | null = null;

@@ -72,6 +72,15 @@ interface PersistedAchievements {
  */
 export class AchievementPlugin implements EnginePlugin {
   readonly namespace = 'achievement';
+  readonly editorMeta = {
+    displayName: 'Achievement Plugin',
+    icon: 'achievement',
+    description: 'Defines, tracks progress for, and unlocks player achievements.',
+    commands: [
+      'achievement/define', 'achievement/unlock', 'achievement/progress',
+      'achievement/get', 'achievement/list', 'achievement/reset',
+    ] as const,
+  };
 
   private readonly _definitions: Map<string, AchievementDef> = new Map();
   /** progress counter for each achievement */

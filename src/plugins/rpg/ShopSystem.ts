@@ -49,6 +49,14 @@ interface ActiveSession {
 export class ShopSystem implements EnginePlugin {
   readonly namespace = 'shop';
   readonly dependencies = ['inventory'] as const;
+  readonly editorMeta = {
+    displayName: 'Shop System',
+    icon: 'shop',
+    description: 'Shop definitions with buy/sell workflows integrated with the inventory.',
+    commands: [
+      'shop/define', 'shop/open', 'shop/close', 'shop/buy', 'shop/sell',
+    ] as const,
+  };
 
   private readonly _shops: Map<string, ShopDef> = new Map();
   private readonly _sessions: Map<string, ActiveSession> = new Map();

@@ -117,6 +117,21 @@ interface ActiveSession {
  */
 export class DialogueManager implements EnginePlugin {
   readonly namespace = 'dialogue';
+  readonly editorMeta = {
+    displayName: 'Dialogue Manager',
+    icon: 'dialogue',
+    description: 'Drives rich typewriter-style dialogue sessions with choices and markup.',
+    commands: [
+      'dialogue/show-text', 'dialogue/show-choices', 'dialogue/advance',
+      'dialogue/choice', 'dialogue/end', 'dialogue/state:get',
+    ] as const,
+    schemas: {
+      dialogue: {
+        folder: 'dialogues',
+        displayName: 'Dialogue Script',
+      },
+    },
+  };
 
   /** Characters per second used when `dialogue/show-text` does not override speed. */
   readonly defaultCharsPerSecond: number;

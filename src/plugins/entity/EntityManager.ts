@@ -54,6 +54,12 @@ function generateId(): string {
  */
 export class EntityManager implements EnginePlugin {
   readonly namespace = 'entityManager';
+  readonly editorMeta = {
+    displayName: 'Entity Manager',
+    icon: 'entity',
+    description: 'Manages the lifecycle of all game entities with tag-based querying.',
+    commands: ['entity/create', 'entity/destroy', 'entity/query'] as const,
+  };
 
   private _core: Core | null = null;
 
