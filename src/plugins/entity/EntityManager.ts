@@ -12,15 +12,6 @@ import type {
 } from '../../types/entity.js';
 
 // ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-let _nextId = 0;
-function generateId(): string {
-  return `entity_${++_nextId}`;
-}
-
-// ---------------------------------------------------------------------------
 // EntityManager
 // ---------------------------------------------------------------------------
 
@@ -62,6 +53,9 @@ export class EntityManager implements EnginePlugin {
   };
 
   private _core: Core | null = null;
+
+  /** Per-instance counter used to generate unique entity IDs. */
+  private _nextId = 0;
 
   /** All living entities keyed by ID. */
   private readonly _entities: Map<string, Entity> = new Map();
@@ -129,7 +123,7 @@ export class EntityManager implements EnginePlugin {
    * Create a new entity and add it to the world.
    */
   create(descriptor: EntityDescriptor = {}): Entity {
-    const id = descriptor.id ?? generateId();
+    const id = descriptor.id ?? `entity_${++this._nextId}`;
 
     if (this._entities.has(id)) {
       throw new Error(`[EntityManager] Entity with ID "${id}" already exists.`);

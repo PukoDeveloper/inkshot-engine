@@ -43,11 +43,6 @@ import type {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-let _nextId = 0;
-function generateId(): string {
-  return `ui_${++_nextId}`;
-}
-
 /**
  * Translate an {@link UIAnchor} into a pixel position within the given
  * viewport, offset by the caller-supplied `x` / `y` values.
@@ -1015,6 +1010,8 @@ export class UIManager implements EnginePlugin {
 
   private _core!: Core;
   private _layer!: Container;
+  /** Per-instance counter used to generate unique widget IDs. */
+  private _nextId = 0;
   private readonly _factories = new Map<string, UIWidgetFactory>();
   private readonly _widgets   = new Map<string, UIWidget>();
 
@@ -1129,7 +1126,7 @@ export class UIManager implements EnginePlugin {
       );
     }
 
-    const id = params.id ?? generateId();
+    const id = params.id ?? `ui_${++this._nextId}`;
     if (this._widgets.has(id)) {
       throw new Error(`[UIManager] A widget with id "${id}" already exists.`);
     }

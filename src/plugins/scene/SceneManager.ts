@@ -99,6 +99,9 @@ export class SceneManager implements EnginePlugin {
   /** The key of the currently active scene, or `null` if none has been loaded. */
   private _currentKey: string | null = null;
 
+  /** `true` while a `scene/load` transition is in progress; prevents re-entrant calls. */
+  private _transitioning = false;
+
   // ---------------------------------------------------------------------------
   // EnginePlugin lifecycle
   // ---------------------------------------------------------------------------
@@ -135,6 +138,7 @@ export class SceneManager implements EnginePlugin {
     core.events.removeNamespace(this.namespace);
     this._scenes.clear();
     this._currentKey = null;
+    this._transitioning = false;
     this._core = null;
   }
 
@@ -167,25 +171,37 @@ export class SceneManager implements EnginePlugin {
     const core = this._core;
     if (!core) return;
 
+    if (this._transitioning) {
+      throw new Error(
+        `[SceneManager] A scene transition is already in progress. ` +
+        `Cannot start a new transition to "${key}" until the current one completes.`,
+      );
+    }
+
     const next = this._scenes.get(key);
     if (!next) {
       throw new Error(`[SceneManager] Scene "${key}" is not registered.`);
     }
 
-    const from = this._currentKey;
+    this._transitioning = true;
+    try {
+      const from = this._currentKey;
 
-    // Exit the current scene if one is active.
-    if (from !== null) {
-      const current = this._scenes.get(from);
-      await current?.exit?.(core);
+      // Exit the current scene if one is active.
+      if (from !== null) {
+        const current = this._scenes.get(from);
+        await current?.exit?.(core);
+      }
+
+      // Enter the new scene.
+      this._currentKey = key;
+      await next.enter(core);
+
+      // Notify all systems that the scene has changed.
+      const notification: SceneChangedParams = { from, to: key };
+      await core.events.emit('scene/changed', notification);
+    } finally {
+      this._transitioning = false;
     }
-
-    // Enter the new scene.
-    this._currentKey = key;
-    await next.enter(core);
-
-    // Notify all systems that the scene has changed.
-    const notification: SceneChangedParams = { from, to: key };
-    await core.events.emit('scene/changed', notification);
   }
 }

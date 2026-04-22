@@ -240,6 +240,11 @@ export class SpriteAnimator implements EnginePlugin {
         // Store a placeholder; the caller is responsible for loading assets
         // before playing.  We push `undefined as Texture` to keep indices
         // aligned — play() will show nothing for missing frames.
+        console.warn(
+          `[SpriteAnimator] Could not resolve texture for key "${key}". ` +
+          `Ensure the asset is loaded before calling play(). ` +
+          `Frame ${textures.length} will be skipped during playback.`,
+        );
         textures.push(undefined as unknown as Texture);
       }
     }
