@@ -1021,12 +1021,16 @@ export class ScriptManager implements EnginePlugin {
    * Replace all `{$name}` and `{$ns.key}` placeholders in a text string with
    * their resolved values.  Unknown references are replaced with an empty string.
    *
+   * Only references matching the pattern `{$identifier}` or `{$ns.key}` (word
+   * characters and a single dot separator) are substituted; any other content
+   * between `{` and `}` is left untouched.
+   *
    * This runs before the text is forwarded to the dialogue system so that the
    * existing dialogue markup parser (`parseDialogueMarkup`) receives the fully
    * substituted string and can apply its own `[tag]`-based formatting on top.
    */
   private _interpolateText(text: string, ctx: ScriptContext): string {
-    return text.replace(/\{\$([^}]+)\}/g, (_, ref: string) => {
+    return text.replace(/\{\$(\w+(?:\.\w+)?)\}/g, (_, ref: string) => {
       const value = this._resolveVar(`$${ref}`, ctx);
       return value !== undefined ? String(value) : '';
     });

@@ -1673,6 +1673,32 @@ describe('ScriptManager', () => {
       off();
 
       expect(choiceLists[0]?.[0]?.text).toBe('Take Sword');
+      expect(choiceLists[0]?.[1]?.text).toBe('Leave it');
+    });
+
+    it('choices leaves unmatched {$ref} as empty string', async () => {
+      const choiceLists: Array<Array<{ text: string; index: number }>> = [];
+      core.events.on('test', 'dialogue/show-choices', (p: { choices: Array<{ text: string; index: number }> }) => {
+        choiceLists.push(p.choices);
+      });
+
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'choices-unset',
+          nodes: [
+            { cmd: 'choices', choices: ['Option {$missing}', 'Fixed text'], var: 'pick' },
+          ],
+        },
+      });
+      const off = core.events.on('test', 'dialogue/show-choices', () => {
+        core.events.emitSync('dialogue/choice:made', { index: 0 });
+      });
+      core.events.emitSync('script/run', { id: 'choices-unset' });
+      await flushMicrotasks();
+      off();
+
+      expect(choiceLists[0]?.[0]?.text).toBe('Option ');
+      expect(choiceLists[0]?.[1]?.text).toBe('Fixed text');
     });
   });
 
