@@ -30,12 +30,16 @@ Everything communicates through a shared **EventBus** — no tight coupling, no 
    - [PathfindingManager (`pathfinding`)](#pathfindingmanager-pathfinding)
    - [VariableStoreManager (`store`)](#variablestoremanager-store)
    - [DebugPlugin (`debug`)](#debugplugin-debug)
-5. [Script System (ScriptManager)](#script-system-scriptmanager)
-6. [Actor System (ActorManager)](#actor-system-actormanager)
-7. [Renderer & Layers](#renderer--layers)
-8. [Writing Your Own Plugin](#writing-your-own-plugin)
-9. [Engine Lifecycle](#engine-lifecycle)
-10. [TypeScript Tips](#typescript-tips)
+5. [Visual Editor Plugins](#visual-editor-plugins)
+   - [TilemapEditorPlugin (`mapeditor`)](#tilemapeditorplugin-mapeditor)
+   - [SceneEditorPlugin (`scene-editor`)](#sceneeditorplugin-scene-editor)
+   - [ScriptNodeEditorPlugin (`script-node-editor`)](#scriptnodeeditorplugin-script-node-editor)
+6. [Script System (ScriptManager)](#script-system-scriptmanager)
+7. [Actor System (ActorManager)](#actor-system-actormanager)
+8. [Renderer & Layers](#renderer--layers)
+9. [Writing Your Own Plugin](#writing-your-own-plugin)
+10. [Engine Lifecycle](#engine-lifecycle)
+11. [TypeScript Tips](#typescript-tips)
 
 ---
 
@@ -1788,6 +1792,222 @@ const { core } = await createEngine({
 
 ---
 
+## Visual Editor Plugins
+
+These plugins provide in-engine tooling for building game content visually.  Like all other plugins they communicate exclusively through the EventBus and carry no UI dependencies — the actual editing UI is the responsibility of the host application (e.g. an Electron/web-based editor).
+
+---
+
+### TilemapEditorPlugin (`mapeditor`)
+
+A complete tile-painting workflow layered on top of `TilemapManager`.
+
+**Requires:** `TilemapManager`, `InputManager`
+
+#### Tools
+
+| Tool | Behaviour |
+|------|-----------|
+| `paint` | Place the selected tile ID on pointer-down and pointer-drag |
+| `erase` | Clear cells (set tile ID to `0`) on pointer-down and drag |
+| `fill` | BFS flood-fill all contiguous cells that share the target tile ID |
+| `rect-fill` | Fill a rectangular region from drag-start to drag-end |
+| `rect-select` | Select a rectangular region; supports copy / paste via the clipboard |
+
+#### Event Contract
+
+| Event | Params / Output | Description |
+|-------|-----------------|-------------|
+| `mapeditor/open` | — | Open the editor |
+| `mapeditor/close` | — | Close the editor |
+| `mapeditor/tool:set` | `MapEditorToolSetParams` | Activate a drawing tool |
+| `mapeditor/tile:select` | `MapEditorTileSelectParams` | Choose a tile ID for painting |
+| `mapeditor/layer:select` | `MapEditorLayerSelectParams` | Switch the active layer |
+| `mapeditor/undo` | — | Undo the most recent command |
+| `mapeditor/redo` | — | Redo the most recently undone command |
+| `mapeditor/export` | `→ MapEditorExportOutput` | Deep-clone the current `TilemapData` |
+| `mapeditor/state` | `→ MapEditorStateOutput` | Query open/tool/tile/layer/canUndo/canRedo |
+| `mapeditor/opened` | — emitted | Editor was opened |
+| `mapeditor/closed` | — emitted | Editor was closed |
+| `mapeditor/tiles:changed` | `MapEditorTilesChangedParams` emitted | One or more tiles were changed |
+
+**Keyboard shortcuts** (only when the editor is open):
+
+| Keys | Action |
+|------|--------|
+| `Ctrl + Z` | Undo |
+| `Ctrl + Y` | Redo |
+
+#### Usage
+
+```ts
+import { createEngine, TilemapManager, InputManager, TilemapEditorPlugin } from 'inkshot-engine';
+
+const { core } = await createEngine({
+  plugins: [
+    new TilemapManager(),
+    new InputManager(),
+    new TilemapEditorPlugin(),
+  ],
+});
+
+// Load a tilemap first, then open the editor
+await core.events.emit('tilemap/load', { mapData });
+core.events.emitSync('mapeditor/open', {});
+
+// Select a tile and start painting
+core.events.emitSync('mapeditor/tile:select', { tileId: 3 });
+core.events.emitSync('mapeditor/tool:set',    { tool: 'paint' });
+
+// Export the modified map data
+const { output } = core.events.emitSync('mapeditor/export', {});
+// output.mapData → deep-cloned TilemapData ready for serialisation
+
+// Undo / redo
+core.events.emitSync('mapeditor/undo', {});
+core.events.emitSync('mapeditor/redo', {});
+```
+
+---
+
+### SceneEditorPlugin (`scene-editor`)
+
+A lightweight in-engine scene object placement editor.  Manages a collection of `ScenePlacedObject` instances (typed by `actorType`) and exports them in both a native array format and a Tiled-compatible `objectgroup` layer.
+
+**Requires:** `InputManager`
+
+#### Tools
+
+| Tool | Behaviour |
+|------|-----------|
+| `place` | Place the currently selected actor type at a world position |
+| `select` | Select an existing placed object by its ID |
+| `move` | Move a selected object to a new world position |
+| `erase` | Remove a placed object |
+
+#### Event Contract
+
+| Event | Params / Output | Description |
+|-------|-----------------|-------------|
+| `sceneeditor/open` | — | Open the editor |
+| `sceneeditor/close` | — | Close the editor |
+| `sceneeditor/tool:set` | `SceneEditorToolSetParams` | Activate a tool |
+| `sceneeditor/actor-type:select` | `SceneEditorActorTypeSelectParams` | Choose an actor type to place |
+| `sceneeditor/object:place` | `SceneEditorObjectPlaceParams → SceneEditorObjectPlaceOutput` | Place a new object; returns `{ object }` |
+| `sceneeditor/object:select` | `SceneEditorObjectSelectParams` | Select an object (or deselect with `null`) |
+| `sceneeditor/object:move` | `SceneEditorObjectMoveParams` | Move an existing object |
+| `sceneeditor/object:remove` | `SceneEditorObjectRemoveParams` | Remove an object |
+| `sceneeditor/undo` | — | Undo the most recent command |
+| `sceneeditor/redo` | — | Redo the most recently undone command |
+| `sceneeditor/export` | `→ SceneEditorExportOutput` | Export all objects + Tiled-compatible layer |
+| `sceneeditor/state` | `→ SceneEditorStateOutput` | Query open/tool/actorType/selectedId/canUndo/canRedo |
+| `sceneeditor/opened` | — emitted | Editor was opened |
+| `sceneeditor/closed` | — emitted | Editor was closed |
+| `sceneeditor/objects:changed` | `SceneEditorObjectsChangedParams` emitted | Objects were added, moved, or removed |
+
+#### Usage
+
+```ts
+import { createEngine, InputManager, SceneEditorPlugin } from 'inkshot-engine';
+
+const { core } = await createEngine({
+  plugins: [new InputManager(), new SceneEditorPlugin()],
+});
+
+core.events.emitSync('sceneeditor/open', {});
+
+// Select an actor type and place objects
+core.events.emitSync('sceneeditor/actor-type:select', { actorType: 'merchant' });
+core.events.emitSync('sceneeditor/tool:set', { tool: 'place' });
+
+const { output } = core.events.emitSync('sceneeditor/object:place', { x: 128, y: 256 });
+console.log(output.object.id); // 'obj_0'
+
+// Move an object
+core.events.emitSync('sceneeditor/object:move', { id: output.object.id, x: 200, y: 256 });
+
+// Undo / redo
+core.events.emitSync('sceneeditor/undo', {});
+
+// Export to native array + Tiled-compatible objectgroup
+const { output: exp } = core.events.emitSync('sceneeditor/export', {});
+// exp.objects          → ScenePlacedObject[]
+// exp.tiledObjectLayer → Tiled objectgroup — drop into a .tmj file
+```
+
+---
+
+### ScriptNodeEditorPlugin (`script-node-editor`)
+
+A node-graph editor that compiles a visual flow into a `ScriptDef` for `ScriptManager`.  Each node stores a `cmd` (the ScriptManager command), visual canvas coordinates (`x`, `y`), arbitrary `data` fields, and a `nextId` pointer to the following node in the flow.
+
+**Requires:** `ScriptManager`
+
+#### Event Contract
+
+| Event | Params / Output | Description |
+|-------|-----------------|-------------|
+| `scriptnodeeditor/open` | `ScriptNodeEditorOpenParams` | Open the editor (optional `scriptId`) |
+| `scriptnodeeditor/close` | — | Close the editor |
+| `scriptnodeeditor/node:add` | `ScriptNodeEditorNodeAddParams → ScriptNodeEditorNodeAddOutput` | Add a node; returns `{ node }` |
+| `scriptnodeeditor/node:update` | `ScriptNodeEditorNodeUpdateParams` | Update a node's cmd/position/data |
+| `scriptnodeeditor/node:remove` | `ScriptNodeEditorNodeRemoveParams` | Remove a node and clear any `nextId` references to it |
+| `scriptnodeeditor/node:connect` | `ScriptNodeEditorConnectParams` | Wire `fromId → toId` (pass `toId: null` to disconnect) |
+| `scriptnodeeditor/undo` | — | Undo the most recent command |
+| `scriptnodeeditor/redo` | — | Redo the most recently undone command |
+| `scriptnodeeditor/export` | `→ ScriptNodeEditorExportOutput` | Compile nodes to a `ScriptDef` (does not register) |
+| `scriptnodeeditor/compile` | `ScriptNodeEditorCompileParams` | Compile and call `script/define` to register immediately |
+| `scriptnodeeditor/state` | `→ ScriptNodeEditorStateOutput` | Query open/scriptId/nodes/canUndo/canRedo |
+| `scriptnodeeditor/opened` | `ScriptNodeEditorOpenedParams` emitted | Editor was opened |
+| `scriptnodeeditor/closed` | — emitted | Editor was closed |
+| `scriptnodeeditor/nodes:changed` | `ScriptNodeEditorNodesChangedParams` emitted | Nodes were added, updated, or removed |
+
+#### Compile algorithm
+
+The compiler finds all **start nodes** (not referenced by any other node's `nextId`), then follows `nextId` chains to produce an ordered `ScriptNode[]`.  Each node becomes `{ cmd: node.cmd, ...node.data }`.
+
+#### Usage
+
+```ts
+import { createEngine, ScriptManager, ScriptNodeEditorPlugin } from 'inkshot-engine';
+
+const { core } = await createEngine({
+  plugins: [new ScriptManager(), new ScriptNodeEditorPlugin()],
+});
+
+core.events.emitSync('scriptnodeeditor/open', { scriptId: 'intro' });
+
+// Build a simple dialogue flow
+const { output: a } = core.events.emitSync('scriptnodeeditor/node:add', {
+  cmd: 'say',
+  data: { text: 'Hello, adventurer!' },
+  x: 100, y: 100,
+});
+const { output: b } = core.events.emitSync('scriptnodeeditor/node:add', {
+  cmd: 'say',
+  data: { text: 'Safe travels.' },
+  x: 300, y: 100,
+});
+const { output: c } = core.events.emitSync('scriptnodeeditor/node:add', {
+  cmd: 'end',
+  x: 500, y: 100,
+});
+
+// Wire the chain
+core.events.emitSync('scriptnodeeditor/node:connect', { fromId: a.node.id, toId: b.node.id });
+core.events.emitSync('scriptnodeeditor/node:connect', { fromId: b.node.id, toId: c.node.id });
+
+// Compile and register with ScriptManager in one call
+core.events.emitSync('scriptnodeeditor/compile', { scriptId: 'intro' });
+// ScriptManager can now run the 'intro' script
+
+// Or just export without registering
+const { output: exp } = core.events.emitSync('scriptnodeeditor/export', {});
+// exp.script → ScriptDef | null
+```
+
+---
+
 ## Script System (ScriptManager)
 
 `ScriptManager` executes data-defined scripts as ordered lists of **command nodes**.
@@ -2081,6 +2301,26 @@ import type {
   DialogueStateGetOutput, DialogueTextSegment,
   // Dialogue markup parser
   ParsedMarkup, ColorSpan, SpeedSpan, PauseMark,
+  // Tilemap editor
+  MapEditorTool, MapEditorTileEdit, MapEditorCommand,
+  MapEditorToolSetParams, MapEditorTileSelectParams, MapEditorLayerSelectParams,
+  MapEditorExportOutput, MapEditorStateOutput,
+  MapEditorOpenedParams, MapEditorClosedParams, MapEditorTilesChangedParams,
+  // Scene editor
+  SceneEditorTool, ScenePlacedObject, SceneEditorObjectEdit, SceneEditorCommand,
+  SceneEditorToolSetParams, SceneEditorActorTypeSelectParams,
+  SceneEditorObjectPlaceParams, SceneEditorObjectPlaceOutput,
+  SceneEditorObjectSelectParams, SceneEditorObjectMoveParams, SceneEditorObjectRemoveParams,
+  SceneEditorExportOutput, SceneEditorStateOutput,
+  SceneEditorOpenedParams, SceneEditorClosedParams, SceneEditorObjectsChangedParams,
+  // Script node editor
+  ScriptEditorNode, ScriptEditorEdit, ScriptEditorEditType, ScriptEditorCommand,
+  ScriptNodeEditorOpenParams,
+  ScriptNodeEditorNodeAddParams, ScriptNodeEditorNodeAddOutput,
+  ScriptNodeEditorNodeUpdateParams, ScriptNodeEditorNodeRemoveParams,
+  ScriptNodeEditorConnectParams,
+  ScriptNodeEditorExportOutput, ScriptNodeEditorCompileParams, ScriptNodeEditorStateOutput,
+  ScriptNodeEditorOpenedParams, ScriptNodeEditorNodesChangedParams,
   // Events
   EventHandler, ListenerOptions,
 } from 'inkshot-engine';

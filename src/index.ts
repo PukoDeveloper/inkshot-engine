@@ -314,6 +314,55 @@ export type {
   MapEditorTilesChangedParams,
 } from './types/mapeditor.js';
 
+// Scene editor plugin
+export { SceneEditorPlugin } from './plugins/scene/SceneEditorPlugin.js';
+export type {
+  SceneEditorTool,
+  ScenePlacedObject,
+  SceneEditorObjectEdit,
+  SceneEditorCommand,
+  SceneEditorOpenParams,
+  SceneEditorCloseParams,
+  SceneEditorToolSetParams,
+  SceneEditorActorTypeSelectParams,
+  SceneEditorObjectPlaceParams,
+  SceneEditorObjectPlaceOutput,
+  SceneEditorObjectSelectParams,
+  SceneEditorObjectMoveParams,
+  SceneEditorObjectRemoveParams,
+  SceneEditorUndoParams,
+  SceneEditorRedoParams,
+  SceneEditorExportOutput,
+  SceneEditorStateOutput,
+  SceneEditorOpenedParams,
+  SceneEditorClosedParams,
+  SceneEditorObjectsChangedParams,
+} from './types/sceneeditor.js';
+
+// Script node editor plugin
+export { ScriptNodeEditorPlugin } from './plugins/rpg/ScriptNodeEditorPlugin.js';
+export type {
+  ScriptEditorNode,
+  ScriptEditorEdit,
+  ScriptEditorEditType,
+  ScriptEditorCommand,
+  ScriptNodeEditorOpenParams,
+  ScriptNodeEditorCloseParams,
+  ScriptNodeEditorNodeAddParams,
+  ScriptNodeEditorNodeAddOutput,
+  ScriptNodeEditorNodeUpdateParams,
+  ScriptNodeEditorNodeRemoveParams,
+  ScriptNodeEditorConnectParams,
+  ScriptNodeEditorUndoParams,
+  ScriptNodeEditorRedoParams,
+  ScriptNodeEditorExportOutput,
+  ScriptNodeEditorCompileParams,
+  ScriptNodeEditorStateOutput,
+  ScriptNodeEditorOpenedParams,
+  ScriptNodeEditorClosedParams,
+  ScriptNodeEditorNodesChangedParams,
+} from './types/scriptnodeeditor.js';
+
 // Tween system
 export { TweenManager, Tween, Easing } from './plugins/animation/TweenManager.js';
 export type { EasingFn, TweenOptions, Advanceable } from './plugins/animation/TweenManager.js';

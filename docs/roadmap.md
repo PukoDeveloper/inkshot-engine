@@ -127,12 +127,12 @@ const dungeon = generateDungeon({ width: 64, height: 64, rooms: 10, rng });
 
 ### 9. 可視化編輯器 (Visual Editor)
 
-- [ ] 基於 `TiledLoader` 擴充，提供瀏覽器內嵌的輕量場景擺放工具
-- [ ] 基於 `ScriptManager` 的節點式腳本視覺化編輯器（節點圖 → 命令序列 JSON）
+- [x] 基於 `TiledLoader` 擴充，提供瀏覽器內嵌的輕量場景擺放工具 — `SceneEditorPlugin` (`scene-editor`)
+- [x] 基於 `ScriptManager` 的節點式腳本視覺化編輯器（節點圖 → 命令序列 JSON）— `ScriptNodeEditorPlugin` (`script-node-editor`)
 - [ ] 整合 `DebugPlugin`，支援執行期點選實體後直接查看 / 修改屬性
 
 ---
 
 ## 已完成功能
 
-所有已實作完成的功能（共 40+ 項）請參閱 [TODO.md](../TODO.md)。
+所有已實作完成的功能（共 42+ 項）請參閱 [TODO.md](../TODO.md)。
