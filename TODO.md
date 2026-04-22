@@ -50,6 +50,8 @@
 | 38 | **RPG 引擎一鍵啟動** — `createRpgEngine()`（單一呼叫啟動含完整 RPG 插件套件的引擎並回傳具型別的 `rpg` 命名空間）；`buildRpgPluginBundle()`（回傳有序插件陣列，適用手動組合）；`RPG_PLUGIN_BUNDLE`（模組載入期快照） | `createRpgEngine`, `buildRpgPluginBundle` |
 | 39 | **RPG 資料載入器** — `loadRpgData(RpgGameData)`：將宣告式 JSON 格式的遊戲資料（classes、actors、items、statusEffects、scripts 等）轉換為引擎原生定義物件（ActorDef、ExpCurveDef、StatProfileDef、ItemDef…），可直接注入各插件系統；支援 `meta`（標題/版本/locale/initialGold/initialVariables） | `loadRpgData`, `RpgDataLoader` |
 | 40 | **Tilemap 視覺編輯器** — `TilemapEditorPlugin`（namespace: `mapeditor`）：瀏覽器內嵌完整 Tile 編輯工作流，支援 Pencil / Eraser / Flood Fill（BFS）/ Rect Fill / Rect Select（含複製貼上）；Undo/Redo 命令堆疊（最多 100 步）；Export 深度 clone；攝影機空間座標轉換。`TilemapEditorOverlayPlugin`：格線疊加、選取矩形、游標高亮等視覺 overlay | `TilemapEditorPlugin`, `TilemapEditorOverlayPlugin` |
+| 41 | **場景物件擺放編輯器** — `SceneEditorPlugin`（namespace: `scene-editor`）：瀏覽器內嵌輕量場景擺放工具；工具模式（place / select / move / erase）；依 `actorType` 放置 `ScenePlacedObject`；物件選取、移動、刪除；Undo/Redo 命令堆疊（最多 100 步）；Export 輸出物件陣列與 Tiled 相容 object layer（`.tmj` 格式） | `SceneEditorPlugin` |
+| 42 | **節點式腳本視覺化編輯器** — `ScriptNodeEditorPlugin`（namespace: `script-node-editor`）：節點圖→命令序列 JSON；節點新增（node:add）、更新（node:update）、刪除（node:remove）；流程連接（node:connect）；Undo/Redo 命令堆疊（最多 100 步）；Export 編譯為 `ScriptDef`；Compile 直接呼叫 `script/define` 注入 ScriptManager | `ScriptNodeEditorPlugin` |
 
 ---
 
@@ -102,6 +104,6 @@
 - [ ] 抽象化全螢幕/視窗管理，統一 web 與桌面平台差異
 
 ### 10. 可視化場景 / 腳本編輯器 (Visual Editor Tooling)
-- [ ] 基於 `TiledLoader` 擴充，提供瀏覽器內嵌的輕量場景擺放工具（匯出 `.tmj` 或引擎原生格式）
-- [ ] 基於 `ScriptManager` 的節點式腳本視覺化編輯器（節點圖→命令序列 JSON）
+- [x] 基於 `TiledLoader` 擴充，提供瀏覽器內嵌的輕量場景擺放工具（匯出 `.tmj` 或引擎原生格式）— `SceneEditorPlugin`
+- [x] 基於 `ScriptManager` 的節點式腳本視覺化編輯器（節點圖→命令序列 JSON）— `ScriptNodeEditorPlugin`
 - [ ] 整合 `DebugPlugin`，支援執行期點選實體後直接查看/修改屬性

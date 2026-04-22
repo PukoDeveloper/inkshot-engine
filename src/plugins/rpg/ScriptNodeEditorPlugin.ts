@@ -135,7 +135,7 @@ export class ScriptNodeEditorPlugin implements EnginePlugin {
     };
 
     this._nodes.set(newNode.id, newNode);
-    this._pushCommand({ edits: [{ type: 'add-node', prev: null, next: newNode }] });
+    this._pushCommand({ edits: [{ type: 'addNode', prev: null, next: newNode }] });
     this._redoStack = [];
     this._core?.events.emitSync('scriptnodeeditor/nodes:changed', { nodes: this._getNodesArray() });
     output.node = newNode;
@@ -154,7 +154,7 @@ export class ScriptNodeEditorPlugin implements EnginePlugin {
     };
 
     this._nodes.set(p.id, updated);
-    this._pushCommand({ edits: [{ type: 'update-node', prev: existing, next: updated }] });
+    this._pushCommand({ edits: [{ type: 'updateNode', prev: existing, next: updated }] });
     this._redoStack = [];
     this._core?.events.emitSync('scriptnodeeditor/nodes:changed', { nodes: this._getNodesArray() });
   };
@@ -172,7 +172,7 @@ export class ScriptNodeEditorPlugin implements EnginePlugin {
       }
     }
 
-    this._pushCommand({ edits: [{ type: 'remove-node', prev: existing, next: null }] });
+    this._pushCommand({ edits: [{ type: 'removeNode', prev: existing, next: null }] });
     this._redoStack = [];
     this._core?.events.emitSync('scriptnodeeditor/nodes:changed', { nodes: this._getNodesArray() });
   };
@@ -194,11 +194,11 @@ export class ScriptNodeEditorPlugin implements EnginePlugin {
 
     const reversed = [...cmd.edits].reverse();
     for (const edit of reversed) {
-      if (edit.type === 'add-node') {
+      if (edit.type === 'addNode') {
         if (edit.next) this._nodes.delete(edit.next.id);
-      } else if (edit.type === 'remove-node') {
+      } else if (edit.type === 'removeNode') {
         if (edit.prev) this._nodes.set(edit.prev.id, edit.prev);
-      } else if (edit.type === 'update-node' || edit.type === 'connect') {
+      } else if (edit.type === 'updateNode' || edit.type === 'connect') {
         if (edit.prev) this._nodes.set(edit.prev.id, edit.prev);
       }
     }
@@ -211,11 +211,11 @@ export class ScriptNodeEditorPlugin implements EnginePlugin {
     if (!cmd) return;
 
     for (const edit of cmd.edits) {
-      if (edit.type === 'add-node') {
+      if (edit.type === 'addNode') {
         if (edit.next) this._nodes.set(edit.next.id, edit.next);
-      } else if (edit.type === 'remove-node') {
+      } else if (edit.type === 'removeNode') {
         if (edit.prev) this._nodes.delete(edit.prev.id);
-      } else if (edit.type === 'update-node' || edit.type === 'connect') {
+      } else if (edit.type === 'updateNode' || edit.type === 'connect') {
         if (edit.next) this._nodes.set(edit.next.id, edit.next);
       }
     }

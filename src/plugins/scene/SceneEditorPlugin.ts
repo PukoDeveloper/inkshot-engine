@@ -25,6 +25,9 @@ import type {
 
 const MAX_UNDO_HISTORY = 100;
 
+/** Name assigned to the Tiled-compatible object layer produced by `sceneeditor/export`. */
+const EXPORT_LAYER_NAME = 'objects';
+
 // ---------------------------------------------------------------------------
 // SceneEditorPlugin
 // ---------------------------------------------------------------------------
@@ -224,7 +227,7 @@ export class SceneEditorPlugin implements EnginePlugin {
     output.objects = objects;
     output.tiledObjectLayer = {
       type: 'objectgroup',
-      name: 'objects',
+      name: EXPORT_LAYER_NAME,
       objects: objects.map((obj, index) => ({
         id: index + 1,
         name: obj.id,

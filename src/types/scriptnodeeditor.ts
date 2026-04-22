@@ -11,7 +11,7 @@ export interface ScriptEditorNode {
 }
 
 // Command for undo/redo
-export type ScriptEditorEditType = 'add-node' | 'remove-node' | 'update-node' | 'connect';
+export type ScriptEditorEditType = 'addNode' | 'removeNode' | 'updateNode' | 'connect';
 export interface ScriptEditorEdit {
   type: ScriptEditorEditType;
   prev: ScriptEditorNode | null;
