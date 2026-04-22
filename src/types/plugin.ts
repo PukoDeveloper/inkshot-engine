@@ -44,6 +44,39 @@ export interface EnginePlugin {
   readonly dependencies?: readonly string[];
 
   /**
+   * Arbitrary editor-facing metadata exposed to external tooling (e.g. the
+   * Inkshot visual editor).
+   *
+   * The engine itself never reads or validates this object — it is purely a
+   * pass-through bag of data.  The shape is intentionally open-ended so each
+   * plugin author can define whatever properties make sense for their use case,
+   * and the editor is free to interpret them however it likes.
+   *
+   * @example
+   * ```ts
+   * const sceneManagerPlugin: EnginePlugin = {
+   *   namespace: 'scene',
+   *   editorMeta: {
+   *     displayName: 'Scene Manager',
+   *     icon: 'scene',
+   *     commands: ['scene/load', 'scene/unload'],
+   *     schemas: {
+   *       scene: {
+   *         type: 'object',
+   *         properties: {
+   *           id:   { type: 'string' },
+   *           file: { type: 'string' },
+   *         },
+   *       },
+   *     },
+   *   },
+   *   init(core) { ... },
+   * };
+   * ```
+   */
+  readonly editorMeta?: Record<string, unknown>;
+
+  /**
    * Called once before the game loop starts.
    * Use this to subscribe to events and initialize subsystems.
    */

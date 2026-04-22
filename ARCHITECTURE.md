@@ -115,6 +115,7 @@ Within a phase, listeners with a **higher** `priority` number run first (default
 interface EnginePlugin {
   readonly namespace: string;               // e.g. 'audio', 'saves', 'myGame/combat'
   readonly dependencies?: readonly string[]; // namespaces that must init first
+  readonly editorMeta?: Record<string, unknown>; // arbitrary editor-facing metadata
   init(core: Core): void | Promise<void>;
   destroy?(core: Core): void | Promise<void>;
 }
@@ -172,6 +173,49 @@ createEngine({
 When no ordering constraint exists between two plugins, their relative order from the original `plugins` array is preserved (stable sort).
 
 `destroy()` is always called in **reverse init order**, so teardown mirrors startup automatically.
+
+### 3.5 Editor Metadata (`editorMeta`)
+
+A plugin may declare an optional `editorMeta` object to expose arbitrary information to external tooling such as the Inkshot visual editor.  The engine itself **never reads or validates** this field — it is a pure pass-through.  The shape is entirely up to the plugin author; there are no reserved keys.
+
+```ts
+const itemPlugin: EnginePlugin = {
+  namespace: 'items',
+  editorMeta: {
+    displayName: 'Item System',
+    icon: 'backpack',
+
+    // Schemas for the editor's data-collection inspector
+    schemas: {
+      items: {
+        type: 'object',
+        properties: {
+          name:   { type: 'string' },
+          damage: { type: 'number' },
+        },
+      },
+    },
+
+    // Schema extensions contributed by another plugin (e.g. a magic system)
+    schemaExtensions: [
+      {
+        target: 'items',
+        properties: {
+          useMana: { type: 'number', default: 0 },
+          spellId: { type: 'ref', ref: 'spells' },
+        },
+      },
+    ],
+
+    // Any other keys the editor understands
+    commands: ['items/use', 'items/drop'],
+    version:  2,
+  },
+  init(core) { ... },
+};
+```
+
+Because the type is `Record<string, unknown>`, plugin authors are free to nest any structure.  The consuming editor is responsible for defining and validating the conventions it expects.
 
 ---
 
