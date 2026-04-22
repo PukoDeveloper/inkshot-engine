@@ -1,6 +1,8 @@
 import { createEngine } from '../createEngine.js';
 import type { EngineOptions, EngineInstance } from '../createEngine.js';
 import type { EnginePlugin } from '../types/plugin.js';
+import type { RpgGameData } from '../types/rpgdata.js';
+import { registerRpgData } from './data/index.js';
 
 // Core plugins already in the engine
 import { AudioManager } from '../plugins/audio/AudioManager.js';
@@ -53,6 +55,24 @@ export interface RpgEngineOptions extends EngineOptions {
   rpgMenu?: RpgMenuSystemOptions;
   /** Options forwarded to `ShopSystem`. */
   shop?: { goldNamespace?: string; goldKey?: string };
+  /**
+   * Optional game data to register automatically after the engine initialises.
+   *
+   * Equivalent to calling `registerRpgData(core, gameData)` immediately after
+   * `createRpgEngine` resolves, but without the extra step.
+   *
+   * ```ts
+   * const { core, rpg } = await createRpgEngine({
+   *   container: '#app',
+   *   gameData: {
+   *     meta: { title: 'My RPG', initialGold: 200 },
+   *     classes: [{ id: 'warrior', baseStats: { hp: 100, atk: 10 } }],
+   *     actors:  [{ id: 'hero', name: 'Hero', classId: 'warrior' }],
+   *   },
+   * });
+   * ```
+   */
+  gameData?: RpgGameData;
   /**
    * Extra plugins to include *after* the built-in RPG bundle.
    */
@@ -157,7 +177,7 @@ export const RPG_PLUGIN_BUNDLE: EnginePlugin[] = buildRpgPluginBundle();
  * ```
  */
 export async function createRpgEngine(options: RpgEngineOptions = {}): Promise<RpgEngineInstance> {
-  const { rpgMenu, shop, extraPlugins = [], plugins: userPlugins = [], ...engineOptions } = options;
+  const { rpgMenu, shop, gameData, extraPlugins = [], plugins: userPlugins = [], ...engineOptions } = options;
 
   const bundle = buildRpgPluginBundle({ rpgMenu, shop });
   const allPlugins: EnginePlugin[] = [...bundle, ...extraPlugins, ...(userPlugins as EnginePlugin[])];
@@ -170,7 +190,7 @@ export async function createRpgEngine(options: RpgEngineOptions = {}): Promise<R
     return p as T;
   };
 
-  return {
+  const instance: RpgEngineInstance = {
     ...base,
     rpg: {
       stats:         findPlugin<StatsSystem>('stats'),
@@ -185,4 +205,10 @@ export async function createRpgEngine(options: RpgEngineOptions = {}): Promise<R
       actor:         findPlugin<ActorManager>('actor'),
     },
   };
+
+  if (gameData) {
+    registerRpgData(base.core, gameData);
+  }
+
+  return instance;
 }
