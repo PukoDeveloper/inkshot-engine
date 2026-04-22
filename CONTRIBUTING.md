@@ -48,6 +48,7 @@ npm test
 |------|------|
 | `npm run build` | 執行 TypeScript 編譯，輸出至 `dist/` |
 | `npm run build:watch` | 監聽模式，檔案變更時自動重新編譯 |
+| `npm run build:bundle` | 以 Rolldown 將引擎（含 pixi.js）打包為單一 ESM 檔案 `dist/engine.bundle.js`，供瀏覽器直接使用（不需 Node.js） |
 | `npm run typecheck` | 僅執行型別檢查，不產生輸出檔案 |
 | `npm test` | 執行所有測試（Vitest） |
 | `npm run test:watch` | 監聽模式，測試會隨程式碼變更即時重新執行 |
@@ -69,8 +70,12 @@ inkshot-engine/
 │   ├── workers/            ← Web Worker 腳本
 │   ├── createEngine.ts     ← 主要公開進入點
 │   └── index.ts            ← 全域 re-export
+├── editor/                 ← 瀏覽器直接執行的範例頁面（不需 Node.js）
+│   ├── index.html          ← Import Map 入口頁（引擎 + 插件共用單一 bundle）
+│   └── main.js             ← 遊戲進入點範例
 ├── tests/                  ← 測試檔案（Vitest）
 ├── docs/                   ← 補充文件
+├── rolldown.bundle.config.js ← Rolldown 打包設定（build:bundle）
 ├── ARCHITECTURE.md         ← 架構與風格指南（詳細）
 ├── CONTRIBUTING.md         ← 本文件
 ├── README.md               ← 快速入門
