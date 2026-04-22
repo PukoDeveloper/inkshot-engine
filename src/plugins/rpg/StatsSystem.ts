@@ -70,7 +70,7 @@ export class StatsSystem implements EnginePlugin {
     displayName: 'Stats System',
     icon: 'stats',
     description: 'Manages actor stat profiles, modifiers, and status effects.',
-    commands: [
+    events: [
       'stats/profile:define', 'stats/base:set', 'stats/base:get',
       'stats/modifier:add', 'stats/modifier:remove', 'stats/compute',
       'stats/status:define', 'stats/status:apply', 'stats/status:remove', 'stats/status:list',

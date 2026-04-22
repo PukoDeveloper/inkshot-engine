@@ -87,7 +87,7 @@ export class DataManager implements EnginePlugin {
     displayName: 'Data Manager',
     icon: 'data',
     description: 'Loads and manages typed JSON data collections (items, skills, enemies, …).',
-    commands: ['data/load', 'data/get', 'data/getAll', 'data/unload'] as const,
+    events: ['data/load', 'data/get', 'data/getAll', 'data/unload'] as const,
     schemas: {
       data: {
         folder: 'data',

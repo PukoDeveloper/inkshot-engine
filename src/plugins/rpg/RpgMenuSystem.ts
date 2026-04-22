@@ -47,7 +47,7 @@ export class RpgMenuSystem implements EnginePlugin {
     displayName: 'RPG Menu System',
     icon: 'rpgmenu',
     description: 'Manages the main RPG status/equipment menu with page navigation.',
-    commands: [
+    events: [
       'rpgmenu/open', 'rpgmenu/close', 'rpgmenu/page:set', 'rpgmenu/party:set', 'rpgmenu/state:get',
     ] as const,
   };

@@ -189,7 +189,7 @@ export class PathfindingManager implements EnginePlugin {
     displayName: 'Pathfinding Manager',
     icon: 'pathfinding',
     description: 'Grid-based A* pathfinding with weight maps and async path queries.',
-    commands: [
+    events: [
       'pathfinding/find', 'pathfinding/find:async',
       'pathfinding/weight:set', 'pathfinding/cache:clear',
     ] as const,

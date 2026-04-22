@@ -65,7 +65,7 @@ export class SceneEditorPlugin implements EnginePlugin {
     displayName: 'Scene Editor',
     icon: 'scene-editor',
     description: 'In-engine scene editor for placing, moving, and removing scene objects.',
-    commands: [
+    events: [
       'sceneeditor/open', 'sceneeditor/close', 'sceneeditor/tool:set',
       'sceneeditor/actor-type:select',
       'sceneeditor/object:place', 'sceneeditor/object:select',

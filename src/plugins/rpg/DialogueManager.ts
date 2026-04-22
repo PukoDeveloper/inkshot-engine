@@ -121,7 +121,7 @@ export class DialogueManager implements EnginePlugin {
     displayName: 'Dialogue Manager',
     icon: 'dialogue',
     description: 'Drives rich typewriter-style dialogue sessions with choices and markup.',
-    commands: [
+    events: [
       'dialogue/show-text', 'dialogue/show-choices', 'dialogue/advance',
       'dialogue/choice', 'dialogue/end', 'dialogue/state:get',
     ] as const,

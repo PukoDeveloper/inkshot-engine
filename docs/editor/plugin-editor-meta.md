@@ -19,7 +19,7 @@
 4. [schemaExtensions — 擴充其他插件的 schema](#4-schemaextensions--擴充其他插件的-schema)
    - [擴充格式](#41-擴充格式)
    - [擴充套疊規則](#42-擴充套疊規則)
-5. [commands — 宣告可用的事件命令](#5-commands--宣告可用的事件命令)
+5. [events — 宣告可用的事件清單](#5-events--宣告可用的事件清單)
 6. [scenes — 宣告場景類型（選用）](#6-scenes--宣告場景類型選用)
 7. [完整範例：內建插件的 editorMeta 示意](#7-完整範例內建插件的-editormeta-示意)
    - [SceneManager](#71-scenemanager)
@@ -66,7 +66,7 @@ editorMeta: {
   schemaExtensions?: SchemaExtension[];               // 對其他插件 schema 的擴充
 
   // ─── 功能宣告 ────────────────────────────────────────────
-  commands?: string[];             // 可在腳本/面板中使用的事件命令清單
+  events?: string[];             // 可在腳本/面板中使用的事件清單
   scenes?:   SceneTypeDef[];       // 本插件提供的場景類型（如有）
 
   // ─── 任意自訂欄位 ─────────────────────────────────────────
@@ -78,13 +78,23 @@ editorMeta: {
 
 ## 3. schemas — 主資料結構定義
 
-`schemas` 宣告「本插件管理的資料集合之欄位結構」。鍵值為集合名稱（與 `data/load` 的 `collection` 對應），值為物件 schema 定義。
+`schemas` 宣告「本插件管理的資料集合之欄位結構」。鍵值為集合名稱（與 `data/load` 的 `collection` 對應），值為 `EditorSchema` 物件。
 
 ### 格式
 
 ```ts
 schemas: {
-  [collectionName: string]: SchemaObjectDef;
+  [collectionName: string]: EditorSchema;
+}
+
+interface EditorSchema {
+  displayName?: string;          // 編輯器顯示名稱
+  icon?:        string;          // 圖示識別碼
+  folder?:      string;          // 檔案存放資料夾（相對於專案根目錄）
+  field?:       SchemaObjectDef; // 欄位結構定義（選用）
+  editorId?:    string;          // 覆蓋預設編輯器類型的識別碼（選用）
+  dataName?:    string;          // 若有設定，代表此 schema 對應單一檔案而非多個項目（選用）
+  [key: string]: unknown;        // 自訂額外屬性
 }
 
 interface SchemaObjectDef {
@@ -95,13 +105,13 @@ interface SchemaObjectDef {
 }
 
 type SchemaFieldDef =
-  | { type: 'string';  label?: string; description?: string; default?: string }
-  | { type: 'number';  label?: string; description?: string; default?: number; min?: number; max?: number }
-  | { type: 'boolean'; label?: string; description?: string; default?: boolean }
-  | { type: 'enum';    label?: string; description?: string; options: string[]; default?: string }
-  | { type: 'ref';     label?: string; description?: string; ref: string }
-  | { type: 'array';   label?: string; description?: string; items: SchemaFieldDef }
-  | { type: 'object';  label?: string; description?: string; properties: Record<string, SchemaFieldDef> };
+  | { type: 'string';  label?: string; description?: string; hidden?: boolean; default?: string }
+  | { type: 'number';  label?: string; description?: string; hidden?: boolean; default?: number; min?: number; max?: number }
+  | { type: 'boolean'; label?: string; description?: string; hidden?: boolean; default?: boolean }
+  | { type: 'enum';    label?: string; description?: string; hidden?: boolean; options: string[]; default?: string }
+  | { type: 'ref';     label?: string; description?: string; hidden?: boolean; ref: string }
+  | { type: 'array';   label?: string; description?: string; hidden?: boolean; items: SchemaFieldDef }
+  | { type: 'object';  label?: string; description?: string; hidden?: boolean; properties: Record<string, SchemaFieldDef> };
 ```
 
 ### 3.1 欄位型別一覽
@@ -121,19 +131,22 @@ type SchemaFieldDef =
 ```ts
 schemas: {
   enemies: {
-    type: 'object',
-    label: '敵人',
-    properties: {
-      name:   { type: 'string', label: '名稱' },
-      hp:     { type: 'number', label: 'HP', default: 100, min: 1 },
-      drops:  {
-        type: 'array',
-        label: '掉落物',
-        items: {
-          type: 'object',
-          properties: {
-            itemId: { type: 'ref', ref: 'items', label: '道具' },
-            rate:   { type: 'number', label: '機率', min: 0, max: 1, default: 0.1 },
+    displayName: '敵人',
+    folder: 'data',
+    field: {
+      type: 'object',
+      properties: {
+        name:   { type: 'string', label: '名稱' },
+        hp:     { type: 'number', label: 'HP', default: 100, min: 1 },
+        drops:  {
+          type: 'array',
+          label: '掉落物',
+          items: {
+            type: 'object',
+            properties: {
+              itemId: { type: 'ref', ref: 'items', label: '道具' },
+              rate:   { type: 'number', label: '機率', min: 0, max: 1, default: 0.1 },
+            },
           },
         },
       },
@@ -215,12 +228,12 @@ schemaExtensions: [
 
 ---
 
-## 5. commands — 宣告可用的事件命令
+## 5. events — 宣告可用的事件清單
 
-`commands` 是一個字串陣列，列出本插件監聽的**命令型事件**（consumer → plugin 的方向）。編輯器可用此清單在腳本節點面板或自動完成中顯示可用命令。
+`events` 是一個字串陣列，列出本插件監聽的所有事件。編輯器可用此清單在腳本節點面板或自動完成中顯示可用事件。
 
 ```ts
-commands: [
+events: [
   'scene/load',
   'scene/unload',
   'scene/reload',
@@ -228,10 +241,10 @@ commands: [
 ]
 ```
 
-若需要為每個命令提供更豐富的說明（參數、說明文字），可改為物件陣列格式，由插件自定義。引擎不限制格式：
+若需要為每個事件提供更豐富的說明（參數、說明文字），可改為物件陣列格式，由插件自定義。引擎不限制格式：
 
 ```ts
-commands: [
+events: [
   { event: 'inventory/item:use',  label: '使用道具', params: { itemId: 'string', actorId: 'string' } },
   { event: 'inventory/item:drop', label: '丟棄道具', params: { itemId: 'string' } },
 ]
@@ -276,7 +289,7 @@ const sceneManagerPlugin: EnginePlugin = {
     displayName: 'Scene Manager',
     description: '場景切換、預載入與非同步場景載入',
     icon: 'scene',
-    commands: [
+    events: [
       'scene/load',
       'scene/unload',
       'scene/reload',
@@ -284,12 +297,15 @@ const sceneManagerPlugin: EnginePlugin = {
     ],
     schemas: {
       scenes: {
-        type: 'object',
-        label: '場景',
-        properties: {
-          key:        { type: 'string',  label: '場景 Key', description: '用於 scene/load 的唯一識別碼' },
-          pluginUrl:  { type: 'string',  label: '模組 URL', description: '動態 import 的場景模組路徑' },
-          preloadBundles: { type: 'array', label: '預載資源包', items: { type: 'string' } },
+        displayName: '場景',
+        folder: 'scenes',
+        field: {
+          type: 'object',
+          properties: {
+            key:        { type: 'string',  label: '場景 Key', description: '用於 scene/load 的唯一識別碼' },
+            pluginUrl:  { type: 'string',  label: '模組 URL', description: '動態 import 的場景模組路徑' },
+            preloadBundles: { type: 'array', label: '預載資源包', items: { type: 'string' } },
+          },
         },
       },
     },
@@ -307,32 +323,35 @@ const itemDataPlugin: EnginePlugin = {
     displayName: 'Items Data',
     description: '遊戲道具的資料定義',
     icon: 'backpack',
-    schemas: {
-      items: {
-        type: 'object',
-        label: '道具',
-        properties: {
-          name:        { type: 'string',  label: '名稱' },
-          description: { type: 'string',  label: '說明' },
-          price:       { type: 'number',  label: '售價', default: 0, min: 0 },
-          stackable:   { type: 'boolean', label: '可堆疊', default: true },
-          maxStack:    { type: 'number',  label: '最大堆疊', default: 99, min: 1 },
-          category:    {
-            type: 'enum',
-            label: '類型',
-            options: ['weapon', 'armor', 'consumable', 'key'],
-            default: 'consumable',
-          },
-          iconKey: { type: 'string', label: '圖示 Key' },
-        },
-      },
-    },
-    commands: [
+    events: [
       'data/load',
       'data/get',
       'data/getAll',
       'data/unload',
     ],
+    schemas: {
+      items: {
+        displayName: '道具',
+        folder: 'data',
+        field: {
+          type: 'object',
+          properties: {
+            name:        { type: 'string',  label: '名稱' },
+            description: { type: 'string',  label: '說明' },
+            price:       { type: 'number',  label: '售價', default: 0, min: 0 },
+            stackable:   { type: 'boolean', label: '可堆疊', default: true },
+            maxStack:    { type: 'number',  label: '最大堆疊', default: 99, min: 1 },
+            category:    {
+              type: 'enum',
+              label: '類型',
+              options: ['weapon', 'armor', 'consumable', 'key'],
+              default: 'consumable',
+            },
+            iconKey: { type: 'string', label: '圖示 Key' },
+          },
+        },
+      },
+    },
   },
   init(core) { /* ... */ },
 };
@@ -347,35 +366,7 @@ const actorManagerPlugin: EnginePlugin = {
     displayName: 'Actor Manager',
     description: '角色／NPC 定義、生成與觸發器管理',
     icon: 'person',
-    schemas: {
-      actors: {
-        type: 'object',
-        label: '角色定義（ActorDef）',
-        properties: {
-          scripts: {
-            type: 'array',
-            label: '腳本清單',
-            items: {
-              type: 'object',
-              properties: {
-                id:      { type: 'string', label: '腳本 ID' },
-                trigger: { type: 'string', label: '觸發事件' },
-                mode:    { type: 'enum', label: '模式', options: ['concurrent', 'blocking'], default: 'concurrent' },
-              },
-            },
-          },
-          initialState: {
-            type: 'object',
-            label: '初始狀態',
-            properties: {
-              // 由遊戲自訂；此處僅示意
-              alive: { type: 'boolean', default: true },
-            },
-          },
-        },
-      },
-    },
-    commands: [
+    events: [
       'actor/define',
       'actor/spawn',
       'actor/despawn',
@@ -384,6 +375,37 @@ const actorManagerPlugin: EnginePlugin = {
       'actor/state:get',
       'actor/trigger',
     ],
+    schemas: {
+      actors: {
+        displayName: '角色定義（ActorDef）',
+        folder: 'actors',
+        field: {
+          type: 'object',
+          properties: {
+            scripts: {
+              type: 'array',
+              label: '腳本清單',
+              items: {
+                type: 'object',
+                properties: {
+                  id:      { type: 'string', label: '腳本 ID' },
+                  trigger: { type: 'string', label: '觸發事件' },
+                  mode:    { type: 'enum', label: '模式', options: ['concurrent', 'blocking'], default: 'concurrent' },
+                },
+              },
+            },
+            initialState: {
+              type: 'object',
+              label: '初始狀態',
+              properties: {
+                // 由遊戲自訂；此處僅示意
+                alive: { type: 'boolean', default: true },
+              },
+            },
+          },
+        },
+      },
+    },
   },
   init(core) { /* ... */ },
 };
@@ -399,16 +421,24 @@ const magicSystemPlugin: EnginePlugin = {
     displayName: 'Magic System',
     description: '為道具和角色增加魔法屬性',
     icon: 'wand',
+    events: [
+      'magic/cast',
+      'magic/learn',
+      'magic/forget',
+    ],
     // ── 本插件自己的資料集 ─────────────────────────────────
     schemas: {
       spells: {
-        type: 'object',
-        label: '技能',
-        properties: {
-          name:     { type: 'string', label: '技能名稱' },
-          manaCost: { type: 'number', label: '魔力消耗', default: 10, min: 0 },
-          element:  { type: 'enum',   label: '屬性', options: ['fire', 'water', 'wind', 'earth', 'none'], default: 'none' },
-          damage:   { type: 'number', label: '基礎傷害', default: 0, min: 0 },
+        displayName: '技能',
+        folder: 'data',
+        field: {
+          type: 'object',
+          properties: {
+            name:     { type: 'string', label: '技能名稱' },
+            manaCost: { type: 'number', label: '魔力消耗', default: 10, min: 0 },
+            element:  { type: 'enum',   label: '屬性', options: ['fire', 'water', 'wind', 'earth', 'none'], default: 'none' },
+            damage:   { type: 'number', label: '基礎傷害', default: 0, min: 0 },
+          },
         },
       },
     },
@@ -423,11 +453,6 @@ const magicSystemPlugin: EnginePlugin = {
           isStaff:  { type: 'boolean', label: '法杖類型', default: false },
         },
       },
-    ],
-    commands: [
-      'magic/cast',
-      'magic/learn',
-      'magic/forget',
     ],
   },
   init(core) { /* ... */ },
@@ -454,28 +479,29 @@ const allMeta = plugins
 ```ts
 function buildMergedSchemas(allMeta: Array<{ namespace: string; meta: Record<string, unknown> }>) {
   // ① 先收集所有主 schema
-  const merged: Record<string, SchemaObjectDef> = {};
+  const merged: Record<string, EditorSchema> = {};
   for (const { meta } of allMeta) {
     if (meta.schemas && typeof meta.schemas === 'object') {
       Object.assign(merged, meta.schemas);
     }
   }
 
-  // ② 再套用所有擴充
+  // ② 再套用所有擴充（針對 field.properties 合併）
   for (const { meta } of allMeta) {
     const exts = meta.schemaExtensions as SchemaExtension[] | undefined;
     if (!Array.isArray(exts)) continue;
     for (const ext of exts) {
-      if (!merged[ext.target]) {
-        console.warn(`[editor] schemaExtension 的 target "${ext.target}" 不存在，略過`);
+      const target = merged[ext.target];
+      if (!target?.field) {
+        console.warn(`[editor] schemaExtension 的 target "${ext.target}" 不存在或無 field，略過`);
         continue;
       }
       // null 表示移除該欄位
       for (const [key, def] of Object.entries(ext.properties)) {
         if (def === null) {
-          delete merged[ext.target].properties[key];
+          delete target.field.properties[key];
         } else {
-          merged[ext.target].properties[key] = def as SchemaFieldDef;
+          target.field.properties[key] = def as SchemaFieldDef;
         }
       }
     }
@@ -485,24 +511,24 @@ function buildMergedSchemas(allMeta: Array<{ namespace: string; meta: Record<str
 }
 ```
 
-### 收集所有可用命令
+### 收集所有可用事件
 
 ```ts
-function collectCommands(allMeta: Array<{ namespace: string; meta: Record<string, unknown> }>) {
-  const commands: Array<{ namespace: string; event: string }> = [];
+function collectEvents(allMeta: Array<{ namespace: string; meta: Record<string, unknown> }>) {
+  const events: Array<{ namespace: string; event: string }> = [];
   for (const { namespace, meta } of allMeta) {
-    const cmds = meta.commands;
-    if (!Array.isArray(cmds)) continue;
-    for (const cmd of cmds) {
+    const evts = meta.events;
+    if (!Array.isArray(evts)) continue;
+    for (const evt of evts) {
       // 支援字串與物件兩種格式
-      if (typeof cmd === 'string') {
-        commands.push({ namespace, event: cmd });
-      } else if (typeof cmd === 'object' && cmd !== null && 'event' in cmd) {
-        commands.push({ namespace, ...(cmd as object) });
+      if (typeof evt === 'string') {
+        events.push({ namespace, event: evt });
+      } else if (typeof evt === 'object' && evt !== null && 'event' in evt) {
+        events.push({ namespace, ...(evt as object) });
       }
     }
   }
-  return commands;
+  return events;
 }
 ```
 
@@ -515,7 +541,7 @@ function collectCommands(allMeta: Array<{ namespace: string; meta: Record<string
 | 型別設計 | `Record<string, unknown>` | 完全開放，不預設任何 key；引擎不需要知道格式 |
 | 主 vs 擴充分離 | `schemas` + `schemaExtensions` | 讓依賴插件可以非侵入式地擴充資料模型，無需修改原始插件 |
 | schema 欄位格式 | 簡化 JSON Schema 子集 | JSON Schema 過於複雜；簡化版足以描述遊戲資料，且編輯器容易渲染 |
-| `commands` 字串/物件二元格式 | 兩者皆允許 | 簡單場景用字串；需要參數說明時用物件；向後相容 |
+| `events` 字串/物件二元格式 | 兩者皆允許 | 簡單場景用字串；需要參數說明時用物件；向後相容 |
 | 衝突解決 | 後者覆蓋前者 | 明確且簡單；插件如需配合優先權可調整載入順序 |
 | 引擎不驗證 | 不驗證 | 零運行期成本，編輯器可離線工具（lint/validate）在 build time 檢查 |
 

@@ -49,7 +49,7 @@ export class ExperienceSystem implements EnginePlugin {
     displayName: 'Experience System',
     icon: 'exp',
     description: 'Tracks per-actor XP with configurable level curves and level-up events.',
-    commands: [
+    events: [
       'exp/curve:define', 'exp/gain', 'exp/get', 'exp/set',
     ] as const,
   };

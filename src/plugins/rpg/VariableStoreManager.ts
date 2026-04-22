@@ -148,7 +148,7 @@ export class VariableStoreManager implements EnginePlugin {
     displayName: 'Variable Store Manager',
     icon: 'store',
     description: 'Namespaced key-value variable store with save/load integration.',
-    commands: [
+    events: [
       'store/set', 'store/get', 'store/patch',
       'store/get-namespace', 'store/clear-namespace',
       'store/snapshot', 'store/restore',

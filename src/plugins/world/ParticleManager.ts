@@ -248,7 +248,7 @@ export class ParticleManager implements EnginePlugin {
     displayName: 'Particle Manager',
     icon: 'particle',
     description: 'Manages pooled particle emitters for visual effects.',
-    commands: [
+    events: [
       'particle/emit', 'particle/stop', 'particle/clear', 'particle/move',
       'particle/pause', 'particle/resume', 'particle/count', 'particle/update',
     ] as const,

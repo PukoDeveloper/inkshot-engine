@@ -68,7 +68,7 @@ export class InventorySystem implements EnginePlugin {
     displayName: 'Inventory System',
     icon: 'inventory',
     description: 'Item definitions, per-actor bags, equipment slots, and item usage.',
-    commands: [
+    events: [
       'inventory/item:define', 'inventory/item:get', 'inventory/add', 'inventory/remove',
       'inventory/use', 'inventory/equip', 'inventory/unequip',
       'inventory/list', 'inventory/has',

@@ -82,7 +82,7 @@ export class SceneManager implements EnginePlugin {
     displayName: 'Scene Manager',
     icon: 'scene',
     description: 'Manages scene registration and transitions between levels or rooms.',
-    commands: ['scene/register', 'scene/load', 'scene/current'] as const,
+    events: ['scene/register', 'scene/load', 'scene/current'] as const,
     schemas: {
       scene: {
         folder: 'scenes',

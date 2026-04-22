@@ -526,7 +526,7 @@ export class TweenManager implements EnginePlugin {
     displayName: 'Tween Manager',
     icon: 'tween',
     description: 'Drives property interpolation tweens and timelines with configurable easing.',
-    commands: ['tween/to', 'tween/kill'] as const,
+    events: ['tween/to', 'tween/kill'] as const,
   };
 
   private _core: Core | null = null;

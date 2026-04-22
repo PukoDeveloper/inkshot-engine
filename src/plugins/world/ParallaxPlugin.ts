@@ -95,7 +95,7 @@ export class ParallaxPlugin implements EnginePlugin {
     displayName: 'Parallax Plugin',
     icon: 'parallax',
     description: 'Manages multi-layer parallax scrolling backgrounds driven by the camera.',
-    commands: [
+    events: [
       'parallax/layer:add', 'parallax/layer:remove', 'parallax/layer:update',
       'parallax/layer:get', 'parallax/layers',
     ] as const,

@@ -87,7 +87,7 @@ export class LocalStorageSaveAdapter implements EnginePlugin {
     displayName: 'LocalStorage Save Adapter',
     icon: 'save',
     description: 'Persists save data to the browser localStorage.',
-    commands: [
+    events: [
       'save/slot:save', 'save/slot:load', 'save/slot:delete',
       'save/global:save', 'save/global:load',
     ] as const,

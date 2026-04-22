@@ -115,7 +115,7 @@ export class LocalizationManager implements EnginePlugin {
     displayName: 'Localization Manager',
     icon: 'i18n',
     description: 'Loads locale catalogues and provides runtime translation utilities.',
-    commands: [
+    events: [
       'i18n/load', 'i18n/set-locale', 'i18n/t',
       'i18n/lookup', 'i18n/interpolate', 'i18n/get-locales',
     ] as const,

@@ -101,7 +101,7 @@ export class SaveManager implements EnginePlugin {
     displayName: 'Save Manager',
     icon: 'save',
     description: 'Manages save slots and global save data through a pluggable storage adapter.',
-    commands: [
+    events: [
       'save/slot:set', 'save/slot:get', 'save/slot:list',
       'save/slot:save', 'save/slot:load', 'save/slot:delete',
       'save/global:set', 'save/global:get', 'save/global:save', 'save/global:load',

@@ -106,7 +106,7 @@ export class SettingsManager implements EnginePlugin {
     displayName: 'Settings Manager',
     icon: 'settings',
     description: 'Persists and bridges user-facing settings (audio volume, locale, key bindings, …).',
-    commands: [
+    events: [
       'settings/set', 'settings/get', 'settings/get-all',
       'settings/reset', 'settings/save', 'settings/load',
     ] as const,

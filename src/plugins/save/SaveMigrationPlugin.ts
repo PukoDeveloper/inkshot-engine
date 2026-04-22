@@ -173,7 +173,7 @@ export class SaveMigrationPlugin implements EnginePlugin {
     displayName: 'Save Migration Plugin',
     icon: 'save',
     description: 'Applies versioned migration steps to save data during load.',
-    commands: [] as const,
+    events: [] as const,
   };
 
   private readonly _currentVersion: number;

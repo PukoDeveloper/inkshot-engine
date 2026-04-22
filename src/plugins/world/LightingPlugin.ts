@@ -80,7 +80,7 @@ export class LightingPlugin implements EnginePlugin {
     displayName: 'Lighting Plugin',
     icon: 'lighting',
     description: 'Renders a dynamic 2D lighting layer with point lights and ambient control.',
-    commands: [
+    events: [
       'lighting/light:add', 'lighting/light:remove', 'lighting/light:update',
       'lighting/light:get', 'lighting/ambient:set', 'lighting/state',
     ] as const,

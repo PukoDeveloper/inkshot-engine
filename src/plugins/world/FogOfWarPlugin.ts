@@ -74,7 +74,7 @@ export class FogOfWarPlugin implements EnginePlugin {
     displayName: 'Fog of War Plugin',
     icon: 'fog',
     description: 'Renders a fog-of-war overlay with explored and visible tile states.',
-    commands: [
+    events: [
       'fog/init', 'fog/update', 'fog/reveal', 'fog/clear',
       'fog/get-tile', 'fog/state',
     ] as const,

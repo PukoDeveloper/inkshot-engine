@@ -1007,7 +1007,7 @@ export class UIManager implements EnginePlugin {
     displayName: 'UI Manager',
     icon: 'ui',
     description: 'Manages UI widgets with a factory-based creation system and anchor layout.',
-    commands: [
+    events: [
       'ui/register', 'ui/create', 'ui/show', 'ui/hide', 'ui/destroy',
       'ui/get', 'ui/update',
     ] as const,

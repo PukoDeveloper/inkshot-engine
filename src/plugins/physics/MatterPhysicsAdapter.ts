@@ -281,7 +281,7 @@ export class MatterPhysicsAdapter implements EnginePlugin {
     displayName: 'Matter.js Physics Adapter',
     icon: 'physics',
     description: 'Physics backend powered by Matter.js with rigid-body simulation.',
-    commands: [
+    events: [
       'physics/body:add', 'physics/body:remove', 'physics/move', 'physics/impulse',
       'physics/query', 'physics/raycast', 'physics/hit', 'physics/overlap',
       'physics/tilemap:set', 'physics/grid:snap',

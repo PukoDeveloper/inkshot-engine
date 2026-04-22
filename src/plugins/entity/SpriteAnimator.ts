@@ -69,7 +69,7 @@ export class SpriteAnimator implements EnginePlugin {
     displayName: 'Sprite Animator',
     icon: 'spriteAnimator',
     description: 'Drives frame-based sprite animations on entities.',
-    commands: ['animator/define', 'animator/play', 'animator/stop'] as const,
+    events: ['animator/define', 'animator/play', 'animator/stop'] as const,
   };
 
   private _core: Core | null = null;

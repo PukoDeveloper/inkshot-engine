@@ -131,7 +131,7 @@ export class DebugPlugin implements EnginePlugin {
     displayName: 'Debug Plugin',
     icon: 'debug',
     description: 'Provides in-game debug overlay, FPS counter, and event-log inspection.',
-    commands: [
+    events: [
       'debug/overlay:toggle', 'debug/overlay:visible',
       'debug/event-log:filter', 'debug/event-log:get',
     ] as const,
