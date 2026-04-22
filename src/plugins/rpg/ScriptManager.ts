@@ -16,6 +16,7 @@ import type {
   ScriptErrorParams,
 } from '../../types/script.js';
 import type { GameStateGetOutput } from '../../types/game.js';
+import type { StoreGetParams, StoreGetOutput, StoreSetParams } from '../../types/store.js';
 
 // ---------------------------------------------------------------------------
 // Internal types
@@ -98,25 +99,40 @@ interface RunState {
  *
  * ### Built-in commands
  *
- * | Command         | Fields                                                       | Description                                                            |
- * |-----------------|--------------------------------------------------------------|------------------------------------------------------------------------|
- * | `label`         | `name` (string)                                              | Position marker (no-op at runtime)                                     |
- * | `jump`          | `target` (string)                                            | Unconditional jump to a label                                          |
- * | `if`            | `var`, `value`, `jump`                                       | Jump to a label when `vars[var] === value`                             |
- * | `if-not`        | `var`, `value`, `jump`                                       | Jump to a label when `vars[var] !== value`                             |
- * | `if-gt`         | `var` (string), `value` (number), `jump`                     | Jump to a label when `vars[var] > value` (numeric)                     |
- * | `if-lt`         | `var` (string), `value` (number), `jump`                     | Jump to a label when `vars[var] < value` (numeric)                     |
- * | `set`           | `var` (string), `value`                                      | Write a value into the script variable store                           |
- * | `wait`          | `ms` (number)                                                | Pause execution for `ms` milliseconds                                  |
- * | `emit`          | `event` (string), `params?` (object)                         | Emit a custom event synchronously                                      |
- * | `say`           | `text?`, `speaker?`, `portrait?`, `speed?`, …                | Show dialogue text, wait for advance                                   |
- * | `choices`       | `choices` (string[]), `prompt?`, `var?`                      | Show choices, store picked index in `var`                              |
- * | `end`           | —                                                            | Close the dialogue session                                             |
- * | `wait-event`    | `event` (string), `var?`, `timeout?` (ms), `timeoutJump?`   | Suspend until an event fires; optional timeout with label fallback     |
- * | `call`          | `id` (string), `vars?` (object)                              | Run a sub-script inline and await its completion                       |
- * | `fork`          | `id` (string), `instanceId?`, `vars?`, `priority?`           | Launch a concurrent instance (fire-and-forget)                         |
- * | `wait-instance` | `instanceId` (string)                                        | Suspend until a named instance finishes                                |
- * | `stop-instance` | `instanceId` (string)                                        | Stop another running instance                                          |
+ * ### Variable reference format
+ *
+ * Wherever a command accepts a `var` field or a text string that embeds
+ * values, two formats are recognised:
+ *
+ * | Format        | Resolves to                                              |
+ * |---------------|----------------------------------------------------------|
+ * | `$name`       | The script-local variable `ctx.vars.name`                |
+ * | `$ns.key`     | The persistent store value at namespace `ns`, key `key`  |
+ *
+ * In text fields (`say`, `choices`), use `{$name}` or `{$ns.key}` to embed
+ * the resolved value inline:
+ * ```ts
+ * { cmd: 'say', text: 'HP: {$player.hp}, Gold: {$gold}' }
+ * ```
+ *
+ * ---
+ *
+ * | Command         | Fields                                                                    | Description                                                               |
+ * |-----------------|---------------------------------------------------------------------------|---------------------------------------------------------------------------|
+ * | `label`         | `name` (string)                                                           | Position marker (no-op at runtime)                                        |
+ * | `jump`          | `target` (string)                                                         | Unconditional jump to a label                                             |
+ * | `if`            | `var` (var-ref), `op?` (string), `value`, `jump` (string)                 | Jump when the comparison holds; `op`: `eq`(default) `ne` `gt` `lt` `gte` `lte` |
+ * | `set`           | `var` (var-ref), `value`                                                  | Write a value into the script var store or persistent store               |
+ * | `wait`          | `ms` (number)                                                             | Pause execution for `ms` milliseconds                                     |
+ * | `emit`          | `event` (string), `params?` (object)                                      | Emit a custom event synchronously                                         |
+ * | `say`           | `text?`, `speaker?`, `portrait?`, `speed?`, …                             | Show dialogue text (with `{$var}` interpolation), wait for advance        |
+ * | `choices`       | `choices` (string[]), `prompt?`, `var?`                                   | Show choices (with `{$var}` interpolation), store picked index in `var`   |
+ * | `end`           | —                                                                         | Close the dialogue session                                                |
+ * | `wait-event`    | `event` (string), `var?`, `timeout?` (ms), `timeoutJump?`                 | Suspend until an event fires; optional timeout with label fallback        |
+ * | `call`          | `id` (string), `vars?` (object)                                           | Run a sub-script inline and await its completion                          |
+ * | `fork`          | `id` (string), `instanceId?`, `vars?`, `priority?`                        | Launch a concurrent instance (fire-and-forget)                            |
+ * | `wait-instance` | `instanceId` (string)                                                     | Suspend until a named instance finishes                                   |
+ * | `stop-instance` | `instanceId` (string)                                                     | Stop another running instance                                             |
  *
  * ---
  *
@@ -565,18 +581,54 @@ export class ScriptManager implements EnginePlugin {
       ctx.jumpTo(idx);
     });
 
-    // ── if: conditional jump ──────────────────────────────────────────────
+    // ── if: conditional jump with operator support ────────────────────────
+    //
+    // Fields:
+    //   var   (var-ref) – variable to test; supports $name (script-local) and
+    //                     $ns.key (persistent store)
+    //   op    (string)  – comparison operator; defaults to 'eq'
+    //                     'eq'  – equal (===)
+    //                     'ne'  – not equal (!==)
+    //                     'gt'  – greater than (numeric)
+    //                     'lt'  – less than (numeric)
+    //                     'gte' – greater than or equal (numeric)
+    //                     'lte' – less than or equal (numeric)
+    //   value           – the value to compare against
+    //   jump  (string)  – label to jump to when the condition holds
+    //
+    // Examples:
+    //   { cmd: 'if', var: '$gold',       op: 'gte', value: 100, jump: 'rich' }
+    //   { cmd: 'if', var: '$player.hp',  op: 'lt',  value: 20,  jump: 'danger' }
+    //   { cmd: 'if', var: '$questDone',  value: true,            jump: 'done' }
     this._commands.set('if', (ctx) => {
-      const varName   = ctx.node.var  as string | undefined;
+      const varRef    = ctx.node.var  as string | undefined;
+      const op        = (ctx.node.op  as string | undefined) ?? 'eq';
       const expected  = ctx.node.value;
       const labelName = ctx.node.jump as string | undefined;
-      if (!varName || !labelName) {
+      if (!varRef || !labelName) {
         console.warn(
           '[ScriptManager] if: requires "var", "value", and "jump" fields.',
         );
         return;
       }
-      if (ctx.vars[varName] === expected) {
+
+      const actual = this._resolveVar(varRef, ctx);
+      let condition: boolean;
+      switch (op) {
+        case 'eq':  condition = actual === expected; break;
+        case 'ne':  condition = actual !== expected; break;
+        case 'gt':  condition = (actual as number) > (expected as number); break;
+        case 'lt':  condition = (actual as number) < (expected as number); break;
+        case 'gte': condition = (actual as number) >= (expected as number); break;
+        case 'lte': condition = (actual as number) <= (expected as number); break;
+        default:
+          console.warn(
+            `[ScriptManager] if: unknown op "${op}". Supported: eq, ne, gt, lt, gte, lte.`,
+          );
+          return;
+      }
+
+      if (condition) {
         const idx = this._findLabel(ctx.script, labelName);
         if (idx !== -1) {
           ctx.jumpTo(idx);
@@ -589,86 +641,28 @@ export class ScriptManager implements EnginePlugin {
       }
     });
 
-    // ── if-not: conditional jump when vars[var] !== value ─────────────────
-    this._commands.set('if-not', (ctx) => {
-      const varName   = ctx.node.var  as string | undefined;
-      const expected  = ctx.node.value;
-      const labelName = ctx.node.jump as string | undefined;
-      if (!varName || !labelName) {
-        console.warn(
-          '[ScriptManager] if-not: requires "var", "value", and "jump" fields.',
-        );
-        return;
-      }
-      if (ctx.vars[varName] !== expected) {
-        const idx = this._findLabel(ctx.script, labelName);
-        if (idx !== -1) {
-          ctx.jumpTo(idx);
-        } else {
-          console.warn(
-            `[ScriptManager] if-not: label "${labelName}" not found ` +
-            `in script "${ctx.script.id}".`,
-          );
-        }
-      }
-    });
-
-    // ── if-gt: jump when vars[var] > value (numeric) ──────────────────────
-    this._commands.set('if-gt', (ctx) => {
-      const varName   = ctx.node.var   as string | undefined;
-      const threshold = ctx.node.value as number | undefined;
-      const labelName = ctx.node.jump  as string | undefined;
-      if (!varName || typeof threshold !== 'number' || !labelName) {
-        console.warn(
-          '[ScriptManager] if-gt: requires "var" (string), "value" (number), and "jump" fields.',
-        );
-        return;
-      }
-      if ((ctx.vars[varName] as number) > threshold) {
-        const idx = this._findLabel(ctx.script, labelName);
-        if (idx !== -1) {
-          ctx.jumpTo(idx);
-        } else {
-          console.warn(
-            `[ScriptManager] if-gt: label "${labelName}" not found ` +
-            `in script "${ctx.script.id}".`,
-          );
-        }
-      }
-    });
-
-    // ── if-lt: jump when vars[var] < value (numeric) ──────────────────────
-    this._commands.set('if-lt', (ctx) => {
-      const varName   = ctx.node.var   as string | undefined;
-      const threshold = ctx.node.value as number | undefined;
-      const labelName = ctx.node.jump  as string | undefined;
-      if (!varName || typeof threshold !== 'number' || !labelName) {
-        console.warn(
-          '[ScriptManager] if-lt: requires "var" (string), "value" (number), and "jump" fields.',
-        );
-        return;
-      }
-      if ((ctx.vars[varName] as number) < threshold) {
-        const idx = this._findLabel(ctx.script, labelName);
-        if (idx !== -1) {
-          ctx.jumpTo(idx);
-        } else {
-          console.warn(
-            `[ScriptManager] if-lt: label "${labelName}" not found ` +
-            `in script "${ctx.script.id}".`,
-          );
-        }
-      }
-    });
-
-    // ── set: write to the script variable store ───────────────────────────
+    // ── set: write to the script variable store or persistent store ──────
     this._commands.set('set', (ctx) => {
-      const varName = ctx.node.var as string | undefined;
-      if (!varName) {
+      const varRef = ctx.node.var as string | undefined;
+      if (!varRef) {
         console.warn('[ScriptManager] set: missing "var" field.');
         return;
       }
-      ctx.vars[varName] = ctx.node.value;
+      if (varRef.startsWith('$')) {
+        const name = varRef.slice(1);
+        const dot  = name.indexOf('.');
+        if (dot !== -1) {
+          ctx.core.events.emitSync<StoreSetParams>('store/set', {
+            ns:    name.slice(0, dot),
+            key:   name.slice(dot + 1),
+            value: ctx.node.value,
+          });
+          return;
+        }
+        ctx.vars[name] = ctx.node.value;
+        return;
+      }
+      ctx.vars[varRef] = ctx.node.value;
     });
 
     // ── wait: suspend execution for `ms` milliseconds ─────────────────────
@@ -711,7 +705,9 @@ export class ScriptManager implements EnginePlugin {
       }
 
       ctx.core.events.emitSync('dialogue/show-text', {
-        text:           ctx.node.text          as string | undefined,
+        text:           ctx.node.text    != null
+                          ? this._interpolateText(ctx.node.text as string, ctx)
+                          : undefined,
         speaker:        ctx.node.speaker       as string | undefined,
         portrait:       ctx.node.portrait      as string | undefined,
         speed:          ctx.node.speed         as number | undefined,
@@ -741,7 +737,10 @@ export class ScriptManager implements EnginePlugin {
         console.warn('[ScriptManager] choices: "choices" must be an array of strings.');
         return;
       }
-      const choices = rawChoices.map((text, index) => ({ text, index }));
+      const choices = rawChoices.map((text, index) => ({
+        text:  this._interpolateText(text, ctx),
+        index,
+      }));
 
       // Lock player input during choice selection if the game is currently in
       // the 'playing' phase.  The state is restored once a choice is made.
@@ -754,7 +753,9 @@ export class ScriptManager implements EnginePlugin {
       }
 
       ctx.core.events.emitSync('dialogue/show-choices', {
-        prompt:  ctx.node.prompt as string | undefined,
+        prompt:  ctx.node.prompt != null
+                   ? this._interpolateText(ctx.node.prompt as string, ctx)
+                   : undefined,
         choices,
       });
       return new Promise<void>((resolve) => {
@@ -990,6 +991,46 @@ export class ScriptManager implements EnginePlugin {
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
+
+  /**
+   * Resolve a variable reference to its current value.
+   *
+   * - `$name`    → script-local variable `ctx.vars[name]`
+   * - `$ns.key`  → persistent store value via `store/get`
+   *
+   * If the reference does not start with `$` it is treated as a bare
+   * script-local key for backward compatibility.
+   */
+  private _resolveVar(ref: string, ctx: ScriptContext): unknown {
+    if (!ref.startsWith('$')) {
+      return ctx.vars[ref];
+    }
+    const name = ref.slice(1);
+    const dot  = name.indexOf('.');
+    if (dot !== -1) {
+      const { output } = ctx.core.events.emitSync<StoreGetParams, StoreGetOutput>(
+        'store/get',
+        { ns: name.slice(0, dot), key: name.slice(dot + 1) },
+      );
+      return output.value;
+    }
+    return ctx.vars[name];
+  }
+
+  /**
+   * Replace all `{$name}` and `{$ns.key}` placeholders in a text string with
+   * their resolved values.  Unknown references are replaced with an empty string.
+   *
+   * This runs before the text is forwarded to the dialogue system so that the
+   * existing dialogue markup parser (`parseDialogueMarkup`) receives the fully
+   * substituted string and can apply its own `[tag]`-based formatting on top.
+   */
+  private _interpolateText(text: string, ctx: ScriptContext): string {
+    return text.replace(/\{\$([^}]+)\}/g, (_, ref: string) => {
+      const value = this._resolveVar(`$${ref}`, ctx);
+      return value !== undefined ? String(value) : '';
+    });
+  }
 
   /**
    * Find the index of the first `label` node whose `name` equals `labelName`.
