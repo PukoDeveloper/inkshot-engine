@@ -225,7 +225,7 @@ export class EventBus {
       if (control.isBroken) break;
       control._resetPhase();
 
-      const listeners = this._registry.get(toKey(event, phase)) ?? [];
+      const listeners = [...(this._registry.get(toKey(event, phase)) ?? [])];
       for (const entry of listeners) {
         if (control.isBroken || control.isPhaseSkipped) break;
         await (entry.handler as EventHandler<P, O>)(params, output, control);
@@ -262,7 +262,7 @@ export class EventBus {
       if (control.isBroken) break;
       control._resetPhase();
 
-      const listeners = this._registry.get(toKey(event, phase)) ?? [];
+      const listeners = [...(this._registry.get(toKey(event, phase)) ?? [])];
       for (const entry of listeners) {
         if (control.isBroken || control.isPhaseSkipped) break;
         (entry.handler as EventHandler<P, O>)(params, output, control);

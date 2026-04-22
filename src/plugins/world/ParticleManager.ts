@@ -105,11 +105,6 @@ interface Emitter {
 // Helpers
 // ---------------------------------------------------------------------------
 
-let _nextId = 0;
-function generateId(): string {
-  return `emitter_${++_nextId}`;
-}
-
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
 }
@@ -256,6 +251,8 @@ export class ParticleManager implements EnginePlugin {
 
   private _core: Core | null = null;
   private _fxLayer: ParticleLayer = _noopLayer;
+  /** Per-instance counter used to generate unique emitter IDs. */
+  private _nextId = 0;
 
   private readonly _emitters: Map<string, Emitter> = new Map();
   private readonly _poolSize: number;
@@ -346,7 +343,7 @@ export class ParticleManager implements EnginePlugin {
    * @returns       The emitter ID.
    */
   emit(config: ParticleConfig, id?: string): string {
-    const emitterId = id ?? generateId();
+    const emitterId = id ?? `emitter_${++this._nextId}`;
 
     const pool = new ObjectPool<ParticleDisplay>(
       () => this._createDisplay(config),

@@ -32,8 +32,11 @@ export interface CoreOptions {
   resizeTo?: Window | HTMLElement | null;
 }
 
-const DEFAULT_OPTIONS: Required<CoreOptions> = {
-  container: document.body,
+// The `container` option is intentionally excluded here so that `document.body`
+// is never evaluated at module load time (which would throw in non-browser
+// environments such as a Node.js test runner).  The default is applied lazily
+// inside `init()` instead.
+const DEFAULT_OPTIONS: Omit<Required<CoreOptions>, 'container'> = {
   width: 800,
   height: 600,
   background: 0x1a1a2e,
@@ -116,10 +119,16 @@ export class Core {
       resizeTo: opts.resizeTo ?? undefined,
     });
 
-    const container =
-      typeof opts.container === 'string'
-        ? (document.querySelector(opts.container) as HTMLElement | null) ?? document.body
-        : opts.container;
+    // Resolve the container lazily (opts.container may be undefined when the
+    // caller did not supply one — defaulting to document.body here rather than
+    // at module load time avoids errors in non-browser environments).
+    const rawContainer = opts.container;
+    const container: HTMLElement =
+      rawContainer == null
+        ? document.body
+        : typeof rawContainer === 'string'
+          ? (document.querySelector(rawContainer) as HTMLElement | null) ?? document.body
+          : rawContainer;
 
     container.appendChild(this._app.canvas as HTMLCanvasElement);
 
