@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Inkshot Engine</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { background: #000; overflow: hidden; }
+      #app { width: 100vw; height: 100vh; }
+    </style>
+
+    <!--
+      Import Map
+      ─────────────────────────────────────────────────────────────────────────
+      All modules that import "@inkshot/engine" — including plugins — resolve
+      to the same bundled file.  This guarantees a single shared engine
+      instance across the entire page (no duplicated pixi.js!).
+
+      To add a plugin, copy its ESM file into this directory and add it to the
+      modulepreload hints below so the browser fetches it early.
+
+      Requires a local server (e.g. `npx serve .`) — ES modules do not work
+      over the file:// protocol.
+    -->
+    <script type="importmap">
+    {
+      "imports": {
+        "@inkshot/engine": "../dist/engine.bundle.js"
+      }
+    }
+    </script>
+
+    <!-- Preload the engine bundle so it is ready before main.js executes -->
+    <link rel="modulepreload" href="../dist/engine.bundle.js" />
+
+    <script type="module" src="./main.js"></script>
+  </head>
+  <body>
+    <div id="app"></div>
+  </body>
+</html>
