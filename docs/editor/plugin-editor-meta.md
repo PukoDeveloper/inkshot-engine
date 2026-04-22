@@ -92,6 +92,8 @@ interface EditorSchema {
   icon?:        string;          // 圖示識別碼
   folder?:      string;          // 檔案存放資料夾（相對於專案根目錄）
   field?:       SchemaObjectDef; // 欄位結構定義（選用）
+  editorId?:    string;          // 覆蓋預設編輯器類型的識別碼（選用）
+  dataName?:    string;          // 若有設定，代表此 schema 對應單一檔案而非多個項目（選用）
   [key: string]: unknown;        // 自訂額外屬性
 }
 

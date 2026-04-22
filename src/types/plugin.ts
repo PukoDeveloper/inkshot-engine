@@ -93,6 +93,27 @@ export interface EditorSchema {
    */
   field?: SchemaObjectDef;
 
+  /**
+   * Editor type identifier used to override the default editor for this schema.
+   *
+   * When omitted, the editor selects an appropriate editor automatically.
+   * Set this to a specific editor ID (e.g. `'tilemap-editor'`, `'dialogue-editor'`)
+   * to force a custom editor component for entries of this collection.
+   */
+  editorId?: string;
+
+  /**
+   * When set, signals that this schema represents a **single shared file**
+   * rather than a collection of multiple individual files.
+   *
+   * The value is the base filename (without extension) of that single file,
+   * e.g. `'game-config'` or `'global-settings'`.  The editor will open and
+   * save this one file instead of showing a list of entries.
+   *
+   * Leave `undefined` (the default) for normal multi-entry collections.
+   */
+  dataName?: string;
+
   /** Additional arbitrary properties for custom tooling. */
   [key: string]: unknown;
 }
