@@ -318,7 +318,7 @@ describe('ScriptManager', () => {
         script: {
           id: 'set-test',
           nodes: [
-            { cmd: 'set', var: 'score', value: 100 },
+            { cmd: 'set', var: '$score', value: 100 },
             { cmd: 'read-vars' },
           ],
         },
@@ -393,8 +393,8 @@ describe('ScriptManager', () => {
         script: {
           id: 'if-true',
           nodes: [
-            { cmd: 'set',   var: 'x', value: 1 },
-            { cmd: 'if',    var: 'x', value: 1, jump: 'taken' },
+            { cmd: 'set',   var: '$x', value: 1 },
+            { cmd: 'if',    var: '$x', value: 1, jump: 'taken' },
             { cmd: 'mark',  n: 99 }, // should be skipped
             { cmd: 'label', name: 'taken' },
             { cmd: 'mark',  n: 1 },
@@ -419,8 +419,8 @@ describe('ScriptManager', () => {
         script: {
           id: 'if-false',
           nodes: [
-            { cmd: 'set',   var: 'x', value: 0 },
-            { cmd: 'if',    var: 'x', value: 1, jump: 'branch' },
+            { cmd: 'set',   var: '$x', value: 0 },
+            { cmd: 'if',    var: '$x', value: 1, jump: 'branch' },
             { cmd: 'mark',  n: 1 }, // should run
             { cmd: 'label', name: 'branch' },
             { cmd: 'mark',  n: 2 }, // also runs (we just didn't skip here)
@@ -1233,8 +1233,8 @@ describe('ScriptManager', () => {
         script: {
           id: 'if-missing-label',
           nodes: [
-            { cmd: 'set', var: 'x', value: 1 },
-            { cmd: 'if',  var: 'x', value: 1, jump: 'nonexistent-label' },
+            { cmd: 'set', var: '$x', value: 1 },
+            { cmd: 'if',  var: '$x', value: 1, jump: 'nonexistent-label' },
           ],
         },
       });
@@ -1256,8 +1256,8 @@ describe('ScriptManager', () => {
         script: {
           id: 'if-false-no-warn',
           nodes: [
-            { cmd: 'set', var: 'x', value: 0 },
-            { cmd: 'if',  var: 'x', value: 1, jump: 'nonexistent-label' },
+            { cmd: 'set', var: '$x', value: 0 },
+            { cmd: 'if',  var: '$x', value: 1, jump: 'nonexistent-label' },
           ],
         },
       });
@@ -1276,7 +1276,7 @@ describe('ScriptManager', () => {
   // New built-in command: if-not
   // -------------------------------------------------------------------------
 
-  describe('built-in: if-not', () => {
+  describe('built-in: if op=ne', () => {
     it('jumps when vars[var] !== value', async () => {
       const order: number[] = [];
       core.events.emitSync('script/register-command', {
@@ -1286,17 +1286,17 @@ describe('ScriptManager', () => {
 
       core.events.emitSync('script/define', {
         script: {
-          id: 'ifnot-taken',
+          id: 'ifne-taken',
           nodes: [
-            { cmd: 'set',    var: 'x', value: 0 },
-            { cmd: 'if-not', var: 'x', value: 1, jump: 'branch' },
-            { cmd: 'mark',   n: 99 },   // should be skipped
-            { cmd: 'label',  name: 'branch' },
-            { cmd: 'mark',   n: 1 },
+            { cmd: 'set',  var: '$x', value: 0 },
+            { cmd: 'if',   var: '$x', op: 'ne', value: 1, jump: 'branch' },
+            { cmd: 'mark', n: 99 },   // should be skipped
+            { cmd: 'label', name: 'branch' },
+            { cmd: 'mark', n: 1 },
           ],
         },
       });
-      core.events.emitSync('script/run', { id: 'ifnot-taken' });
+      core.events.emitSync('script/run', { id: 'ifne-taken' });
       await flushMicrotasks();
 
       expect(order).toEqual([1]);
@@ -1311,17 +1311,17 @@ describe('ScriptManager', () => {
 
       core.events.emitSync('script/define', {
         script: {
-          id: 'ifnot-not-taken',
+          id: 'ifne-not-taken',
           nodes: [
-            { cmd: 'set',    var: 'x', value: 1 },
-            { cmd: 'if-not', var: 'x', value: 1, jump: 'branch' },
-            { cmd: 'mark',   n: 1 },
-            { cmd: 'label',  name: 'branch' },
-            { cmd: 'mark',   n: 2 },
+            { cmd: 'set',   var: '$x', value: 1 },
+            { cmd: 'if',    var: '$x', op: 'ne', value: 1, jump: 'branch' },
+            { cmd: 'mark',  n: 1 },
+            { cmd: 'label', name: 'branch' },
+            { cmd: 'mark',  n: 2 },
           ],
         },
       });
-      core.events.emitSync('script/run', { id: 'ifnot-not-taken' });
+      core.events.emitSync('script/run', { id: 'ifne-not-taken' });
       await flushMicrotasks();
 
       expect(order).toEqual([1, 2]);
@@ -1330,9 +1330,9 @@ describe('ScriptManager', () => {
     it('warns when required fields are missing', async () => {
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
       core.events.emitSync('script/define', {
-        script: { id: 'ifnot-bad', nodes: [{ cmd: 'if-not', var: 'x' }] },
+        script: { id: 'ifne-bad', nodes: [{ cmd: 'if', var: '$x', op: 'ne' }] },
       });
-      core.events.emitSync('script/run', { id: 'ifnot-bad' });
+      core.events.emitSync('script/run', { id: 'ifne-bad' });
       await flushMicrotasks();
       expect(warnSpy).toHaveBeenCalled();
       warnSpy.mockRestore();
@@ -1342,14 +1342,14 @@ describe('ScriptManager', () => {
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
       core.events.emitSync('script/define', {
         script: {
-          id: 'ifnot-no-label',
+          id: 'ifne-no-label',
           nodes: [
-            { cmd: 'set',    var: 'x', value: 0 },
-            { cmd: 'if-not', var: 'x', value: 1, jump: 'ghost' },
+            { cmd: 'set', var: '$x', value: 0 },
+            { cmd: 'if',  var: '$x', op: 'ne', value: 1, jump: 'ghost' },
           ],
         },
       });
-      core.events.emitSync('script/run', { id: 'ifnot-no-label' });
+      core.events.emitSync('script/run', { id: 'ifne-no-label' });
       await flushMicrotasks();
       const msg = warnSpy.mock.calls.find((c) => String(c[0]).includes('ghost'));
       expect(msg).toBeDefined();
@@ -1361,7 +1361,7 @@ describe('ScriptManager', () => {
   // New built-in commands: if-gt / if-lt
   // -------------------------------------------------------------------------
 
-  describe('built-in: if-gt', () => {
+  describe('built-in: if op=gt', () => {
     it('jumps when vars[var] > value', async () => {
       const order: number[] = [];
       core.events.emitSync('script/register-command', {
@@ -1373,8 +1373,8 @@ describe('ScriptManager', () => {
         script: {
           id: 'ifgt-taken',
           nodes: [
-            { cmd: 'set',   var: 'score', value: 100 },
-            { cmd: 'if-gt', var: 'score', value: 50, jump: 'high' },
+            { cmd: 'set',   var: '$score', value: 100 },
+            { cmd: 'if',    var: '$score', op: 'gt', value: 50, jump: 'high' },
             { cmd: 'mark',  n: 99 },     // skipped
             { cmd: 'label', name: 'high' },
             { cmd: 'mark',  n: 1 },
@@ -1398,8 +1398,8 @@ describe('ScriptManager', () => {
         script: {
           id: 'ifgt-equal',
           nodes: [
-            { cmd: 'set',   var: 'score', value: 50 },
-            { cmd: 'if-gt', var: 'score', value: 50, jump: 'high' },
+            { cmd: 'set',   var: '$score', value: 50 },
+            { cmd: 'if',    var: '$score', op: 'gt', value: 50, jump: 'high' },
             { cmd: 'mark',  n: 1 },
             { cmd: 'label', name: 'high' },
             { cmd: 'mark',  n: 2 },
@@ -1412,22 +1412,22 @@ describe('ScriptManager', () => {
       expect(order).toEqual([1, 2]);
     });
 
-    it('warns when value is not a number', async () => {
+    it('warns on unknown op', async () => {
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
       core.events.emitSync('script/define', {
         script: {
-          id: 'ifgt-bad',
-          nodes: [{ cmd: 'if-gt', var: 'x', value: 'not-a-number', jump: 'somewhere' }],
+          id: 'if-bad-op',
+          nodes: [{ cmd: 'if', var: '$x', op: 'unknown', value: 0, jump: 'somewhere' }],
         },
       });
-      core.events.emitSync('script/run', { id: 'ifgt-bad' });
+      core.events.emitSync('script/run', { id: 'if-bad-op' });
       await flushMicrotasks();
       expect(warnSpy).toHaveBeenCalled();
       warnSpy.mockRestore();
     });
   });
 
-  describe('built-in: if-lt', () => {
+  describe('built-in: if op=lt', () => {
     it('jumps when vars[var] < value', async () => {
       const order: number[] = [];
       core.events.emitSync('script/register-command', {
@@ -1439,8 +1439,8 @@ describe('ScriptManager', () => {
         script: {
           id: 'iflt-taken',
           nodes: [
-            { cmd: 'set',   var: 'hp', value: 10 },
-            { cmd: 'if-lt', var: 'hp', value: 50, jump: 'low-hp' },
+            { cmd: 'set',   var: '$hp', value: 10 },
+            { cmd: 'if',    var: '$hp', op: 'lt', value: 50, jump: 'low-hp' },
             { cmd: 'mark',  n: 99 },    // skipped
             { cmd: 'label', name: 'low-hp' },
             { cmd: 'mark',  n: 1 },
@@ -1464,8 +1464,8 @@ describe('ScriptManager', () => {
         script: {
           id: 'iflt-not-taken',
           nodes: [
-            { cmd: 'set',   var: 'hp', value: 50 },
-            { cmd: 'if-lt', var: 'hp', value: 50, jump: 'low-hp' },
+            { cmd: 'set',   var: '$hp', value: 50 },
+            { cmd: 'if',    var: '$hp', op: 'lt', value: 50, jump: 'low-hp' },
             { cmd: 'mark',  n: 1 },
             { cmd: 'label', name: 'low-hp' },
             { cmd: 'mark',  n: 2 },
@@ -1481,12 +1481,224 @@ describe('ScriptManager', () => {
     it('warns when required fields are missing', async () => {
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
       core.events.emitSync('script/define', {
-        script: { id: 'iflt-bad', nodes: [{ cmd: 'if-lt', var: 'x' }] },
+        script: { id: 'iflt-bad', nodes: [{ cmd: 'if', var: '$x', op: 'lt' }] },
       });
       core.events.emitSync('script/run', { id: 'iflt-bad' });
       await flushMicrotasks();
       expect(warnSpy).toHaveBeenCalled();
       warnSpy.mockRestore();
+    });
+  });
+
+  describe('built-in: if op=gte / op=lte', () => {
+    it('jumps when vars[var] >= value (gte — equal case)', async () => {
+      const order: number[] = [];
+      core.events.emitSync('script/register-command', {
+        cmd: 'mark',
+        handler: (ctx) => { order.push(ctx.node.n as number); },
+      } satisfies ScriptRegisterCommandParams);
+
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'ifgte-equal',
+          nodes: [
+            { cmd: 'set',   var: '$score', value: 50 },
+            { cmd: 'if',    var: '$score', op: 'gte', value: 50, jump: 'ok' },
+            { cmd: 'mark',  n: 99 },
+            { cmd: 'label', name: 'ok' },
+            { cmd: 'mark',  n: 1 },
+          ],
+        },
+      });
+      core.events.emitSync('script/run', { id: 'ifgte-equal' });
+      await flushMicrotasks();
+
+      expect(order).toEqual([1]);
+    });
+
+    it('jumps when vars[var] <= value (lte — equal case)', async () => {
+      const order: number[] = [];
+      core.events.emitSync('script/register-command', {
+        cmd: 'mark',
+        handler: (ctx) => { order.push(ctx.node.n as number); },
+      } satisfies ScriptRegisterCommandParams);
+
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'iflte-equal',
+          nodes: [
+            { cmd: 'set',   var: '$hp', value: 50 },
+            { cmd: 'if',    var: '$hp', op: 'lte', value: 50, jump: 'ok' },
+            { cmd: 'mark',  n: 99 },
+            { cmd: 'label', name: 'ok' },
+            { cmd: 'mark',  n: 1 },
+          ],
+        },
+      });
+      core.events.emitSync('script/run', { id: 'iflte-equal' });
+      await flushMicrotasks();
+
+      expect(order).toEqual([1]);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Variable reference format ($name / $ns.key)
+  // -------------------------------------------------------------------------
+
+  describe('variable reference format', () => {
+    it('set with $name writes to script-local vars', async () => {
+      let captured: Record<string, unknown> = {};
+      core.events.emitSync('script/register-command', {
+        cmd: 'read-vars',
+        handler: (ctx) => { captured = { ...ctx.vars }; },
+      } satisfies ScriptRegisterCommandParams);
+
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'set-dollar',
+          nodes: [
+            { cmd: 'set',      var: '$score', value: 42 },
+            { cmd: 'read-vars' },
+          ],
+        },
+      });
+      core.events.emitSync('script/run', { id: 'set-dollar' });
+      await flushMicrotasks();
+
+      expect(captured['score']).toBe(42);
+    });
+
+    it('if with $name reads from script-local vars', async () => {
+      const order: number[] = [];
+      core.events.emitSync('script/register-command', {
+        cmd: 'mark',
+        handler: (ctx) => { order.push(ctx.node.n as number); },
+      } satisfies ScriptRegisterCommandParams);
+
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'if-dollar-var',
+          nodes: [
+            { cmd: 'set',   var: '$x', value: 5 },
+            { cmd: 'if',    var: '$x', op: 'gt', value: 3, jump: 'ok' },
+            { cmd: 'mark',  n: 99 },
+            { cmd: 'label', name: 'ok' },
+            { cmd: 'mark',  n: 1 },
+          ],
+        },
+      });
+      core.events.emitSync('script/run', { id: 'if-dollar-var' });
+      await flushMicrotasks();
+
+      expect(order).toEqual([1]);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Text interpolation ({$var} / {$ns.key})
+  // -------------------------------------------------------------------------
+
+  describe('text interpolation in say / choices', () => {
+    it('say interpolates {$name} from script-local vars before emitting', async () => {
+      const texts: string[] = [];
+      core.events.on('test', 'dialogue/show-text', (p: { text?: string }) => {
+        if (p.text !== undefined) texts.push(p.text);
+      });
+
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'say-interp',
+          nodes: [
+            { cmd: 'set', var: '$name', value: 'Alice' },
+            { cmd: 'say', text: 'Hello, {$name}!' },
+          ],
+        },
+      });
+      // Emit dialogue/advanced immediately so say doesn't block
+      const off = core.events.on('test', 'dialogue/show-text', () => {
+        core.events.emitSync('dialogue/advanced', {});
+      });
+      core.events.emitSync('script/run', { id: 'say-interp' });
+      await flushMicrotasks();
+      off();
+
+      expect(texts).toContain('Hello, Alice!');
+    });
+
+    it('say leaves unmatched {$ref} as empty string', async () => {
+      const texts: string[] = [];
+      core.events.on('test', 'dialogue/show-text', (p: { text?: string }) => {
+        if (p.text !== undefined) texts.push(p.text);
+      });
+
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'say-unset',
+          nodes: [
+            { cmd: 'say', text: 'Value: {$missing}' },
+          ],
+        },
+      });
+      const off = core.events.on('test', 'dialogue/show-text', () => {
+        core.events.emitSync('dialogue/advanced', {});
+      });
+      core.events.emitSync('script/run', { id: 'say-unset' });
+      await flushMicrotasks();
+      off();
+
+      expect(texts).toContain('Value: ');
+    });
+
+    it('choices interpolates {$name} in choice text', async () => {
+      const choiceLists: Array<Array<{ text: string; index: number }>> = [];
+      core.events.on('test', 'dialogue/show-choices', (p: { choices: Array<{ text: string; index: number }> }) => {
+        choiceLists.push(p.choices);
+      });
+
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'choices-interp',
+          nodes: [
+            { cmd: 'set',     var: '$item', value: 'Sword' },
+            { cmd: 'choices', choices: ['Take {$item}', 'Leave it'], var: 'pick' },
+          ],
+        },
+      });
+      const off = core.events.on('test', 'dialogue/show-choices', () => {
+        core.events.emitSync('dialogue/choice:made', { index: 0 });
+      });
+      core.events.emitSync('script/run', { id: 'choices-interp' });
+      await flushMicrotasks();
+      off();
+
+      expect(choiceLists[0]?.[0]?.text).toBe('Take Sword');
+      expect(choiceLists[0]?.[1]?.text).toBe('Leave it');
+    });
+
+    it('choices leaves unmatched {$ref} as empty string', async () => {
+      const choiceLists: Array<Array<{ text: string; index: number }>> = [];
+      core.events.on('test', 'dialogue/show-choices', (p: { choices: Array<{ text: string; index: number }> }) => {
+        choiceLists.push(p.choices);
+      });
+
+      core.events.emitSync('script/define', {
+        script: {
+          id: 'choices-unset',
+          nodes: [
+            { cmd: 'choices', choices: ['Option {$missing}', 'Fixed text'], var: 'pick' },
+          ],
+        },
+      });
+      const off = core.events.on('test', 'dialogue/show-choices', () => {
+        core.events.emitSync('dialogue/choice:made', { index: 0 });
+      });
+      core.events.emitSync('script/run', { id: 'choices-unset' });
+      await flushMicrotasks();
+      off();
+
+      expect(choiceLists[0]?.[0]?.text).toBe('Option ');
+      expect(choiceLists[0]?.[1]?.text).toBe('Fixed text');
     });
   });
 

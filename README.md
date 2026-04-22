@@ -1795,25 +1795,38 @@ Multiple scripts run concurrently as independent *instances* identified by an `i
 
 ### Built-in Commands
 
-| Command         | Fields                                                  | Description                                                         |
-|-----------------|---------------------------------------------------------|---------------------------------------------------------------------|
-| `label`         | `name`                                                  | Position marker — no-op at runtime                                  |
-| `jump`          | `target`                                                | Unconditional jump to a label                                       |
-| `if`            | `var`, `value`, `jump`                                  | Jump when `vars[var] === value`; warns if label missing             |
-| `if-not`        | `var`, `value`, `jump`                                  | Jump when `vars[var] !== value`                                     |
-| `if-gt`         | `var` (string), `value` (number), `jump`                | Jump when `vars[var] > value` (numeric comparison)                  |
-| `if-lt`         | `var` (string), `value` (number), `jump`                | Jump when `vars[var] < value` (numeric comparison)                  |
-| `set`           | `var`, `value`                                          | Write a value into the variable store                               |
-| `wait`          | `ms`                                                    | Pause for N milliseconds                                            |
-| `emit`          | `event`, `params?`                                      | Fire a custom event synchronously                                   |
-| `say`           | `text?`, `speaker?`, `portrait?`, `speed?`              | Show dialogue text (requires `DialogueManager`), await advance      |
-| `choices`       | `choices`, `prompt?`, `var?`                            | Show choices, store picked index in `var`                           |
-| `end`           | —                                                       | Close the dialogue session                                          |
-| `wait-event`    | `event`, `var?`, `timeout?` (ms), `timeoutJump?`        | Suspend until an event fires; optional timeout with label fallback  |
-| `call`          | `id`, `vars?`                                           | Run a sub-script inline (shared vars, awaited)                      |
-| `fork`          | `id`, `instanceId?`, `vars?`, `priority?`               | Launch a concurrent instance (fire-and-forget)                      |
-| `wait-instance` | `instanceId`                                            | Suspend until a named instance finishes                             |
-| `stop-instance` | `instanceId`                                            | Stop another running instance                                       |
+| Command         | Fields                                                  | Description                                                                  |
+|-----------------|---------------------------------------------------------|------------------------------------------------------------------------------|
+| `label`         | `name`                                                  | Position marker — no-op at runtime                                           |
+| `jump`          | `target`                                                | Unconditional jump to a label                                                |
+| `if`            | `var` (var-ref), `op?`, `value`, `jump`                 | Jump when comparison holds; `op`: `eq`(default) `ne` `gt` `lt` `gte` `lte`  |
+| `set`           | `var` (var-ref), `value`                                | Write a value — `$name` = script-local, `$ns.key` = VariableStore           |
+| `wait`          | `ms`                                                    | Pause for N milliseconds                                                     |
+| `emit`          | `event`, `params?`                                      | Fire a custom event synchronously                                            |
+| `say`           | `text?`, `speaker?`, `portrait?`, `speed?`              | Show dialogue text (`{$var}` interpolated, markup supported), await advance  |
+| `choices`       | `choices`, `prompt?`, `var?`                            | Show choices (`{$var}` interpolated), store picked index in `var`            |
+| `end`           | —                                                       | Close the dialogue session                                                   |
+| `wait-event`    | `event`, `var?`, `timeout?` (ms), `timeoutJump?`        | Suspend until an event fires; optional timeout with label fallback           |
+| `call`          | `id`, `vars?`                                           | Run a sub-script inline (shared vars, awaited)                               |
+| `fork`          | `id`, `instanceId?`, `vars?`, `priority?`               | Launch a concurrent instance (fire-and-forget)                               |
+| `wait-instance` | `instanceId`                                            | Suspend until a named instance finishes                                      |
+| `stop-instance` | `instanceId`                                            | Stop another running instance                                                |
+
+### Variable Reference Format
+
+Wherever a command accepts a `var` field, two formats are recognised:
+
+| Format    | Resolves to                                                       |
+|-----------|-------------------------------------------------------------------|
+| `$name`   | Script-local variable `ctx.vars.name`                             |
+| `$ns.key` | Persistent `VariableStore` entry (namespace `ns`, key `key`)      |
+
+In text fields (`say`, `choices`), use `{$name}` or `{$ns.key}` to embed the resolved value:
+
+```ts
+{ cmd: 'say',     text: 'HP: {$player.hp}, Gold: {$gold}' }
+{ cmd: 'choices', choices: ['Take {$item}', 'Leave it'], var: '$pick' }
+```
 
 ### `wait-event` with Timeout
 
@@ -1825,16 +1838,16 @@ Multiple scripts run concurrently as independent *instances* identified by an `i
 If the event fires before the timeout the script continues normally.
 If the timeout fires first, execution jumps to `timeoutJump` (if given) or falls through.
 
-### Numeric Comparisons
+### Conditional Jumps
 
 ```ts
 const huntScript: ScriptDef = {
   id: 'hunt',
   nodes: [
-    { cmd: 'set',   var: 'hp', value: 30 },
-    { cmd: 'if-lt', var: 'hp', value: 50, jump: 'flee' },   // hp < 50 → flee
-    { cmd: 'if-gt', var: 'hp', value: 80, jump: 'charge' }, // hp > 80 → charge
-    { cmd: 'jump',  target: 'normal' },
+    { cmd: 'set',  var: '$hp', value: 30 },
+    { cmd: 'if',   var: '$hp', op: 'lt', value: 50, jump: 'flee' },   // hp < 50 → flee
+    { cmd: 'if',   var: '$hp', op: 'gt', value: 80, jump: 'charge' }, // hp > 80 → charge
+    { cmd: 'jump', target: 'normal' },
     { cmd: 'label', name: 'flee' },
     // …
   ],
