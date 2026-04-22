@@ -806,7 +806,7 @@ export {
 export type { RpgEngineOptions, RpgEngineInstance } from './rpg/createRpgEngine.js';
 
 // ── RPG data loader ────────────────────────────────────────────────────────────
-export { loadRpgData } from './rpg/data/index.js';
+export { loadRpgData, registerRpgData } from './rpg/data/index.js';
 export type {
   RpgGameData,
   RpgDataOutput,
