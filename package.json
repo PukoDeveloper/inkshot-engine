@@ -1,6 +1,6 @@
 {
   "name": "@inkshot/engine",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "description": "Data-oriented RPG game engine built with TypeScript and Pixi.js",
   "type": "module",
   "main": "./dist/index.js",
