@@ -624,6 +624,22 @@ export type {
   LightStateOutput,
 } from './types/lighting.js';
 
+// Gradient lighting system (advanced: smooth falloff, spotlight, flicker)
+export { GradientLightingPlugin } from './plugins/world/GradientLightingPlugin.js';
+export type {
+  GradientLight,
+  GradientAmbientLight,
+  GradientLightingPluginOptions,
+  GradientLightAddParams,
+  GradientLightAddOutput,
+  GradientLightRemoveParams,
+  GradientLightUpdateParams,
+  GradientLightGetParams,
+  GradientLightGetOutput,
+  GradientAmbientSetParams,
+  GradientLightStateOutput,
+} from './types/gradient-lighting.js';
+
 // Parallax system
 export { ParallaxPlugin } from './plugins/world/ParallaxPlugin.js';
 export type { ParallaxContainer } from './plugins/world/ParallaxPlugin.js';
