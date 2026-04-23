@@ -466,4 +466,47 @@ describe('Camera', () => {
       expect(camera.x).toBe(0);
     });
   });
+
+  // -------------------------------------------------------------------------
+  // Initial position
+  // -------------------------------------------------------------------------
+
+  describe('initialX / initialY constructor options', () => {
+    it('defaults to (0, 0) when options are omitted', () => {
+      const { camera } = makeCamera();
+      expect(camera.x).toBe(0);
+      expect(camera.y).toBe(0);
+    });
+
+    it('honours initialX and initialY', () => {
+      const core = createCoreStub();
+      const world = createContainerStub();
+      const camera = new Camera(core, world, {
+        viewportWidth: 800,
+        viewportHeight: 600,
+        initialX: 400,
+        initialY: 300,
+      });
+      expect(camera.x).toBe(400);
+      expect(camera.y).toBe(300);
+    });
+
+    it('world (0,0) appears at top-left when initialX/Y = vpW/2, vpH/2', () => {
+      const vpW = 800;
+      const vpH = 600;
+      const core = createCoreStub();
+      const world = createContainerStub();
+      const camera = new Camera(core, world, {
+        viewportWidth: vpW,
+        viewportHeight: vpH,
+        initialX: vpW / 2,
+        initialY: vpH / 2,
+      });
+      // Trigger pre-render so the transform is applied.
+      core.events.emitSync('renderer/pre-render', { alpha: 1, delta: 16 });
+      // world.x should be 0 (top-left): -400*1 + 400 = 0
+      expect(world.x).toBe(0);
+      expect(world.y).toBe(0);
+    });
+  });
 });

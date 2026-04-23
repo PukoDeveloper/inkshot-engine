@@ -169,3 +169,59 @@ export interface PathfindingWeightSetParams {
 export interface PathfindingCacheClearParams {
   // Currently clears the entire cache; reserved for future per-region filtering.
 }
+
+// ---------------------------------------------------------------------------
+// pathfinding/grid:set
+// ---------------------------------------------------------------------------
+
+/**
+ * Parameters for `pathfinding/grid:set`.
+ *
+ * Directly initialises the pathfinding cost grid **without** requiring a
+ * tilemap.  Use this for non-tilemap games (e.g. point-and-click adventures,
+ * hex-grid tactics, procedurally generated worlds) where you want to define
+ * walkable areas as a plain 2-D cost matrix.
+ *
+ * Each cell value is a movement cost:
+ * - `1` — default, normal terrain.
+ * - `> 1` — weighted terrain (A* prefers cheaper paths around it).
+ * - `Infinity` (or `PathfindingManager.IMPASSABLE`) — completely blocked.
+ *
+ * The grid replaces any previously loaded tilemap or grid data and clears
+ * the path cache.
+ *
+ * @example
+ * ```ts
+ * // 3×3 grid: centre cell is a wall, all others walkable.
+ * const WALL = Infinity;
+ * core.events.emitSync('pathfinding/grid:set', {
+ *   grid: [
+ *     [1,    1,    1   ],
+ *     [1,    WALL, 1   ],
+ *     [1,    1,    1   ],
+ *   ],
+ *   tileSize: 32, // logical size of each cell in world pixels
+ * });
+ *
+ * const { output } = core.events.emitSync<PathfindingFindParams, PathfindingFindOutput>(
+ *   'pathfinding/find',
+ *   { from: { x: 16, y: 16 }, to: { x: 80, y: 80 } },
+ * );
+ * ```
+ */
+export interface PathfindingGridSetParams {
+  /**
+   * 2-D array of movement costs in **row-major** order
+   * (`grid[row][col]`).  All rows should have the same length, though jagged
+   * arrays are accepted (missing cells default to cost `1`).
+   */
+  readonly grid: ReadonlyArray<ReadonlyArray<number>>;
+  /**
+   * Size of each grid cell in world pixels (square cells).
+   *
+   * This is used to convert world-pixel coordinates (as passed to
+   * `pathfinding/find`) into grid row/column indices.  For a 32 px tile game
+   * pass `32`; for a pixel-perfect 1 px grid pass `1`.
+   */
+  readonly tileSize: number;
+}

@@ -462,6 +462,7 @@ export type {
   PathfindingFindOutput,
   PathfindingWeightSetParams,
   PathfindingCacheClearParams,
+  PathfindingGridSetParams,
 } from './types/pathfinding.js';
 
 // UI system

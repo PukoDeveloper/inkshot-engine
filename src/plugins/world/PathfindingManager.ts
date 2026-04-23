@@ -8,6 +8,7 @@ import type {
   PathfindingFindOutput,
   PathfindingWeightSetParams,
   PathfindingCacheClearParams,
+  PathfindingGridSetParams,
 } from '../../types/pathfinding.js';
 import { WorkerBridge } from '../../core/WorkerBridge.js';
 
@@ -192,6 +193,7 @@ export class PathfindingManager implements EnginePlugin {
     events: [
       'pathfinding/find', 'pathfinding/find:async',
       'pathfinding/weight:set', 'pathfinding/cache:clear',
+      'pathfinding/grid:set',
     ] as const,
   };
 
@@ -263,6 +265,13 @@ export class PathfindingManager implements EnginePlugin {
       this._buildGrid(params);
       this._cache.clear();
       // Sync the new grid to the Worker (fire-and-forget; _workerReady gates async calls).
+      this._syncGridToWorker();
+    });
+
+    // Allow non-tilemap games to supply a raw cost grid directly.
+    events.on<PathfindingGridSetParams>(this.namespace, 'pathfinding/grid:set', (params) => {
+      this._buildGridFromRaw(params);
+      this._cache.clear();
       this._syncGridToWorker();
     });
 
@@ -496,6 +505,34 @@ export class PathfindingManager implements EnginePlugin {
       Array.from({ length: this._cols }, (_, c) =>
         this._cellCost(layers[r]?.[c] ?? 0, tileShapes),
       ),
+    );
+  }
+
+  /**
+   * Build the cost grid directly from a raw `pathfinding/grid:set` payload.
+   *
+   * Unlike `_buildGrid` (which derives costs from tilemap collision shapes),
+   * this method treats each cell value as the final movement cost — enabling
+   * non-tilemap games to define their walkable areas without needing to go
+   * through the tilemap system.
+   *
+   * Weight overrides set via `pathfinding/weight:set` are **not** applied here
+   * because the raw grid already encodes final costs.  The `_tileValues` /
+   * `_tileShapes` caches are cleared so that a subsequent
+   * `pathfinding/weight:set` call is a no-op until a new tilemap is loaded.
+   */
+  private _buildGridFromRaw(params: PathfindingGridSetParams): void {
+    this._tileSize = params.tileSize;
+    // Raw grid has no tile-value semantics, so reset the tilemap caches.
+    this._tileValues = [];
+    this._tileShapes = {};
+
+    const rawGrid = params.grid;
+    this._rows = rawGrid.length;
+    this._cols = rawGrid.reduce((max, row) => Math.max(max, row.length), 0);
+
+    this._grid = Array.from({ length: this._rows }, (_, r) =>
+      Array.from({ length: this._cols }, (_, c) => rawGrid[r]?.[c] ?? 1),
     );
   }
 
