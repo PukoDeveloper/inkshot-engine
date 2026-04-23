@@ -102,7 +102,7 @@ core.events.on('myGame', 'core/tick', ({ delta }) => {
 ```
 
 > **提示：** 引擎預設建立四個圖層：`world`（z=0）、`fx`（z=100）、`ui`（z=200）、`system`（z=300）。  
-> 詳細說明請參閱 [架構文件 — 渲染圖層系統](../ARCHITECTURE.md#4-render-layer-system)。
+> 詳細說明請參閱 [架構文件 — 渲染圖層系統](../../ARCHITECTURE.md#4-render-layer-system)。
 
 ---
 
@@ -308,4 +308,4 @@ core.events.on('myGame', 'scene/changed', ({ from, to }) => {
 → [自訂 Plugin 開發](./plugin-development.md)
 
 ### 想查閱所有 Plugin 的 API？
-→ [完整 API 手冊](../README.md)（英文）
+→ [完整 API 手冊](../../README.md)（英文）

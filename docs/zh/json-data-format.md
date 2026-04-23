@@ -1041,4 +1041,4 @@ const { output } = core.events.emitSync('i18n/t', {
 
 ---
 
-> 如需更多 API 參考，請查閱 [ARCHITECTURE.md](../ARCHITECTURE.md) 及 [README.md](../README.md)。
+> 如需更多 API 參考，請查閱 [ARCHITECTURE.md](../../ARCHITECTURE.md) 及 [README.md](../../README.md)。

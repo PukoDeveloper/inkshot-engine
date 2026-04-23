@@ -492,5 +492,5 @@ export class AudioPlugin implements EnginePlugin {
 ## 延伸閱讀
 
 - [核心概念](./core-concepts.md) — EventBus 和 Phase 的完整說明
-- [架構設計文件](../ARCHITECTURE.md) — 詳細的設計哲學和 Style Guide（英文）
-- [開發貢獻指引](../CONTRIBUTING.md) — PR 流程、測試規範、版本發布
+- [架構設計文件](../../ARCHITECTURE.md) — 詳細的設計哲學和 Style Guide（英文）
+- [開發貢獻指引](../../CONTRIBUTING.md) — PR 流程、測試規範、版本發布

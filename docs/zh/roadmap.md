@@ -1,7 +1,7 @@
 # 功能路線圖
 
 本文件記錄 inkshot-engine **尚未實作**的功能計畫，依優先程度排列。  
-已完成的功能請參閱根目錄的 [`TODO.md`](../TODO.md)。
+已完成的功能請參閱根目錄的 [`TODO.md`](../../TODO.md)。
 
 ---
 
@@ -135,4 +135,4 @@ const dungeon = generateDungeon({ width: 64, height: 64, rooms: 10, rng });
 
 ## 已完成功能
 
-所有已實作完成的功能（共 42+ 項）請參閱 [TODO.md](../TODO.md)。
+所有已實作完成的功能（共 42+ 項）請參閱 [TODO.md](../../TODO.md)。

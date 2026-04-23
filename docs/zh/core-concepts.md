@@ -335,5 +335,5 @@ core.events.on('myPlugin', 'core/tick', ({ delta, elapsed }) => {
 ## 延伸閱讀
 
 - [自訂 Plugin 開發](./plugin-development.md) — 從頭撰寫一個 Plugin
-- [架構設計文件](../ARCHITECTURE.md) — 完整設計哲學與 Style Guide（英文）
-- [完整 API 手冊](../README.md) — 所有內建 Plugin 的事件契約（英文）
+- [架構設計文件](../../ARCHITECTURE.md) — 完整設計哲學與 Style Guide（英文）
+- [完整 API 手冊](../../README.md) — 所有內建 Plugin 的事件契約（英文）
