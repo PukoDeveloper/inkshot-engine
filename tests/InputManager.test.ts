@@ -18,6 +18,35 @@ function createStubCore(): Core {
   return { events: new EventBus(), dataRoot: '/' } as unknown as Core;
 }
 
+/**
+ * Create a stub Core with a mock canvas whose bounding rect and pixel
+ * dimensions can be controlled for coordinate-conversion tests.
+ */
+function createStubCoreWithCanvas(opts: {
+  canvasWidth: number;
+  canvasHeight: number;
+  rectLeft: number;
+  rectTop: number;
+  rectWidth: number;
+  rectHeight: number;
+}): Core {
+  const canvas = {
+    width: opts.canvasWidth,
+    height: opts.canvasHeight,
+    getBoundingClientRect: () => ({
+      left: opts.rectLeft,
+      top: opts.rectTop,
+      width: opts.rectWidth,
+      height: opts.rectHeight,
+    }),
+  } as unknown as HTMLCanvasElement;
+  return {
+    events: new EventBus(),
+    dataRoot: '/',
+    app: { canvas },
+  } as unknown as Core;
+}
+
 /** Helper to dispatch a native KeyboardEvent on `window`. */
 function fireKey(type: 'keydown' | 'keyup', code: string, key = code, repeat = false): void {
   window.dispatchEvent(new KeyboardEvent(type, { code, key, repeat }));
@@ -306,6 +335,61 @@ describe('InputManager', () => {
       fireKey('keydown', 'KeyW', 'w');
 
       expect(handler).not.toHaveBeenCalled();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Canvas coordinate conversion
+  // -------------------------------------------------------------------------
+
+  describe('canvas coordinate conversion', () => {
+    it('converts clientX/Y to canvas coordinates using canvas bounding rect', () => {
+      // Canvas is 400×300 px in pixel buffer, displayed at 200×150 CSS px
+      // offset 50px from the left and 30px from the top of the viewport.
+      // Scale factor: 400/200 = 2 (x), 300/150 = 2 (y).
+      const canvasCore = createStubCoreWithCanvas({
+        canvasWidth: 400, canvasHeight: 300,
+        rectLeft: 50, rectTop: 30,
+        rectWidth: 200, rectHeight: 150,
+      });
+      const canvasInput = new InputManager();
+      canvasInput.init(canvasCore);
+
+      const handler = vi.fn();
+      canvasCore.events.on('test', 'input/pointer:down', handler);
+
+      // Fire at client (150, 80) → canvas (150-50)*2=200, (80-30)*2=100
+      window.dispatchEvent(new PointerEvent('pointerdown', { clientX: 150, clientY: 80, button: 0 }));
+
+      expect(handler).toHaveBeenCalledOnce();
+      expect(handler.mock.calls[0][0]).toMatchObject({ x: 200, y: 100 });
+
+      canvasInput.destroy(canvasCore);
+    });
+
+    it('getPointerPosition() returns canvas coordinates', () => {
+      const canvasCore = createStubCoreWithCanvas({
+        canvasWidth: 800, canvasHeight: 600,
+        rectLeft: 10, rectTop: 20,
+        rectWidth: 800, rectHeight: 600,
+      });
+      const canvasInput = new InputManager();
+      canvasInput.init(canvasCore);
+
+      // scale = 1 (canvas px == CSS px), just subtract offset
+      window.dispatchEvent(new PointerEvent('pointerdown', { clientX: 110, clientY: 120, button: 0 }));
+      const pos = canvasInput.getPointerPosition();
+      expect(pos).toEqual({ x: 100, y: 100 });
+
+      canvasInput.destroy(canvasCore);
+    });
+
+    it('falls back to raw client coordinates when no canvas is available', () => {
+      const handler = vi.fn();
+      core.events.on('test', 'input/pointer:down', handler);
+
+      firePointer('pointerdown', { clientX: 77, clientY: 88 });
+      expect(handler.mock.calls[0][0]).toMatchObject({ x: 77, y: 88 });
     });
   });
 });

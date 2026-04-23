@@ -159,7 +159,7 @@ export class InputManager implements EnginePlugin {
   /** Pointer buttons currently held down (PointerEvent.button values). */
   private readonly _pointerButtons = new Set<number>();
 
-  /** Latest known pointer position in client coordinates. */
+  /** Latest known pointer position in **canvas** coordinates. */
   private _pointerPosition = { x: 0, y: 0 };
 
   /**
@@ -280,12 +280,29 @@ export class InputManager implements EnginePlugin {
 
   private _events: EventBus | null = null;
 
+  /**
+   * The PIXI canvas element, stored during `init()` so pointer/touch
+   * coordinates can be converted from browser client-space to canvas-space.
+   * `null` when the engine has not been initialised or uses a stub core.
+   */
+  private _canvas: HTMLCanvasElement | null = null;
+
   // ---------------------------------------------------------------------------
   // EnginePlugin lifecycle
   // ---------------------------------------------------------------------------
 
   init(core: Core): void {
     this._events = core.events;
+
+    // Store the canvas so pointer/touch events can be converted from browser
+    // client-space to canvas-space.  We use a try/catch because tests often
+    // supply a stub Core without a real Pixi Application.
+    try {
+      this._canvas = core.app.canvas as HTMLCanvasElement;
+    } catch {
+      this._canvas = null;
+    }
+
     const { events } = core;
 
     // ── DOM listeners ──────────────────────────────────────────────────────
@@ -477,6 +494,7 @@ export class InputManager implements EnginePlugin {
     this._pinchRotateState = null;
     this._pendingGestureUpdate = false;
     this._events = null;
+    this._canvas = null;
   }
 
   // ---------------------------------------------------------------------------
@@ -500,7 +518,7 @@ export class InputManager implements EnginePlugin {
   }
 
   /**
-   * Returns the last known pointer position in client (viewport) coordinates.
+   * Returns the last known pointer position in **canvas** coordinates.
    * The returned object is a **snapshot** — it will not update after being read.
    */
   getPointerPosition(): { readonly x: number; readonly y: number } {
@@ -541,7 +559,7 @@ export class InputManager implements EnginePlugin {
 
   /**
    * Returns a **snapshot** of all currently active touch points, keyed by
-   * `pointerId`.  Each entry carries the current `{ x, y }` in client
+   * `pointerId`.  Each entry carries the current `{ x, y }` in **canvas**
    * coordinates.  The returned `Map` is a copy — it will not update after
    * being read.
    */
@@ -556,6 +574,31 @@ export class InputManager implements EnginePlugin {
   // ---------------------------------------------------------------------------
   // DOM event handlers (arrow functions to preserve `this` binding)
   // ---------------------------------------------------------------------------
+
+  /**
+   * Convert browser client coordinates to PIXI canvas coordinates.
+   *
+   * Accounts for the canvas position on the page (via `getBoundingClientRect`)
+   * and any CSS scaling applied to the canvas element (e.g. when `resolution`
+   * > 1 and `autoDensity` is `true`).
+   *
+   * Falls back to the raw client coordinates when no canvas is available
+   * (e.g. in unit tests that use a stub `Core`).
+   */
+  private _toCanvas(clientX: number, clientY: number): { x: number; y: number } {
+    const canvas = this._canvas;
+    if (!canvas) return { x: clientX, y: clientY };
+    const rect = canvas.getBoundingClientRect();
+    // rect.width reflects the CSS (layout) size; canvas.width is the actual
+    // pixel buffer size.  The ratio gives us the effective scale factor,
+    // which includes both DPR/resolution scaling and any CSS transform.
+    const scaleX = rect.width  > 0 ? canvas.width  / rect.width  : 1;
+    const scaleY = rect.height > 0 ? canvas.height / rect.height : 1;
+    return {
+      x: (clientX - rect.left) * scaleX,
+      y: (clientY - rect.top)  * scaleY,
+    };
+  }
 
   private readonly _onKeyDown = (event: KeyboardEvent): void => {
     // Suppress browser auto-repeat: only emit on the first physical press.
@@ -580,11 +623,12 @@ export class InputManager implements EnginePlugin {
       this._handleTouchStart(event);
       return;
     }
+    const pos = this._toCanvas(event.clientX, event.clientY);
     this._pointerButtons.add(event.button);
-    this._pointerPosition = { x: event.clientX, y: event.clientY };
+    this._pointerPosition = pos;
     this._events?.emitSync<InputPointerDownParams, Record<string, never>>(
       'input/pointer:down',
-      { x: event.clientX, y: event.clientY, button: event.button },
+      { x: pos.x, y: pos.y, button: event.button },
     );
   };
 
@@ -593,11 +637,12 @@ export class InputManager implements EnginePlugin {
       this._handleTouchEnd(event);
       return;
     }
+    const pos = this._toCanvas(event.clientX, event.clientY);
     this._pointerButtons.delete(event.button);
-    this._pointerPosition = { x: event.clientX, y: event.clientY };
+    this._pointerPosition = pos;
     this._events?.emitSync<InputPointerUpParams, Record<string, never>>(
       'input/pointer:up',
-      { x: event.clientX, y: event.clientY, button: event.button },
+      { x: pos.x, y: pos.y, button: event.button },
     );
   };
 
@@ -608,7 +653,7 @@ export class InputManager implements EnginePlugin {
     }
     // Buffer the latest position; the actual event is flushed once per frame
     // in the core/tick before-phase handler to avoid EventBus saturation.
-    this._pointerPosition = { x: event.clientX, y: event.clientY };
+    this._pointerPosition = this._toCanvas(event.clientX, event.clientY);
     this._pendingPointerMove = true;
   };
 
@@ -824,11 +869,12 @@ export class InputManager implements EnginePlugin {
    * state, and emits `input/touch:start`.
    */
   private _handleTouchStart(event: PointerEvent): void {
+    const pos = this._toCanvas(event.clientX, event.clientY);
     this._activeTouches.set(event.pointerId, {
-      x: event.clientX,
-      y: event.clientY,
-      startX: event.clientX,
-      startY: event.clientY,
+      x: pos.x,
+      y: pos.y,
+      startX: pos.x,
+      startY: pos.y,
       startTime: Date.now(),
     });
 
@@ -850,7 +896,7 @@ export class InputManager implements EnginePlugin {
 
     this._events?.emitSync<InputTouchStartParams, Record<string, never>>(
       'input/touch:start',
-      { pointerId: event.pointerId, x: event.clientX, y: event.clientY },
+      { pointerId: event.pointerId, x: pos.x, y: pos.y },
     );
   }
 
@@ -863,10 +909,12 @@ export class InputManager implements EnginePlugin {
     const touch = this._activeTouches.get(event.pointerId);
     if (!touch) return;
 
+    const endPos = this._toCanvas(event.clientX, event.clientY);
+
     // Swipe detection (only for single-finger lifts).
     if (this._activeTouches.size === 1 && this._events) {
-      const dx = event.clientX - touch.startX;
-      const dy = event.clientY - touch.startY;
+      const dx = endPos.x - touch.startX;
+      const dy = endPos.y - touch.startY;
       const distance = Math.sqrt(dx * dx + dy * dy);
       const duration = Date.now() - touch.startTime;
       // Treat zero-duration (same-ms lift) as instantaneous = infinite velocity.
@@ -893,8 +941,8 @@ export class InputManager implements EnginePlugin {
             distance,
             startX: touch.startX,
             startY: touch.startY,
-            endX: event.clientX,
-            endY: event.clientY,
+            endX: endPos.x,
+            endY: endPos.y,
           },
         );
         // Treat swipe as a momentary action press+release.
@@ -915,7 +963,7 @@ export class InputManager implements EnginePlugin {
 
     this._events?.emitSync<InputTouchEndParams, Record<string, never>>(
       'input/touch:end',
-      { pointerId: event.pointerId, x: event.clientX, y: event.clientY },
+      { pointerId: event.pointerId, x: endPos.x, y: endPos.y },
     );
   }
 
@@ -926,9 +974,10 @@ export class InputManager implements EnginePlugin {
     const touch = this._activeTouches.get(event.pointerId);
     if (!touch) return;
 
-    touch.x = event.clientX;
-    touch.y = event.clientY;
-    this._pendingTouchMoves.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    const pos = this._toCanvas(event.clientX, event.clientY);
+    touch.x = pos.x;
+    touch.y = pos.y;
+    this._pendingTouchMoves.set(event.pointerId, { x: pos.x, y: pos.y });
 
     if (this._activeTouches.size >= 2) {
       this._pendingGestureUpdate = true;

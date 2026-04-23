@@ -30,13 +30,56 @@ export interface CoreOptions {
    */
   dataRoot?: string;
   resizeTo?: Window | HTMLElement | null;
+  /**
+   * Device pixel ratio (DPR) used by the Pixi renderer.
+   *
+   * A value of `1` renders at 1:1 pixel density.  Set to
+   * `window.devicePixelRatio` (or `2`) for crisp rendering on HiDPI / Retina
+   * screens.  Defaults to `1`.
+   *
+   * @example
+   * ```ts
+   * createEngine({ resolution: window.devicePixelRatio ?? 1 });
+   * ```
+   */
+  resolution?: number;
+  /**
+   * When `true`, Pixi automatically scales the canvas CSS size so that the
+   * canvas always appears at `width × height` CSS pixels regardless of the
+   * `resolution` setting.  Pair with `resolution: window.devicePixelRatio`
+   * for crisp HiDPI rendering without layout changes.  Defaults to `false`.
+   */
+  autoDensity?: boolean;
+  /**
+   * WebGL power preference hint passed to the GPU driver.
+   *
+   * - `'high-performance'` — prefer the discrete GPU on multi-GPU systems.
+   * - `'low-power'` — prefer the integrated GPU to save battery.
+   *
+   * When omitted the browser/driver decides (equivalent to `'default'`).
+   */
+  powerPreference?: 'high-performance' | 'low-power';
+  /**
+   * When `true`, the WebGL back buffer preserves its contents between frames.
+   * Necessary if you need to read back pixel data via `readPixels` outside of
+   * a render pass.  Has a performance cost.  Defaults to `false`.
+   */
+  preserveDrawingBuffer?: boolean;
+  /**
+   * When `true`, the renderer uses premultiplied alpha compositing.
+   * Only change this if you have a specific compositing requirement.
+   * Defaults to `false`.
+   */
+  premultipliedAlpha?: boolean;
 }
 
 // The `container` option is intentionally excluded here so that `document.body`
 // is never evaluated at module load time (which would throw in non-browser
 // environments such as a Node.js test runner).  The default is applied lazily
 // inside `init()` instead.
-const DEFAULT_OPTIONS: Omit<Required<CoreOptions>, 'container'> = {
+// `powerPreference` is also excluded because it has no meaningful engine-level
+// default — when omitted, Pixi.js lets the browser/driver decide.
+const DEFAULT_OPTIONS: Omit<Required<CoreOptions>, 'container' | 'powerPreference'> = {
   width: 800,
   height: 600,
   background: 0x1a1a2e,
@@ -45,6 +88,10 @@ const DEFAULT_OPTIONS: Omit<Required<CoreOptions>, 'container'> = {
   maxUpdatesPerFrame: 5,
   dataRoot: '/',
   resizeTo: null,
+  resolution: 1,
+  autoDensity: false,
+  preserveDrawingBuffer: false,
+  premultipliedAlpha: false,
 };
 
 /**
@@ -117,6 +164,11 @@ export class Core {
       background: opts.background,
       antialias: opts.antialias,
       resizeTo: opts.resizeTo ?? undefined,
+      resolution: opts.resolution,
+      autoDensity: opts.autoDensity,
+      ...(opts.powerPreference !== undefined && { powerPreference: opts.powerPreference }),
+      preserveDrawingBuffer: opts.preserveDrawingBuffer,
+      premultipliedAlpha: opts.premultipliedAlpha,
     });
 
     // Resolve the container lazily (opts.container may be undefined when the
