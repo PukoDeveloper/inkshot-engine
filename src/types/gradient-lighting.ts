@@ -26,8 +26,9 @@ export interface GradientLight {
   /** Base brightness multiplier in the range `0`–`1`. */
   intensity: number;
   /**
-   * Spotlight direction in **radians**, measured clockwise from the positive
-   * X axis (e.g. `0` = right, `Math.PI / 2` = down).
+   * Spotlight direction in **radians**, measured **counter-clockwise** from
+   * the positive X axis following the standard canvas / PixiJS convention
+   * (e.g. `0` = right, `Math.PI / 2` = up in screen space).
    * When omitted the light spreads in all directions (point light).
    */
   angle?: number;
@@ -45,7 +46,8 @@ export interface GradientLight {
   /**
    * Maximum intensity variance applied when `flicker` is `true`.
    * A value of `0.15` means the effective intensity can vary by up to ±15 % of
-   * the base intensity each frame.  Defaults to `0.15`.
+   * the `flickerAmount` each frame (randomly increases or decreases the base
+   * intensity).  Defaults to `0.15`.
    */
   flickerAmount?: number;
 }

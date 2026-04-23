@@ -315,11 +315,11 @@ export class GradientLightingPlugin implements EnginePlugin {
     });
 
     for (const light of this._lights.values()) {
-      // Apply flicker: randomly reduce intensity by up to flickerAmount each frame.
+      // Apply flicker: randomly shift intensity by up to ±flickerAmount each frame.
       const flickerVar = light.flicker
-        ? (light.flickerAmount ?? 0.15) * Math.random()
+        ? (light.flickerAmount ?? 0.15) * (Math.random() * 2 - 1)
         : 0;
-      const effectiveIntensity = clamp01(light.intensity - flickerVar);
+      const effectiveIntensity = clamp01(light.intensity + flickerVar);
 
       const { r, g, b } = hexToRgb(light.color);
       const col =
