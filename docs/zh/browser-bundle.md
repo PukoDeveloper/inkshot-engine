@@ -179,4 +179,4 @@ const { core } = await createEngine({
 
 - [Plugin 開發指南](./plugin-development.md)
 - [快速入門](./getting-started.md)
-- [架構設計文件](../ARCHITECTURE.md)
+- [架構設計文件](../../ARCHITECTURE.md)

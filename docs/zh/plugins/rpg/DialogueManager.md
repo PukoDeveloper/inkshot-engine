@@ -1,0 +1,58 @@
+# DialogueManager（`dialogue`）
+
+文字對話系統（打字機效果、Rich-text、選項）。
+
+---
+
+## 目錄
+
+1. [安裝與設定](#安裝與設定)
+2. [事件契約](#事件契約)
+3. [使用範例](#使用範例)
+4. [整合其他 Plugin](#整合其他-plugin)
+5. [常見模式](#常見模式)
+
+---
+
+## 安裝與設定
+
+```ts
+import { createEngine } from '@inkshot/engine';
+
+const { core } = await createEngine({
+  plugins: [/* DialogueManager（`dialogue`） */],
+});
+```
+
+---
+
+## 事件契約
+
+| 事件 | 說明 | 方向 |
+|------|------|------|
+| `dialogue/show:text` | dialogue/show:text 操作 | 監聽 / 發出 |
+| `dialogue/advance` | dialogue/advance 操作 | 監聽 / 發出 |
+| `dialogue/show:choices` | dialogue/show:choices 操作 | 監聽 / 發出 |
+| `dialogue/choice:made` | dialogue/choice:made 操作 | 監聽 / 發出 |
+| `dialogue/close` | dialogue/close 操作 | 監聽 / 發出 |
+
+---
+
+## 使用範例
+
+```ts
+// 使用 DialogueManager（`dialogue`）
+// 透過 core.events.emit / emitSync 呼叫上述事件
+```
+
+---
+
+## 整合其他 Plugin
+
+請參閱 [RPG 系統總覽](../../rpg/README.md) 與 [核心概念](../../core-concepts.md) 了解整合方式。
+
+---
+
+## 常見模式
+
+請參閱 [快速入門](../../getting-started.md) 與各相關 Plugin 文件取得完整範例。
