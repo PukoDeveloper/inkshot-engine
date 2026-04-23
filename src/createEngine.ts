@@ -62,6 +62,31 @@ export interface EngineOptions extends CoreOptions {
    * (call `core.start()` manually).
    */
   autoStart?: boolean;
+
+  /**
+   * Initial camera X position in world coordinates.
+   *
+   * The camera always displays the world-space point `(cameraX, cameraY)` at
+   * the **centre** of the viewport.  Defaults to `0` (world origin centred).
+   *
+   * **Tip — top-left origin games**: most non-tilemap games treat `(0, 0)` as
+   * the top-left corner of the world.  To show that corner at the top-left of
+   * the screen on startup, pass:
+   * ```ts
+   * createEngine({ width: 800, height: 600, cameraX: 400, cameraY: 300 });
+   * // Equivalent to: viewportWidth / 2, viewportHeight / 2
+   * ```
+   *
+   * Tilemap games that call `camera.setBounds(...)` are unaffected — the
+   * camera is clamped to the map bounds immediately after startup.
+   */
+  cameraX?: number;
+
+  /**
+   * Initial camera Y position in world coordinates.  See `cameraX`.
+   * Defaults to `0`.
+   */
+  cameraY?: number;
 }
 
 /**
@@ -143,7 +168,7 @@ export function validatePhysicsBackends(plugins: EnginePlugin[]): void {
  * @returns        A promise that resolves to the initialized {@link EngineInstance}.
  */
 export async function createEngine(options: EngineOptions = {}): Promise<EngineInstance> {
-  const { plugins: pluginSources = [], autoStart = true, ...coreOptions } = options;
+  const { plugins: pluginSources = [], autoStart = true, cameraX, cameraY, ...coreOptions } = options;
 
   // ── 1. Resolve plugins (before core init for fast-fail validation) ────────
   const resolved: EnginePlugin[] = [];
@@ -159,7 +184,7 @@ export async function createEngine(options: EngineOptions = {}): Promise<EngineI
   await core.init(coreOptions);
 
   // ── 3. Create renderer ────────────────────────────────────────────────────
-  const renderer = new Renderer(core);
+  const renderer = new Renderer(core, { initialCameraX: cameraX, initialCameraY: cameraY });
 
   // ── 4. Load & initialize plugins ─────────────────────────────────────────
   const loadedPlugins: EnginePlugin[] = [];

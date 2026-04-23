@@ -42,9 +42,9 @@ export interface InputKeyUpParams {
  * Emitted when a pointer button transitions from **released → pressed**.
  */
 export interface InputPointerDownParams {
-  /** Horizontal position of the pointer in client (viewport) coordinates. */
+  /** Horizontal position of the pointer in **canvas** coordinates. */
   readonly x: number;
-  /** Vertical position of the pointer in client (viewport) coordinates. */
+  /** Vertical position of the pointer in **canvas** coordinates. */
   readonly y: number;
   /**
    * Which mouse/pointer button was pressed.
@@ -63,9 +63,9 @@ export interface InputPointerDownParams {
  * Emitted when a pointer button transitions from **pressed → released**.
  */
 export interface InputPointerUpParams {
-  /** Horizontal position of the pointer in client (viewport) coordinates. */
+  /** Horizontal position of the pointer in **canvas** coordinates. */
   readonly x: number;
-  /** Vertical position of the pointer in client (viewport) coordinates. */
+  /** Vertical position of the pointer in **canvas** coordinates. */
   readonly y: number;
   /**
    * Which mouse/pointer button was released.
@@ -86,9 +86,9 @@ export interface InputPointerUpParams {
  * accumulated since the last emission.
  */
 export interface InputPointerMoveParams {
-  /** Final horizontal position in client (viewport) coordinates this frame. */
+  /** Final horizontal position in **canvas** coordinates this frame. */
   readonly x: number;
-  /** Final vertical position in client (viewport) coordinates this frame. */
+  /** Final vertical position in **canvas** coordinates this frame. */
   readonly y: number;
   /** Horizontal movement since the last `input/pointer:move` event. */
   readonly dx: number;
@@ -148,7 +148,7 @@ export interface InputKeyPressedOutput {
  * ```
  */
 export interface InputPointerStateOutput {
-  /** Last known pointer position in client (viewport) coordinates. */
+  /** Last known pointer position in **canvas** coordinates. */
   position: { x: number; y: number };
   /** Set of currently pressed pointer buttons (0 = left, 1 = middle, 2 = right). */
   buttons: Set<number>;
@@ -393,9 +393,9 @@ export interface InputGamepadDisconnectedParams {
 export interface InputTouchStartParams {
   /** Unique identifier for this touch point (`PointerEvent.pointerId`). */
   readonly pointerId: number;
-  /** Horizontal position in client (viewport) coordinates. */
+  /** Horizontal position in **canvas** coordinates. */
   readonly x: number;
-  /** Vertical position in client (viewport) coordinates. */
+  /** Vertical position in **canvas** coordinates. */
   readonly y: number;
 }
 
@@ -411,9 +411,9 @@ export interface InputTouchStartParams {
 export interface InputTouchEndParams {
   /** Unique identifier for this touch point. */
   readonly pointerId: number;
-  /** Horizontal position in client coordinates at the moment of lift. */
+  /** Horizontal position in **canvas** coordinates at the moment of lift. */
   readonly x: number;
-  /** Vertical position in client coordinates at the moment of lift. */
+  /** Vertical position in **canvas** coordinates at the moment of lift. */
   readonly y: number;
 }
 
@@ -431,9 +431,9 @@ export interface InputTouchEndParams {
 export interface InputTouchMoveParams {
   /** Unique identifier for this touch point. */
   readonly pointerId: number;
-  /** Final horizontal position this frame in client coordinates. */
+  /** Final horizontal position this frame in **canvas** coordinates. */
   readonly x: number;
-  /** Final vertical position this frame in client coordinates. */
+  /** Final vertical position this frame in **canvas** coordinates. */
   readonly y: number;
   /** Horizontal movement since the last `input/touch:move` event for this point. */
   readonly dx: number;
@@ -464,9 +464,9 @@ export interface InputGesturePinchParams {
    * (`currentDistance / previousDistance`).
    */
   readonly delta: number;
-  /** Horizontal midpoint of the two touch points in client coordinates. */
+  /** Horizontal midpoint of the two touch points in **canvas** coordinates. */
   readonly centerX: number;
-  /** Vertical midpoint of the two touch points in client coordinates. */
+  /** Vertical midpoint of the two touch points in **canvas** coordinates. */
   readonly centerY: number;
 }
 
@@ -489,9 +489,9 @@ export interface InputGestureRotateParams {
   readonly rotation: number;
   /** Change in rotation (radians) since the last event. */
   readonly delta: number;
-  /** Horizontal midpoint of the two touch points in client coordinates. */
+  /** Horizontal midpoint of the two touch points in **canvas** coordinates. */
   readonly centerX: number;
-  /** Vertical midpoint of the two touch points in client coordinates. */
+  /** Vertical midpoint of the two touch points in **canvas** coordinates. */
   readonly centerY: number;
 }
 
@@ -547,7 +547,7 @@ export interface InputGestureSwipeParams {
 export interface InputTouchStateOutput {
   /**
    * Map of currently active touch points keyed by `pointerId`.
-   * Each entry holds the current `{ x, y }` in client coordinates.
+   * Each entry holds the current `{ x, y }` in **canvas** coordinates.
    */
   touches: Map<number, { x: number; y: number }>;
 }

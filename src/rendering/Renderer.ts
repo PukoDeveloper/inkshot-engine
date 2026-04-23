@@ -68,7 +68,7 @@ export class Renderer {
   /** Bound Pixi resize handler — kept so it can be removed in destroy(). */
   private readonly _onPixiResize: (width: number, height: number) => void;
 
-  constructor(core: Core) {
+  constructor(core: Core, opts: { initialCameraX?: number; initialCameraY?: number } = {}) {
     this._core = core;
 
     // Stage must have sortableChildren enabled for z-index ordering.
@@ -93,6 +93,8 @@ export class Renderer {
     this._camera = new Camera(core, this._layers.get('world')!, {
       viewportWidth: screen.width,
       viewportHeight: screen.height,
+      initialX: opts.initialCameraX,
+      initialY: opts.initialCameraY,
     });
 
     // Forward Pixi renderer resize events to the camera and the EventBus so

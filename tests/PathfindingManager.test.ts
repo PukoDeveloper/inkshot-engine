@@ -526,4 +526,131 @@ describe('PathfindingManager', () => {
       expect(pf.getCellCost(0, 0)).toBeUndefined();
     });
   });
+
+  // -------------------------------------------------------------------------
+  // pathfinding/grid:set (non-tilemap usage)
+  // -------------------------------------------------------------------------
+
+  describe('pathfinding/grid:set', () => {
+    const WALL = Infinity;
+    const GRID_TILE_SIZE = 32;
+
+    /**
+     * 3×3 grid (32 px tiles):
+     *   . . .
+     *   . X .
+     *   . . .
+     * Centre cell (1,1) is a wall.
+     */
+    const RAW_GRID_3X3 = {
+      grid: [
+        [1,    1,    1   ],
+        [1,    WALL, 1   ],
+        [1,    1,    1   ],
+      ],
+      tileSize: GRID_TILE_SIZE,
+    };
+
+    function tileCenter32(row: number, col: number): { x: number; y: number } {
+      return { x: col * GRID_TILE_SIZE + GRID_TILE_SIZE / 2, y: row * GRID_TILE_SIZE + GRID_TILE_SIZE / 2 };
+    }
+
+    it('enables pathfinding without any tilemap data', () => {
+      const { events } = createSetup();
+      events.emitSync('pathfinding/grid:set', RAW_GRID_3X3);
+
+      const { output } = events.emitSync<unknown, PathfindingFindOutput>(
+        'pathfinding/find',
+        { from: tileCenter32(0, 0), to: tileCenter32(0, 2) },
+      );
+
+      expect(output.found).toBe(true);
+      expect(output.path.length).toBeGreaterThan(0);
+    });
+
+    it('treats Infinity cells as impassable', () => {
+      const { events } = createSetup();
+      // 1×3 corridor with a wall in the middle — no path possible.
+      events.emitSync('pathfinding/grid:set', {
+        grid: [[1, WALL, 1]],
+        tileSize: 32,
+      });
+
+      const { output } = events.emitSync<unknown, PathfindingFindOutput>(
+        'pathfinding/find',
+        { from: { x: 16, y: 16 }, to: { x: 80, y: 16 } },
+      );
+
+      expect(output.found).toBe(false);
+    });
+
+    it('routes around an interior wall', () => {
+      const { events } = createSetup();
+      events.emitSync('pathfinding/grid:set', RAW_GRID_3X3);
+
+      // From top-left (0,0) to bottom-right (2,2) — must go around (1,1).
+      const { output } = events.emitSync<unknown, PathfindingFindOutput>(
+        'pathfinding/find',
+        { from: tileCenter32(0, 0), to: tileCenter32(2, 2) },
+      );
+
+      expect(output.found).toBe(true);
+      // The path should not pass through the wall cell centre.
+      const wallCenter = tileCenter32(1, 1);
+      const passedThroughWall = output.path.some(
+        pt => Math.abs(pt.x - wallCenter.x) < 1 && Math.abs(pt.y - wallCenter.y) < 1,
+      );
+      expect(passedThroughWall).toBe(false);
+    });
+
+    it('getCellCost reflects the raw grid values', () => {
+      const { events, pf } = createSetup();
+      events.emitSync('pathfinding/grid:set', RAW_GRID_3X3);
+
+      expect(pf.getCellCost(0, 0)).toBe(1);
+      expect(pf.getCellCost(1, 1)).toBe(Infinity);
+    });
+
+    it('clears the path cache on grid:set', () => {
+      const { events } = createSetup();
+      events.emitSync('pathfinding/grid:set', RAW_GRID_3X3);
+
+      // Prime the cache.
+      const { output: first } = events.emitSync<unknown, PathfindingFindOutput>(
+        'pathfinding/find',
+        { from: tileCenter32(0, 0), to: tileCenter32(0, 2) },
+      );
+      expect(first.found).toBe(true);
+
+      // Replace the grid with a fully blocked one.
+      events.emitSync('pathfinding/grid:set', {
+        grid: [[WALL, WALL, WALL]],
+        tileSize: GRID_TILE_SIZE,
+      });
+
+      // The old cached result should no longer be returned.
+      const { output: second } = events.emitSync<unknown, PathfindingFindOutput>(
+        'pathfinding/find',
+        { from: { x: 16, y: 16 }, to: { x: 80, y: 16 } },
+      );
+      expect(second.found).toBe(false);
+    });
+
+    it('weighted cells are respected (A* prefers cheaper paths)', () => {
+      const { events } = createSetup();
+      // 1×5 grid: cells 1–3 cost 10 (expensive), direct row is costly.
+      events.emitSync('pathfinding/grid:set', {
+        grid: [[1, 10, 10, 10, 1]],
+        tileSize: 32,
+      });
+
+      const { output } = events.emitSync<unknown, PathfindingFindOutput>(
+        'pathfinding/find',
+        { from: { x: 16, y: 16 }, to: { x: 144, y: 16 } },
+      );
+      // Should still find a path (just costly).
+      expect(output.found).toBe(true);
+      expect(output.cost).toBeGreaterThan(1);
+    });
+  });
 });

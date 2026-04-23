@@ -92,12 +92,35 @@ export class Camera {
   constructor(
     core: Core,
     worldContainer: Container,
-    opts: { viewportWidth: number; viewportHeight: number },
+    opts: {
+      viewportWidth: number;
+      viewportHeight: number;
+      /**
+       * Initial camera X position in world coordinates.
+       *
+       * The camera displays whatever world-space point `(initialX, initialY)`
+       * sits at the **centre** of the viewport.  Defaults to `0`.
+       *
+       * **Tip — top-left origin games**: if your game treats the top-left corner
+       * of the world as `(0, 0)` (most non-tilemap games), pass
+       * `initialX: viewportWidth / 2, initialY: viewportHeight / 2`.  This
+       * ensures world `(0, 0)` appears at the top-left corner of the screen
+       * when the game starts.
+       */
+      initialX?: number;
+      /**
+       * Initial camera Y position in world coordinates.  See `initialX`.
+       * Defaults to `0`.
+       */
+      initialY?: number;
+    },
   ) {
     this._core = core;
     this._worldContainer = worldContainer;
     this._viewportW = opts.viewportWidth;
     this._viewportH = opts.viewportHeight;
+    this._x = opts.initialX ?? 0;
+    this._y = opts.initialY ?? 0;
 
     // Subscribe to fixed update (follow + shake advance).
     core.events.on('camera', 'core/update', this._onUpdate, { priority: 0 });
