@@ -438,6 +438,7 @@ export type {
   CameraMoveParams,
   CameraZoomParams,
   CameraStateOutput,
+  RendererResizeParams,
 } from './types/rendering.js';
 
 // Timer / Scheduler system

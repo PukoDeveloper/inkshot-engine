@@ -507,6 +507,84 @@ describe('UIManager', () => {
   });
 
   // -------------------------------------------------------------------------
+  // renderer/resize integration
+  // -------------------------------------------------------------------------
+
+  describe('renderer/resize', () => {
+    it('re-positions an anchored widget when the viewport changes', () => {
+      // Create a widget anchored to bottom-right with an offset.
+      // The stub getBounds() always returns { width: 0, height: 0 }, so the
+      // expected position equals (vpW + offsetX, vpH + offsetY).
+      const widget = ui.create({ type: 'label', id: 'rz1', text: '', anchor: 'bottom-right', x: -10, y: -10 });
+
+      // Initial viewport is 800x600 (the stub default).
+      // bottom-right: x = vpW - w + offsetX = 800 - 0 + (-10) = 790
+      //               y = vpH - h + offsetY = 600 - 0 + (-10) = 590
+      expect(widget.container.x).toBe(790);
+      expect(widget.container.y).toBe(590);
+
+      // Simulate a resize to 1280x720.
+      core.events.emitSync('renderer/resize', { width: 1280, height: 720 });
+
+      expect(widget.container.x).toBe(1270); // 1280 - 0 + (-10)
+      expect(widget.container.y).toBe(710);  // 720  - 0 + (-10)
+    });
+
+    it('does not reposition non-anchored widgets', () => {
+      const widget = ui.create({ type: 'label', id: 'rz2', text: '', x: 50, y: 25 });
+      expect(widget.container.x).toBe(50);
+      expect(widget.container.y).toBe(25);
+
+      core.events.emitSync('renderer/resize', { width: 1920, height: 1080 });
+
+      // Position must remain unchanged.
+      expect(widget.container.x).toBe(50);
+      expect(widget.container.y).toBe(25);
+    });
+
+    it('calls onResize on all widgets that implement it', () => {
+      const onResize = vi.fn();
+      const factory: UIWidgetFactory = (_id) => ({
+        id: _id, type: 'resizeWidget',
+        container: {
+          x: 0, y: 0, visible: true,
+          addChild: vi.fn(), removeChild: vi.fn(), getBounds: () => ({ width: 0, height: 0 }),
+        } as unknown as import('pixi.js').Container,
+        show: vi.fn(), hide: vi.fn(), destroy: vi.fn(),
+        onResize,
+      });
+
+      core.events.emitSync('ui/register', { type: 'resizeWidget', factory });
+      core.events.emitSync('ui/create', { type: 'resizeWidget', id: 'rw1' });
+      core.events.emitSync('ui/create', { type: 'resizeWidget', id: 'rw2' });
+
+      core.events.emitSync('renderer/resize', { width: 640, height: 480 });
+
+      expect(onResize).toHaveBeenCalledTimes(2);
+      expect(onResize).toHaveBeenCalledWith(640, 480);
+    });
+
+    it('does not throw when a widget has no onResize', () => {
+      core.events.emitSync('ui/create', { type: 'panel', id: 'rz3', width: 100, height: 50 });
+      expect(() =>
+        core.events.emitSync('renderer/resize', { width: 1024, height: 768 }),
+      ).not.toThrow();
+    });
+
+    it('no longer repositions a destroyed anchored widget', () => {
+      const widget = ui.create({ type: 'label', id: 'rz4', text: '', anchor: 'top-left', x: 5, y: 5 });
+      expect(widget.container.x).toBe(5);
+
+      core.events.emitSync('ui/destroy', { id: 'rz4' });
+      // After destroy the widget position should not change on resize.
+      // We save a reference to confirm the container is no longer touched.
+      const oldX = widget.container.x;
+      core.events.emitSync('renderer/resize', { width: 1920, height: 1080 });
+      expect(widget.container.x).toBe(oldX);
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // Teardown
   // -------------------------------------------------------------------------
 

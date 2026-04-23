@@ -49,6 +49,17 @@ export interface UIWidget {
    * Only implement this if the widget displays i18n-sourced text.
    */
   onLocaleChanged?(locale: string): void;
+
+  /**
+   * Called after `renderer/resize` fires so the widget can adapt its layout
+   * to the new canvas dimensions.
+   *
+   * UIManager automatically re-applies anchor-based positioning for anchored
+   * widgets before calling this hook.  Implement it only when the widget needs
+   * additional resize-aware adjustments (e.g. resizing a background graphic or
+   * re-wrapping text).
+   */
+  onResize?(width: number, height: number): void;
 }
 
 // ---------------------------------------------------------------------------
