@@ -397,6 +397,61 @@ describe('Camera', () => {
   });
 
   // -------------------------------------------------------------------------
+  // Viewport (setViewport / resize)
+  // -------------------------------------------------------------------------
+
+  describe('setViewport', () => {
+    it('updates the viewport dimensions', () => {
+      const { camera } = makeCamera({ vpW: 800, vpH: 600 });
+      expect(camera.viewportWidth).toBe(800);
+      expect(camera.viewportHeight).toBe(600);
+
+      camera.setViewport(1920, 1080);
+
+      expect(camera.viewportWidth).toBe(1920);
+      expect(camera.viewportHeight).toBe(1080);
+    });
+
+    it('reflects new viewport dimensions in camera/state after setViewport', () => {
+      const { core, camera } = makeCamera({ vpW: 800, vpH: 600 });
+      camera.setViewport(1280, 720);
+
+      const { output } = core.events.emitSync('camera/state', {}) as {
+        output: CameraStateOutput;
+      };
+
+      expect(output.viewportWidth).toBe(1280);
+      expect(output.viewportHeight).toBe(720);
+    });
+
+    it('re-centres the world container on pre-render after viewport change', () => {
+      const { core, world, camera } = makeCamera({ vpW: 800, vpH: 600 });
+      camera.moveTo(0, 0);
+      render(core);
+      // Before resize: centre = (400, 300).
+      expect(world.x).toBe(400);
+      expect(world.y).toBe(300);
+
+      camera.setViewport(1280, 720);
+      render(core);
+      // After resize: centre = (640, 360).
+      expect(world.x).toBe(640);
+      expect(world.y).toBe(360);
+    });
+
+    it('re-clamps position to bounds after viewport change', () => {
+      const { camera } = makeCamera({ vpW: 800, vpH: 600 });
+      camera.setBounds({ x: 0, y: 0, width: 1000, height: 1000 });
+      camera.moveTo(950, 950); // near edge
+
+      // Shrink viewport: halfViewW = 400/zoom = 400; clamped to 600 (1000 - 400).
+      camera.setViewport(800, 800);
+      // halfViewW = 400; maxX = 1000 - 400 = 600
+      expect(camera.x).toBeLessThanOrEqual(600);
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // Lifecycle
   // -------------------------------------------------------------------------
 

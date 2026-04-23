@@ -5,6 +5,7 @@ import { type LayerName, LAYER_Z_INDEX } from './layers.js';
 import { RenderPipeline } from './RenderPipeline.js';
 import { PostFxPipeline } from './PostFxPipeline.js';
 import { Camera } from './Camera.js';
+import type { RendererResizeParams } from '../types/rendering.js';
 
 /**
  * Thin wrapper around the Pixi.js stage, providing named render layers and
@@ -64,6 +65,8 @@ export class Renderer {
   private readonly _postFx: PostFxPipeline;
   /** 2D camera bound to the world layer. */
   private readonly _camera: Camera;
+  /** Bound Pixi resize handler — kept so it can be removed in destroy(). */
+  private readonly _onPixiResize: (width: number, height: number) => void;
 
   constructor(core: Core) {
     this._core = core;
@@ -91,6 +94,14 @@ export class Renderer {
       viewportWidth: screen.width,
       viewportHeight: screen.height,
     });
+
+    // Forward Pixi renderer resize events to the camera and the EventBus so
+    // that plugins (e.g. UIManager) can react to viewport changes.
+    this._onPixiResize = (width: number, height: number) => {
+      this._camera.setViewport(width, height);
+      core.events.emitSync<RendererResizeParams>('renderer/resize', { width, height });
+    };
+    this._core.app.renderer.on('resize', this._onPixiResize);
 
     // Expose layer lookup via the event bus so plugins never need a direct
     // reference to the Renderer instance.
@@ -265,6 +276,7 @@ export class Renderer {
 
   /** Unregister all renderer listeners from the event bus. */
   destroy(): void {
+    this._core.app.renderer.off('resize', this._onPixiResize);
     this._camera.destroy();
     this._postFx.destroy();
     this._pipeline.destroy();

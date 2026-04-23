@@ -184,3 +184,27 @@ export interface CameraStateOutput {
   viewportWidth: number;
   viewportHeight: number;
 }
+
+// ---------------------------------------------------------------------------
+// Resize
+// ---------------------------------------------------------------------------
+
+/**
+ * Params emitted with `renderer/resize` whenever the canvas is resized.
+ *
+ * Plugins that need to react to viewport size changes (e.g. re-anchoring UI
+ * widgets, adjusting effect buffers) should subscribe to this event.
+ *
+ * @example
+ * ```ts
+ * core.events.on('myPlugin', 'renderer/resize', ({ width, height }) => {
+ *   myOverlay.resize(width, height);
+ * });
+ * ```
+ */
+export interface RendererResizeParams {
+  /** New canvas width in CSS pixels. */
+  width: number;
+  /** New canvas height in CSS pixels. */
+  height: number;
+}

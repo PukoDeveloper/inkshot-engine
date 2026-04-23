@@ -38,6 +38,7 @@ import type {
   DialogueEndedParams,
   DialogueTextSegment,
 } from '../../types/dialogue.js';
+import type { RendererResizeParams } from '../../types/rendering.js';
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -1014,6 +1015,8 @@ export class UIManager implements EnginePlugin {
   private _nextId = 0;
   private readonly _factories = new Map<string, UIWidgetFactory>();
   private readonly _widgets   = new Map<string, UIWidget>();
+  /** Anchor metadata for widgets that were created with an anchor. Used to re-position on resize. */
+  private readonly _anchorData = new Map<string, { anchor: UIAnchor; offsetX: number; offsetY: number }>();
 
   // ---------------------------------------------------------------------------
   // Lifecycle
@@ -1079,6 +1082,29 @@ export class UIManager implements EnginePlugin {
         widget.onLocaleChanged?.(params.locale);
       }
     });
+
+    // Re-anchor anchored widgets and notify all widgets when the canvas resizes.
+    core.events.on('ui', 'renderer/resize', (params: RendererResizeParams) => {
+      for (const [id, data] of this._anchorData) {
+        const widget = this._widgets.get(id);
+        if (!widget) continue;
+        const bounds = widget.container.getBounds();
+        const pos = resolveAnchorPosition(
+          data.anchor,
+          params.width,
+          params.height,
+          bounds.width,
+          bounds.height,
+          data.offsetX,
+          data.offsetY,
+        );
+        widget.container.x = pos.x;
+        widget.container.y = pos.y;
+      }
+      for (const widget of this._widgets.values()) {
+        widget.onResize?.(params.width, params.height);
+      }
+    });
   }
 
   destroy(core: Core): void {
@@ -1087,6 +1113,7 @@ export class UIManager implements EnginePlugin {
       this._destroyById(id);
     }
     this._factories.clear();
+    this._anchorData.clear();
     core.events.removeNamespace('ui');
   }
 
@@ -1156,6 +1183,7 @@ export class UIManager implements EnginePlugin {
       );
       widget.container.x = pos.x;
       widget.container.y = pos.y;
+      this._anchorData.set(id, { anchor: params.anchor, offsetX: params.x ?? 0, offsetY: params.y ?? 0 });
     } else {
       if (params.x !== undefined) widget.container.x = params.x;
       if (params.y !== undefined) widget.container.y = params.y;
@@ -1213,6 +1241,7 @@ export class UIManager implements EnginePlugin {
     this._layer.removeChild(widget.container);
     widget.destroy();
     this._widgets.delete(id);
+    this._anchorData.delete(id);
     this._core.events.emitSync<UIDestroyedParams>('ui/destroyed', { id });
   }
 
