@@ -1,93 +1,72 @@
 import { Application } from 'pixi.js';
+import type { ApplicationOptions } from 'pixi.js';
 import { EventBus } from './EventBus.js';
 
 /**
  * Options passed to `Core.init()`.
+ *
+ * Extends Pixi.js {@link ApplicationOptions} so that **every** Pixi renderer
+ * option (e.g. `preference`, `webgpu`, `webgl`, `antialias`, `resolution`, …)
+ * is forwarded directly to `Application.init()` without needing to be
+ * explicitly listed here.
+ *
+ * In addition to all Pixi options, the following engine-specific fields are
+ * supported:
+ *
+ * | Field               | Default | Description |
+ * |---------------------|---------|-------------|
+ * | `container`         | `document.body` | CSS selector or `HTMLElement` to mount the canvas into. |
+ * | `targetFps`         | `60`    | Fixed-step update frequency. |
+ * | `maxUpdatesPerFrame`| `5`     | Spiral-of-death guard. |
+ * | `dataRoot`          | `'/'`   | Base URL for asset loading. |
  */
-export interface CoreOptions {
-  /** CSS selector or HTMLElement that will host the Pixi canvas. */
-  container?: string | HTMLElement;
-  /** Canvas width in pixels. */
-  width?: number;
-  /** Canvas height in pixels. */
-  height?: number;
-  /** Background colour (hex). */
-  background?: number;
-  /** Enable anti-aliasing. */
-  antialias?: boolean;
-  /** Target frames per second for the fixed-step game loop. */
-  targetFps?: number;
+export interface CoreOptions extends Partial<ApplicationOptions> {
   /**
-   * Maximum number of fixed-step updates allowed per frame.
+   * CSS selector string or `HTMLElement` that will host the Pixi canvas.
+   *
+   * Defaults to `document.body` when omitted.  Resolved lazily inside
+   * `init()` to avoid touching the DOM at module load time (safe in Node /
+   * test environments).
+   */
+  container?: string | HTMLElement;
+
+  /**
+   * Target frames per second for the fixed-step game loop.
+   *
+   * Determines the fixed delta passed to `core/update` events
+   * (`dt = 1000 / targetFps` ms).  Defaults to `60`.
+   */
+  targetFps?: number;
+
+  /**
+   * Maximum number of fixed-step updates allowed per render frame.
+   *
    * Prevents a "spiral of death" when the browser tab is backgrounded and
    * `deltaTime` spikes.  Defaults to `5`.
    */
   maxUpdatesPerFrame?: number;
+
   /**
-   * Root URL / path prefix for all game data assets (images, audio, data files, etc.).
-   * Systems that load assets should resolve paths relative to this base.
-   * Defaults to `'/'`.
+   * Root URL / path prefix for all game data assets (images, audio, data
+   * files, etc.).  Asset-loading systems resolve file paths relative to this
+   * base.  Defaults to `'/'`.
    */
   dataRoot?: string;
-  resizeTo?: Window | HTMLElement | null;
-  /**
-   * Device pixel ratio (DPR) used by the Pixi renderer.
-   *
-   * A value of `1` renders at 1:1 pixel density.  Set to
-   * `window.devicePixelRatio` (or `2`) for crisp rendering on HiDPI / Retina
-   * screens.  Defaults to `1`.
-   *
-   * @example
-   * ```ts
-   * createEngine({ resolution: window.devicePixelRatio ?? 1 });
-   * ```
-   */
-  resolution?: number;
-  /**
-   * When `true`, Pixi automatically scales the canvas CSS size so that the
-   * canvas always appears at `width × height` CSS pixels regardless of the
-   * `resolution` setting.  Pair with `resolution: window.devicePixelRatio`
-   * for crisp HiDPI rendering without layout changes.  Defaults to `false`.
-   */
-  autoDensity?: boolean;
-  /**
-   * WebGL power preference hint passed to the GPU driver.
-   *
-   * - `'high-performance'` — prefer the discrete GPU on multi-GPU systems.
-   * - `'low-power'` — prefer the integrated GPU to save battery.
-   *
-   * When omitted the browser/driver decides (equivalent to `'default'`).
-   */
-  powerPreference?: 'high-performance' | 'low-power';
-  /**
-   * When `true`, the WebGL back buffer preserves its contents between frames.
-   * Necessary if you need to read back pixel data via `readPixels` outside of
-   * a render pass.  Has a performance cost.  Defaults to `false`.
-   */
-  preserveDrawingBuffer?: boolean;
-  /**
-   * When `true`, the renderer uses premultiplied alpha compositing.
-   * Only change this if you have a specific compositing requirement.
-   * Defaults to `false`.
-   */
-  premultipliedAlpha?: boolean;
 }
 
-// The `container` option is intentionally excluded here so that `document.body`
-// is never evaluated at module load time (which would throw in non-browser
-// environments such as a Node.js test runner).  The default is applied lazily
-// inside `init()` instead.
-// `powerPreference` is also excluded because it has no meaningful engine-level
-// default — when omitted, Pixi.js lets the browser/driver decide.
-const DEFAULT_OPTIONS: Omit<Required<CoreOptions>, 'container' | 'powerPreference'> = {
+/**
+ * Pixi.js `Application.init()` defaults applied when the caller does not
+ * supply a value.  Only covers options where the engine's preferred default
+ * differs from Pixi's own default.
+ *
+ * Engine-specific options (`container`, `targetFps`, `maxUpdatesPerFrame`,
+ * `dataRoot`) are handled separately in `init()` via destructuring defaults.
+ */
+const PIXI_DEFAULTS: Partial<ApplicationOptions> = {
   width: 800,
   height: 600,
   background: 0x1a1a2e,
   antialias: true,
-  targetFps: 60,
-  maxUpdatesPerFrame: 5,
-  dataRoot: '/',
-  resizeTo: null,
   resolution: 1,
   autoDensity: false,
   preserveDrawingBuffer: false,
@@ -150,39 +129,39 @@ export class Core {
       return;
     }
 
-    const opts = { ...DEFAULT_OPTIONS, ...options };
+    // ── Extract engine-specific options ──────────────────────────────────────
+    // Everything else is a Pixi.js ApplicationOption and is forwarded directly.
+    const {
+      container,
+      targetFps = 60,
+      maxUpdatesPerFrame = 5,
+      dataRoot = '/',
+      ...pixiOptions
+    } = options;
 
-    this.dataRoot = opts.dataRoot;
-    this._fixedStepMs = 1000 / opts.targetFps;
-    this._maxUpdatesPerFrame = opts.maxUpdatesPerFrame;
+    this.dataRoot = dataRoot;
+    this._fixedStepMs = 1000 / targetFps;
+    this._maxUpdatesPerFrame = maxUpdatesPerFrame;
 
     this._app = new Application();
 
+    // Engine defaults are applied first; caller-supplied pixiOptions win.
     await this._app.init({
-      width: opts.width,
-      height: opts.height,
-      background: opts.background,
-      antialias: opts.antialias,
-      resizeTo: opts.resizeTo ?? undefined,
-      resolution: opts.resolution,
-      autoDensity: opts.autoDensity,
-      ...(opts.powerPreference !== undefined && { powerPreference: opts.powerPreference }),
-      preserveDrawingBuffer: opts.preserveDrawingBuffer,
-      premultipliedAlpha: opts.premultipliedAlpha,
+      ...PIXI_DEFAULTS,
+      ...pixiOptions,
     });
 
-    // Resolve the container lazily (opts.container may be undefined when the
+    // Resolve the container lazily (options.container may be undefined when the
     // caller did not supply one — defaulting to document.body here rather than
     // at module load time avoids errors in non-browser environments).
-    const rawContainer = opts.container;
-    const container: HTMLElement =
-      rawContainer == null
+    const mountTarget: HTMLElement =
+      container == null
         ? document.body
-        : typeof rawContainer === 'string'
-          ? (document.querySelector(rawContainer) as HTMLElement | null) ?? document.body
-          : rawContainer;
+        : typeof container === 'string'
+          ? (document.querySelector(container) as HTMLElement | null) ?? document.body
+          : container;
 
-    container.appendChild(this._app.canvas as HTMLCanvasElement);
+    mountTarget.appendChild(this._app.canvas as HTMLCanvasElement);
 
     this._initialized = true;
 
